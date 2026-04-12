@@ -11,9 +11,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Animated,
   TextInput,
-  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useIsFocused, CompositeNavigationProp } from '@react-navigation/native';
@@ -23,7 +21,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { Plus, ArrowUpDown, CheckCircle2, Circle } from 'lucide-react-native';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
-import { FridgeItem, FridgeCategory } from '../types';
+import { FridgeItem } from '../types';
 import { RootTabParamList, RootStackParamList } from '../navigation';
 import { cancelExpiryNotification } from '../lib/notifications';
 
@@ -36,19 +34,6 @@ type FridgeNavProp = CompositeNavigationProp<
 
 type FilterType = '전체' | '냉장' | '냉동' | '실온' | '먹은 음식';
 type SortType = '유통기한' | '이름' | '넣은날짜';
-
-// ── 카테고리 색상 ──────────────────────────────
-
-const CATEGORY_COLORS: Record<FridgeCategory, string> = {
-  잎채소: '#5AAF6E',
-  뿌리채소: '#D4864A',
-  과일: '#D9629A',
-  육류: '#D46E6E',
-  해산물: '#4A9EC9',
-  유제품: '#9478C9',
-  가공식품: '#7A9FB0',
-  기타: '#9EA8B0',
-};
 
 // ── D-day 계산 ────────────────────────────────
 
@@ -121,7 +106,6 @@ interface FridgeItemRowProps {
 const FridgeItemRow: React.FC<FridgeItemRowProps> = React.memo(({ item, onToggleConsumed, onDelete, onQuantityChange, onEdit }) => {
   const swipeRef = useRef<Swipeable>(null);
   const dday = getDDay(item.expiry_date);
-  const catColor = CATEGORY_COLORS[item.category] ?? '#9EA8B0';
   const [editingQty, setEditingQty] = useState(false);
   const [qtyInput, setQtyInput] = useState(String(item.quantity ?? 1));
 
@@ -173,9 +157,6 @@ const FridgeItemRow: React.FC<FridgeItemRowProps> = React.memo(({ item, onToggle
             <Text style={[rowStyles.name, item.is_consumed && rowStyles.nameConsumed]}>
               {item.name}
             </Text>
-            <View style={[rowStyles.catBadge, { backgroundColor: catColor }]}>
-              <Text style={rowStyles.catText}>{item.category}</Text>
-            </View>
           </View>
           <View style={rowStyles.bottomRow}>
             <View style={[rowStyles.storageChip, item.storage_type === '냉동' && rowStyles.storageChipFreezer, item.storage_type === '실온' && rowStyles.storageChipRoom]}>
@@ -250,8 +231,6 @@ const rowStyles = StyleSheet.create({
   topRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   name: { fontSize: 15, fontWeight: '600', color: '#5C3D1E' },
   nameConsumed: { color: '#C49A6C', textDecorationLine: 'line-through' },
-  catBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
-  catText: { fontSize: 10, color: '#FFFFFF', fontWeight: '600' },
   bottomRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   storageChip: {
     paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6,
@@ -298,14 +277,7 @@ const FridgeScreen: React.FC = () => {
       const fid = await getOrCreateFamilyId();
       if (!fid) return;
       setFamilyId(fid);
-
-      const { data, error } = await supabase
-        .from('fridge_items')
-        .select('*')
-        .eq('family_id', fid)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
-
+      const { data, error } = await supabase.from('fridge_items').select('*').eq('family_id', fid).eq('is_active', true).order('created_at', { ascending: false });
       if (!error && data) setItems(data as FridgeItem[]);
     } catch (e) {
       console.error('FridgeScreen load error:', e);
@@ -322,17 +294,23 @@ const FridgeScreen: React.FC = () => {
     const newConsumed = !item.is_consumed;
     const today = new Date().toISOString().split('T')[0];
 
+    // 체크 해제 시 수량을 1로 복구
+    const updatePayload: Record<string, unknown> = {
+      is_consumed: newConsumed,
+      consumed_at: newConsumed ? today : null,
+    };
+    if (!newConsumed) updatePayload.quantity = 1;
+
     const { error } = await supabase
       .from('fridge_items')
-      .update({
-        is_consumed: newConsumed,
-        consumed_at: newConsumed ? today : null,
-      })
+      .update(updatePayload)
       .eq('id', item.id);
 
     if (!error) {
       setItems(prev => prev.map(i =>
-        i.id === item.id ? { ...i, is_consumed: newConsumed, consumed_at: newConsumed ? today : null } : i
+        i.id === item.id
+          ? { ...i, is_consumed: newConsumed, consumed_at: newConsumed ? today : null, quantity: newConsumed ? i.quantity : 1 }
+          : i
       ));
       // 다먹음 처리 시 알림 취소
       if (newConsumed) await cancelExpiryNotification(item.id);
@@ -468,6 +446,7 @@ const FridgeScreen: React.FC = () => {
       >
         <Plus color="#FFFFFF" size={26} strokeWidth={2.5} />
       </TouchableOpacity>
+
     </SafeAreaView>
   );
 };
@@ -478,6 +457,7 @@ const styles = StyleSheet.create({
 
   // 헤더
   header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16,
   },
   title: { fontSize: 26, fontWeight: '800', color: '#5C3D1E' },

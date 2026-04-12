@@ -25,6 +25,8 @@ import ChoresScreen from '../screens/ChoresScreen';
 import SuppliesScreen from '../screens/SuppliesScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import AddFridgeItemScreen from '../screens/AddFridgeItemScreen';
+import AddSupplyScreen from '../screens/AddSupplyScreen';
+import AddChoreScreen from '../screens/AddChoreScreen';
 import FamilyFoodsScreen from '../screens/FamilyFoodsScreen';
 import AssetHistoryScreen from '../screens/AssetHistoryScreen';
 import AuthScreen from '../screens/auth/AuthScreen';
@@ -57,6 +59,8 @@ export type RootStackParamList = {
   MainTabs: undefined;
   Settings: undefined;
   AddFridgeItem: { familyId?: string; itemId?: string };
+  AddSupply: { familyId?: string; supplyId?: string };
+  AddChore: { familyId?: string; choreId?: string };
   FamilyFoods: undefined;
   AssetHistory: undefined;
 };
@@ -278,6 +282,8 @@ export default function AppNavigator({ navigationRef }: AppNavigatorProps) {
             <Stack.Screen name="MainTabs" component={MainTabs} />
             <Stack.Screen name="Settings" component={SettingsScreen} options={{ presentation: 'modal' }} />
             <Stack.Screen name="AddFridgeItem" component={AddFridgeItemScreen} options={{ presentation: 'modal' }} />
+            <Stack.Screen name="AddSupply" component={AddSupplyScreen} options={{ presentation: 'modal' }} />
+            <Stack.Screen name="AddChore" component={AddChoreScreen} options={{ presentation: 'modal' }} />
             <Stack.Screen name="FamilyFoods" component={FamilyFoodsScreen} options={{ presentation: 'modal' }} />
             <Stack.Screen name="AssetHistory" component={AssetHistoryScreen} />
           </>

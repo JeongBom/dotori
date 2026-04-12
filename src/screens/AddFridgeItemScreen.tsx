@@ -163,19 +163,6 @@ const dpStyles = StyleSheet.create({
   confirmText: { color: '#FFFFFF', fontWeight: '700' },
 });
 
-// ── 카테고리 색상 ──────────────────────────────
-
-const CATEGORY_COLORS: Record<FridgeCategory, string> = {
-  잎채소: '#5AAF6E',
-  뿌리채소: '#D4864A',
-  과일: '#D9629A',
-  육류: '#D46E6E',
-  해산물: '#4A9EC9',
-  유제품: '#9478C9',
-  가공식품: '#7A9FB0',
-  기타: '#9EA8B0',
-};
-
 // ── 메인 화면 ─────────────────────────────────
 
 const AddFridgeItemScreen: React.FC = () => {
@@ -188,7 +175,7 @@ const AddFridgeItemScreen: React.FC = () => {
 
   // 폼 상태
   const [name, setName] = useState('');
-  const [category, setCategory] = useState<FridgeCategory>('기타');
+  const [category, setCategory] = useState<string>('기타');
   const [storageType, setStorageType] = useState<StorageType>('냉장');
   const [storedDate, setStoredDate] = useState(todayStr());
   const [quantity, setQuantity] = useState(1);
@@ -228,7 +215,7 @@ const AddFridgeItemScreen: React.FC = () => {
     })();
   }, [itemId]);
 
-  // food_database + family_foods 로드
+  // food_database 로드
   useEffect(() => {
     (async () => {
       const { data } = await supabase.from('food_database').select('*').order('name');
@@ -372,28 +359,11 @@ const AddFridgeItemScreen: React.FC = () => {
                     onPress={() => onSelectFood(food)}
                   >
                     <Text style={styles.dropdownName}>{food.name}</Text>
-                    <View style={[styles.catBadge, { backgroundColor: CATEGORY_COLORS[food.category] }]}>
-                      <Text style={styles.catBadgeText}>{food.category}</Text>
-                    </View>
                   </TouchableOpacity>
                 ))}
               </View>
             )}
           </View>
-
-          {/* 카테고리 (자동완성 선택 시 자동 입력, 수동 변경 가능) */}
-          <Text style={[styles.label, { marginTop: 20 }]}>카테고리</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
-            {(['잎채소','뿌리채소','과일','육류','해산물','유제품','가공식품','기타'] as FridgeCategory[]).map(c => (
-              <TouchableOpacity
-                key={c}
-                style={[styles.catChip, category === c && { backgroundColor: CATEGORY_COLORS[c] }]}
-                onPress={() => setCategory(c)}
-              >
-                <Text style={[styles.catChipText, category === c && styles.catChipTextActive]}>{c}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
 
           {/* 보관 방법 */}
           <Text style={[styles.label, { marginTop: 20 }]}>보관 방법</Text>
@@ -572,19 +542,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: '#EDD9C0',
   },
   dropdownName: { fontSize: 15, color: '#5C3D1E', fontWeight: '500' },
-
-  // 카테고리 배지
-  catBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  catBadgeText: { fontSize: 11, color: '#FFFFFF', fontWeight: '600' },
-
-  // 카테고리 선택 스크롤
-  catScroll: { marginBottom: 4 },
-  catChip: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, marginRight: 8,
-    backgroundColor: '#FFF8F0', borderWidth: 1, borderColor: '#DEC8A8',
-  },
-  catChipText: { fontSize: 13, color: '#8B5E3C', fontWeight: '500' },
-  catChipTextActive: { color: '#FFFFFF' },
 
   // 냉장/냉동 토글
   toggleRow: { flexDirection: 'row', gap: 12 },

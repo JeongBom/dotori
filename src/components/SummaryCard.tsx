@@ -35,7 +35,12 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
       {/* 본문 */}
       <View style={styles.body}>
         {/* 주요 수치 크게 */}
-        <Text style={[styles.primaryValue, primaryStat.highlight && styles.highlightValue]}>
+        <Text
+          style={[styles.primaryValue, primaryStat.highlight && styles.highlightValue]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.6}
+        >
           {primaryStat.value}
         </Text>
         <Text style={styles.primaryLabel}>{primaryStat.label}</Text>

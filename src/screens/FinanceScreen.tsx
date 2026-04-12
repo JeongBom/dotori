@@ -9,10 +9,13 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   Modal,
   TextInput,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Dimensions,
 } from 'react-native';
@@ -319,7 +322,13 @@ const AddAssetModal: React.FC<AddAssetModalProps> = ({
 
   return (
     <Modal visible={visible} transparent animationType="slide">
-      <View style={modalStyles.overlay}>
+      <KeyboardAvoidingView
+        style={modalStyles.kavContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={modalStyles.overlayTap} />
+        </TouchableWithoutFeedback>
         <View style={modalStyles.sheet}>
           <View style={modalStyles.sheetHeader}>
             <Text style={modalStyles.sheetTitle}>자산 추가</Text>
@@ -327,7 +336,7 @@ const AddAssetModal: React.FC<AddAssetModalProps> = ({
               <X color="#C49A6C" size={22} strokeWidth={2} />
             </TouchableOpacity>
           </View>
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bounces={false} automaticallyAdjustKeyboardInsets>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bounces={false}>
             <View>
 
             {/* 카테고리 */}
@@ -416,7 +425,7 @@ const AddAssetModal: React.FC<AddAssetModalProps> = ({
             </View>
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -527,9 +536,15 @@ const EditAssetModal: React.FC<EditAssetModalProps> = ({
 
   return (
     <Modal visible={visible} transparent animationType="slide">
-      <View style={modalStyles.overlay}>
+      <KeyboardAvoidingView
+        style={modalStyles.kavContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={modalStyles.overlayTap} />
+        </TouchableWithoutFeedback>
         <View style={modalStyles.sheet}>
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bounces={false} automaticallyAdjustKeyboardInsets>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bounces={false}>
 
             {/* 헤더 */}
             <View style={modalStyles.sheetHeader}>
@@ -624,7 +639,7 @@ const EditAssetModal: React.FC<EditAssetModalProps> = ({
 
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -632,6 +647,17 @@ const EditAssetModal: React.FC<EditAssetModalProps> = ({
 // ── 모달 공통 스타일 ──────────────────────────
 
 const modalStyles = StyleSheet.create({
+  // KAV가 전체 화면을 감싸고 키보드와 함께 시트가 올라가는 구조
+  kavContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  // 다크 오버레이 탭 시 키보드 닫기
+  overlayTap: {
+    flex: 1,
+  },
+  // 하위 호환용 (DatePickerModal에서 사용)
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -1030,7 +1056,13 @@ const GoalModal: React.FC<GoalModalProps> = ({ visible, familyId, existing, onCl
 
   return (
     <Modal visible={visible} transparent animationType="slide">
-      <View style={modalStyles.overlay}>
+      <KeyboardAvoidingView
+        style={modalStyles.kavContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={modalStyles.overlayTap} />
+        </TouchableWithoutFeedback>
         <View style={modalStyles.sheet}>
           {/* 헤더 */}
           <View style={modalStyles.sheetHeader}>
@@ -1067,7 +1099,7 @@ const GoalModal: React.FC<GoalModalProps> = ({ visible, familyId, existing, onCl
             </View>
           ) : (
             /* 일반 폼 필드 */
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bounces={false} automaticallyAdjustKeyboardInsets>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bounces={false}>
               <Text style={modalStyles.label}>목표 이름</Text>
               <TextInput
                 style={modalStyles.input}
@@ -1126,7 +1158,7 @@ const GoalModal: React.FC<GoalModalProps> = ({ visible, familyId, existing, onCl
             </ScrollView>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -1184,15 +1216,20 @@ const GoalItemModal: React.FC<GoalItemModalProps> = ({
   const totalAssetAmount = assets.reduce((sum, a) => sum + a.amount, 0);
   // 수정 중이면 기존 항목 금액은 가용 한도에서 제외하지 않음
   const editingAmount = existing?.amount ?? 0;
+  // availableAmount: 자산이 없으면 무제한(-1), 있으면 실제 가용액
   const availableAmount = totalAssetAmount > 0
     ? Math.max(0, totalAssetAmount - totalCommitted + editingAmount)
-    : 0;
+    : -1;
 
   const handleSave = async () => {
     const amount = parseCommaInput(amountText);
     if (!amount || amount <= 0) { Alert.alert('알림', '금액을 올바르게 입력해주세요.'); return; }
-    if (availableAmount > 0 && amount > availableAmount) {
-      Alert.alert('알림', `입력 금액이 가용 한도(${formatAmount(availableAmount)})를 초과해요.\n(총 자산 - 다른 목표 항목 합산)`);
+    // availableAmount >= 0 이면 한도 체크 (0이면 완전 소진 → 어떤 값이든 초과)
+    if (availableAmount >= 0 && amount > availableAmount) {
+      const msg = availableAmount === 0
+        ? '총 자산이 이미 모든 목표 항목에 할당됐어요.'
+        : `입력 금액이 가용 한도(${formatAmount(availableAmount)})를 초과해요.`;
+      Alert.alert('알림', msg);
       return;
     }
     if (!savedDate) { Alert.alert('알림', '날짜를 선택해주세요.'); return; }
@@ -1229,7 +1266,13 @@ const GoalItemModal: React.FC<GoalItemModalProps> = ({
 
   return (
     <Modal visible={visible} transparent animationType="slide">
-      <View style={modalStyles.overlay}>
+      <KeyboardAvoidingView
+        style={modalStyles.kavContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={modalStyles.overlayTap} />
+        </TouchableWithoutFeedback>
         <View style={modalStyles.sheet}>
           <View style={modalStyles.sheetHeader}>
             <Text style={modalStyles.sheetTitle}>{existing ? '항목 수정' : '항목 추가'}</Text>
@@ -1261,7 +1304,7 @@ const GoalItemModal: React.FC<GoalItemModalProps> = ({
               </View>
             </View>
           ) : (
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bounces={false} automaticallyAdjustKeyboardInsets>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bounces={false}>
               {/* 자산 선택 */}
               <Text style={modalStyles.label}>자산 선택</Text>
               {assets.length === 0 ? (
@@ -1285,24 +1328,35 @@ const GoalItemModal: React.FC<GoalItemModalProps> = ({
               {/* 금액 */}
               <View style={modalStyles.labelRow}>
                 <Text style={modalStyles.labelInRow}>금액 (원)</Text>
-                {parsedAmount > 0 && availableAmount > 0 && parsedAmount <= availableAmount && (
-                  <Text style={modalStyles.amountInline}>{formatAmount(parsedAmount)}</Text>
-                )}
-                {parsedAmount > 0 && availableAmount > 0 && parsedAmount > availableAmount && (
-                  <Text style={[modalStyles.amountInline, { color: '#D95F4B' }]}>
-                    최대 {formatAmount(availableAmount)}
-                  </Text>
-                )}
-                {parsedAmount === 0 && availableAmount > 0 && (
-                  <Text style={[modalStyles.amountInline, { color: '#C49A6C' }]}>
-                    최대 {formatAmount(availableAmount)}
-                  </Text>
-                )}
+                {(() => {
+                  const cap = availableAmount; // -1=무제한, 0=소진, >0=가용액
+                  if (parsedAmount > 0) {
+                    if (cap < 0 || parsedAmount <= cap) {
+                      // 무제한이거나 한도 이내 → 한글 금액 표시
+                      return <Text style={modalStyles.amountInline}>{formatAmount(parsedAmount)}</Text>;
+                    } else {
+                      // 한도 초과
+                      return (
+                        <Text style={[modalStyles.amountInline, { color: '#D95F4B' }]}>
+                          {cap === 0 ? '가용 한도 없음' : `최대 ${formatAmount(cap)}`}
+                        </Text>
+                      );
+                    }
+                  } else if (cap >= 0) {
+                    // 미입력 상태에서 한도 안내
+                    return (
+                      <Text style={[modalStyles.amountInline, { color: '#C49A6C' }]}>
+                        {cap === 0 ? '가용 한도 없음' : `최대 ${formatAmount(cap)}`}
+                      </Text>
+                    );
+                  }
+                  return null;
+                })()}
               </View>
               <TextInput
                 style={[
                   modalStyles.input,
-                  availableAmount > 0 && parsedAmount > availableAmount && { borderColor: '#D95F4B' },
+                  availableAmount >= 0 && parsedAmount > availableAmount && { borderColor: '#D95F4B' },
                 ]}
                 placeholder="예: 5,000,000"
                 placeholderTextColor="#C49A6C"
@@ -1343,7 +1397,7 @@ const GoalItemModal: React.FC<GoalItemModalProps> = ({
             </ScrollView>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };

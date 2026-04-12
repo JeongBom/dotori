@@ -97,7 +97,7 @@ user_settings
 - user_id, family_id, notify_before_expiry, created_at
 ```
 
-### 음식 관리 (기존 - 수정 금지)
+### 음식 관리 
 ```sql
 food_database
 - id, name, category, refrigerated_days, frozen_days
@@ -110,7 +110,7 @@ fridge_items
 - created_at
 ```
 
-### 자산/목표 관리 (미개발)
+### 자산/목표 관리 
 ```sql
 -- 전체 자산 현황 (자산이랑 목표는 완전히 독립적)
 assets
@@ -141,7 +141,7 @@ goal_items
 - is_active (소프트 삭제용, default: true)
 ```
 
-### 루틴/집안일 (미개발)
+### 루틴/집안일 
 ```sql
 routines
 - id, family_id, title
@@ -156,7 +156,7 @@ routines
 - created_at
 ```
 
-### 생필품 관리 (미개발)
+### 생필품 관리 
 ```sql
 supplies
 - id, family_id, name

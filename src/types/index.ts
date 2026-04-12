@@ -17,7 +17,7 @@ export interface UserProfile {
   role: UserRole;
   created_at: string;
 }
-export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly';
+export type RepeatType = 'none' | 'daily' | 'weekly' | 'monthly' | 'custom';
 export type TransactionType = 'expense' | 'income';
 
 // ---- 가족 ----
@@ -48,7 +48,7 @@ export interface FridgeItem {
   id: string;
   family_id: string;
   name: string;
-  category: FridgeCategory;
+  category: string; // fridge_categories.name 참조 (기본값: FridgeCategory)
   storage_type: StorageType;
   quantity: number;
   stored_date: string;        // "YYYY-MM-DD"
@@ -108,40 +108,55 @@ export interface Transaction {
 
 export type NewTransaction = Omit<Transaction, 'id' | 'created_at' | 'family_members'>;
 
-// ---- 집안일 ----
+// ---- 루틴/할일 ----
+
+export interface ChoreTag {
+  id: string;
+  family_id: string;
+  name: string;
+  created_at: string;
+}
 
 export interface Chore {
   id: string;
   family_id: string;
-  assigned_to: string | null;
   title: string;
-  description: string | null;
-  due_date: string | null;
-  recurrence: RecurrenceType;
-  recurrence_day: number | null;
-  is_completed: boolean;
-  completed_at: string | null;
-  completed_by: string | null;
+  tag_id: string | null;
+  assigned_to: string | null;  // user_profiles.id, null = 모두
+  repeat_type: RepeatType;
+  repeat_interval: number | null; // days (custom 전용)
+  due_date: string | null;        // YYYY-MM-DD
+  last_done_at: string | null;    // YYYY-MM-DD (반복 완료 추적)
+  is_done: boolean;               // none 타입 전용
+  is_active: boolean;
   created_at: string;
-  // JOIN으로 붙어오는 담당자 정보
-  assignee?: Pick<FamilyMember, 'display_name' | 'avatar_color'>;
+  // JOIN 결과 (optional)
+  tag?: Pick<ChoreTag, 'id' | 'name'> | null;
+  assignee?: { id: string; nickname: string } | null;
 }
 
-export type NewChore = Omit<Chore, 'id' | 'created_at' | 'is_completed' | 'completed_at' | 'completed_by' | 'assignee'>;
+export type NewChore = Omit<Chore, 'id' | 'created_at' | 'tag' | 'assignee'>;
 
 // ---- 생필품 ----
 
-export type SupplyCategory = '청소용품' | '세면용품' | '주방용품' | '의약품' | '반려동물' | '기타';
+// 카테고리는 사용자가 직접 추가 (supply_categories 테이블)
+export interface SupplyCategoryEntry {
+  id: string;
+  family_id: string;
+  name: string;
+  color: string;
+  created_at: string;
+}
 
 export interface Supply {
   id: string;
   family_id: string;
   name: string;
   quantity: number;
-  unit: string;
   low_stock_threshold: number;
-  category: SupplyCategory;
+  category: string; // supply_categories.name 참조
   note: string | null;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -214,10 +229,14 @@ export interface DashboardSummary {
   finance: {
     thisMonthExpense: number; // 이번달 총 지출
     thisMonthIncome: number;  // 이번달 총 수입
+    totalAssets: number;      // 총 자산 합계
+    assetCount: number;       // 자산 항목 수
   };
   chores: {
     pendingCount: number;     // 미완료 집안일 수
     overdueCount: number;     // 기한 지난 집안일 수
+    todayTitles: string[];    // 오늘 할 일 제목 목록 (매일 반복 + 마감일=오늘)
+    overdueTitles: string[];  // 기한 초과 제목 목록 (마감일 < 오늘)
   };
   supplies: {
     lowStockCount: number;    // 재고 부족 항목 수

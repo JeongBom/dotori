@@ -61,8 +61,21 @@ function firstDayOfMonth(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
 }
 
+// 3자리 + 만원 단위 포맷 (FinanceScreen과 동일)
 function formatKRW(amount: number): string {
   return amount.toLocaleString('ko-KR') + '원';
+}
+
+function formatAmount(n: number): string {
+  if (n === 0) return '0원';
+  const eok = Math.floor(n / 100_000_000);
+  const man = Math.floor((n % 100_000_000) / 10_000);
+  const won = n % 10_000;
+  const parts: string[] = [];
+  if (eok > 0) parts.push(`${eok}억`);
+  if (man > 0) parts.push(`${man.toLocaleString()}만`);
+  if (won > 0 && eok === 0) parts.push(`${won.toLocaleString()}`);
+  return parts.join(' ') + '원';
 }
 
 // ============================================================
@@ -73,26 +86,56 @@ async function fetchDashboardSummary(
   familyId: string,
   notifyDaysBefore: number,  // user_settings 기반 임박 기준일
 ): Promise<DashboardSummary> {
-  const [fridgeRes, expiringSoonRes, expiredRes, expenseRes, incomeRes, pendingChoresRes, overdueChoresRes, lowStockRes] =
+  const [fridgeRes, expiringSoonRes, expiredRes, expenseRes, incomeRes, choresRes, lowStockRes, assetsRes] =
     await Promise.all([
       supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false),
       supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false).gte('expiry_date', today()).lte('expiry_date', daysLater(notifyDaysBefore)),
       supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false).lt('expiry_date', today()),
       supabase.from('transactions').select('amount').eq('family_id', familyId).eq('type', 'expense').gte('transaction_date', firstDayOfMonth()),
       supabase.from('transactions').select('amount').eq('family_id', familyId).eq('type', 'income').gte('transaction_date', firstDayOfMonth()),
-      supabase.from('chores').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_completed', false),
-      supabase.from('chores').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_completed', false).lt('due_date', today()).not('due_date', 'is', null),
-      supabase.from('supplies').select('quantity, low_stock_threshold').eq('family_id', familyId),
+      supabase.from('chores').select('id, title, repeat_type, repeat_interval, is_done, last_done_at, due_date').eq('family_id', familyId).eq('is_active', true),
+      supabase.from('supplies').select('quantity, low_stock_threshold').eq('family_id', familyId).eq('is_active', true),
+      supabase.from('assets').select('amount').eq('family_id', familyId).eq('is_active', true),
     ]);
+
+  // 반복 타입별 완료 여부 계산
+  const choreList = choresRes.data ?? [];
+  const isDone = (c: { repeat_type: string; repeat_interval: number | null; is_done: boolean; last_done_at: string | null }) => {
+    if (c.repeat_type === 'none') return c.is_done;
+    if (!c.last_done_at) return false;
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    const last = new Date(c.last_done_at); last.setHours(0, 0, 0, 0);
+    const days = Math.floor((now.getTime() - last.getTime()) / 86400000);
+    if (c.repeat_type === 'daily') return days === 0;
+    if (c.repeat_type === 'weekly') return days < 7;
+    if (c.repeat_type === 'monthly') return days < 30;
+    if (c.repeat_type === 'custom') return days < (c.repeat_interval ?? 1);
+    return false;
+  };
+  const pendingCount = choreList.filter(c => !isDone(c)).length;
+  const overdueCount = choreList.filter(c => !isDone(c) && c.due_date && c.due_date < today()).length;
+  // 오늘 할 일: 매일 반복(미완) + 마감일=오늘(반복 타입 무관, 미완)
+  const todayTitles = choreList
+    .filter(c => !isDone(c) && (
+      c.repeat_type === 'daily' ||
+      (c.due_date === today())
+    ))
+    .map(c => c.title);
+  // 기한 초과: 마감일 < 오늘(반복 타입 무관, 미완) — daily는 todayTitles에서 처리하므로 제외
+  const overdueTitles = choreList
+    .filter(c => !isDone(c) && c.repeat_type !== 'daily' && c.due_date != null && c.due_date < today())
+    .map(c => c.title);
 
   const totalExpense = (expenseRes.data ?? []).reduce((sum, t) => sum + t.amount, 0);
   const totalIncome = (incomeRes.data ?? []).reduce((sum, t) => sum + t.amount, 0);
   const lowStockCount = (lowStockRes.data ?? []).filter(s => s.quantity <= s.low_stock_threshold).length;
+  const totalAssets = (assetsRes.data ?? []).reduce((sum, a) => sum + a.amount, 0);
+  const assetCount = (assetsRes.data ?? []).length;
 
   return {
     fridge: { totalItems: fridgeRes.count ?? 0, expiringCount: expiringSoonRes.count ?? 0, expiredCount: expiredRes.count ?? 0 },
-    finance: { thisMonthExpense: totalExpense, thisMonthIncome: totalIncome },
-    chores: { pendingCount: pendingChoresRes.count ?? 0, overdueCount: overdueChoresRes.count ?? 0 },
+    finance: { thisMonthExpense: totalExpense, thisMonthIncome: totalIncome, totalAssets, assetCount },
+    chores: { pendingCount, overdueCount, todayTitles, overdueTitles },
     supplies: { lowStockCount },
   };
 }
@@ -141,8 +184,8 @@ const DashboardScreen: React.FC = () => {
       if (!familyId) {
         setSummary({
           fridge: { totalItems: 0, expiringCount: 0, expiredCount: 0 },
-          finance: { thisMonthExpense: 0, thisMonthIncome: 0 },
-          chores: { pendingCount: 0, overdueCount: 0 },
+          finance: { thisMonthExpense: 0, thisMonthIncome: 0, totalAssets: 0, assetCount: 0 },
+          chores: { pendingCount: 0, overdueCount: 0, todayTitles: [], overdueTitles: [] },
           supplies: { lowStockCount: 0 },
         });
         if (localName) setFamilyName(localName);
@@ -166,16 +209,10 @@ const DashboardScreen: React.FC = () => {
     }
   }, [loadLocalSettings]);
 
-  useEffect(() => { loadData(); }, [loadData]);
-
-  // 설정에서 돌아올 때 이름·닉네임 갱신
+  // 화면이 포커스될 때마다(홈 탭 탭, 다른 탭→홈 복귀) 전체 데이터 새로고침
   useEffect(() => {
-    if (isFocused) {
-      loadLocalSettings().then(localName => {
-        if (localName) setFamilyName(localName);
-      });
-    }
-  }, [isFocused, loadLocalSettings]);
+    if (isFocused) loadData();
+  }, [isFocused, loadData]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -242,19 +279,6 @@ const DashboardScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* 알림 배너 */}
-        {summary && (summary.fridge.expiredCount > 0 || summary.supplies.lowStockCount > 0) && (
-          <View style={styles.alertBanner}>
-            <Text style={styles.alertText}>
-              {[
-                summary.fridge.expiredCount > 0 ? `유통기한 지난 식품 ${summary.fridge.expiredCount}개` : null,
-                summary.supplies.lowStockCount > 0 ? `재고 부족 ${summary.supplies.lowStockCount}개` : null,
-              ].filter(Boolean).join(' · ')}
-            </Text>
-            <TriangleAlert color="#7A4F2E" size={18} strokeWidth={2} />
-          </View>
-        )}
-
         {/* 섹션 제목 */}
         <Text style={styles.sectionTitle}>오늘의 현황</Text>
 
@@ -291,29 +315,62 @@ const DashboardScreen: React.FC = () => {
               icon={<Wallet color="#FFFFFF" size={18} strokeWidth={1.8} />}
               color="#7A4F2E"
               onPress={() => navigation.navigate('Finance')}
-              primaryStat={{ label: '이번달 지출', value: formatKRW(summary?.finance.thisMonthExpense ?? 0) }}
+              primaryStat={{ label: '총 자산', value: formatAmount(summary?.finance.totalAssets ?? 0) }}
               secondaryStats={[
-                { label: '수입', value: formatKRW(summary?.finance.thisMonthIncome ?? 0) },
-                {
-                  label: '수지',
-                  value: formatKRW((summary?.finance.thisMonthIncome ?? 0) - (summary?.finance.thisMonthExpense ?? 0)),
-                  highlight: (summary?.finance.thisMonthIncome ?? 0) - (summary?.finance.thisMonthExpense ?? 0) < 0,
-                },
+                { label: '이번달 지출', value: formatKRW(summary?.finance.thisMonthExpense ?? 0), highlight: (summary?.finance.thisMonthExpense ?? 0) > 0 },
+                { label: '이번달 수입', value: formatKRW(summary?.finance.thisMonthIncome ?? 0) },
               ]}
             />
           )}
           {enabledFeatures.includes('Chores') && (
-            <SummaryCard
-              style={styles.gridCard}
-              title="루틴"
-              icon={<Calendar color="#FFFFFF" size={18} strokeWidth={1.8} />}
-              color="#A87850"
-              onPress={() => navigation.navigate('Chores')}
-              primaryStat={{ label: '해야 할 일', value: `${summary?.chores.pendingCount ?? 0}개` }}
-              secondaryStats={[
-                { label: '기한 초과', value: `${summary?.chores.overdueCount ?? 0}개`, highlight: (summary?.chores.overdueCount ?? 0) > 0 },
-              ]}
-            />
+            <TouchableOpacity style={[styles.gridCard, choreCardStyles.card]} onPress={() => navigation.navigate('Chores')} activeOpacity={0.85}>
+              <View style={[choreCardStyles.header, { backgroundColor: '#A87850' }]}>
+                <Calendar color="#FFFFFF" size={18} strokeWidth={1.8} />
+                <Text style={choreCardStyles.headerTitle}>루틴</Text>
+                {(summary?.chores.pendingCount ?? 0) > 0 && (
+                  <View style={choreCardStyles.badge}>
+                    <Text style={choreCardStyles.badgeText}>{summary?.chores.pendingCount}</Text>
+                  </View>
+                )}
+              </View>
+              <View style={choreCardStyles.body}>
+                {(summary?.chores.todayTitles ?? []).length === 0 && (summary?.chores.overdueTitles ?? []).length === 0 ? (
+                  <Text style={choreCardStyles.empty}>오늘 할 일이 없습니다</Text>
+                ) : (
+                  <>
+                    {/* 기간이 지난 루틴 */}
+                    {(summary?.chores.overdueTitles ?? []).length > 0 && (
+                      <>
+                        <Text style={choreCardStyles.sectionLabel}>기간이 지난 루틴</Text>
+                        {(summary?.chores.overdueTitles ?? []).slice(0, 2).map((t, i) => (
+                          <View key={`od-${i}`} style={choreCardStyles.item}>
+                            <View style={[choreCardStyles.dot, { backgroundColor: '#D95F4B' }]} />
+                            <Text style={[choreCardStyles.itemText, { color: '#D95F4B' }]} numberOfLines={1}>{t}</Text>
+                          </View>
+                        ))}
+                      </>
+                    )}
+                    {/* 오늘 할 루틴 */}
+                    {(summary?.chores.todayTitles ?? []).length > 0 && (
+                      <>
+                        <Text style={[choreCardStyles.sectionLabel, (summary?.chores.overdueTitles ?? []).length > 0 && { marginTop: 8 }]}>오늘 할 루틴</Text>
+                        {(summary?.chores.todayTitles ?? []).slice(0, 2).map((t, i) => (
+                          <View key={`td-${i}`} style={choreCardStyles.item}>
+                            <View style={choreCardStyles.dot} />
+                            <Text style={choreCardStyles.itemText} numberOfLines={1}>{t}</Text>
+                          </View>
+                        ))}
+                      </>
+                    )}
+                    {((summary?.chores.todayTitles ?? []).length + (summary?.chores.overdueTitles ?? []).length) > 4 && (
+                      <Text style={choreCardStyles.more}>
+                        + {(summary?.chores.todayTitles ?? []).length + (summary?.chores.overdueTitles ?? []).length - 4}개 더
+                      </Text>
+                    )}
+                  </>
+                )}
+              </View>
+            </TouchableOpacity>
           )}
         </View>
 
@@ -558,6 +615,85 @@ const sheetStyles = StyleSheet.create({
     fontSize: 15,
     color: '#8B5E3C',
     fontWeight: '600',
+  },
+});
+
+// ── 루틴 카드 스타일 ──────────────────────────
+
+const choreCardStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#FFF8F0',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#8B5E3C',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  headerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    flex: 1,
+  },
+  badge: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  badgeText: {
+    fontSize: 11,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  body: {
+    padding: 14,
+    minHeight: 80,
+  },
+  empty: {
+    fontSize: 13,
+    color: '#C49A6C',
+    fontStyle: 'italic',
+  },
+  item: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  dot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#8B5E3C',
+  },
+  itemText: {
+    fontSize: 13,
+    color: '#5C3D1E',
+    fontWeight: '500',
+    flex: 1,
+  },
+  more: {
+    fontSize: 11,
+    color: '#A87850',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#A87850',
+    letterSpacing: 0.3,
+    marginBottom: 4,
   },
 });
 

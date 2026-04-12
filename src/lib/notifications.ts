@@ -71,6 +71,33 @@ export async function scheduleExpiryNotification(
   }
 }
 
+// 재고 부족 즉시 알림 (수량이 임계값 이하로 떨어질 때)
+export async function sendLowStockNotification(
+  supplyId: string,
+  supplyName: string,
+  quantity: number,
+): Promise<void> {
+  try {
+    const granted = await requestNotificationPermissions();
+    if (!granted) return;
+
+    // 기존 알림이 있으면 덮어씀
+    await Notifications.cancelScheduledNotificationAsync(`low_stock_${supplyId}`).catch(() => {});
+
+    await Notifications.scheduleNotificationAsync({
+      identifier: `low_stock_${supplyId}`,
+      content: {
+        title: '🛒 재고 부족',
+        body: `${supplyName} 재고가 ${quantity}개 남았어요. 구매가 필요합니다.`,
+        data: { supplyId },
+      },
+      trigger: null, // 즉시 발송
+    });
+  } catch (e) {
+    console.warn('재고 부족 알림 실패:', e);
+  }
+}
+
 // 알림 취소 (아이템 삭제 또는 다먹음 처리 시)
 export async function cancelExpiryNotification(itemId: string): Promise<void> {
   try {
