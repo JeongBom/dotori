@@ -31,7 +31,15 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
+
+# Claude Code memory (local only)
+memory/
+
+# Vim swap files
+*.swp
+*.swo
 
 # typescript
 *.tsbuildinfo
