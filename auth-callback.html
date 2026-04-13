@@ -35,8 +35,10 @@
       padding: 14px 32px;
       border-radius: 14px;
       text-decoration: none;
+      cursor: pointer;
     }
     .hint { font-size: 13px; color: #C49A6C; margin-top: 16px; }
+    .debug { font-size: 11px; color: #C49A6C; margin-top: 12px; word-break: break-all; }
   </style>
 </head>
 <body>
@@ -44,12 +46,41 @@
     <div class="emoji">✅</div>
     <h1>인증이 완료되었습니다!</h1>
     <p>이메일 인증이 성공적으로 완료됐어요.<br />앱으로 돌아가서 계속 진행해주세요.</p>
-    <a href="dotori://" class="btn">앱으로 돌아가기</a>
+    <a id="appBtn" href="dotori://" class="btn">앱으로 돌아가기</a>
     <p class="hint">버튼이 작동하지 않으면 앱에서<br />"인증 완료했어요" 버튼을 눌러주세요.</p>
   </div>
   <script>
-    // 앱이 설치된 경우 자동으로 열기 시도
-    setTimeout(() => { window.location.href = 'dotori://'; }, 500);
+    function buildDeepLink() {
+      // PKCE flow: ?code=XXXXX (query param)
+      var searchParams = new URLSearchParams(window.location.search);
+      var code = searchParams.get('code');
+      if (code) {
+        return 'dotori://?code=' + encodeURIComponent(code);
+      }
+
+      // Implicit flow: #access_token=XXX&refresh_token=YYY&type=signup (fragment)
+      var hash = window.location.hash.replace('#', '');
+      if (hash) {
+        var hashParams = new URLSearchParams(hash);
+        var accessToken = hashParams.get('access_token');
+        var refreshToken = hashParams.get('refresh_token');
+        var type = hashParams.get('type') || 'signup';
+        if (accessToken && refreshToken) {
+          return 'dotori://#access_token=' + encodeURIComponent(accessToken)
+               + '&refresh_token=' + encodeURIComponent(refreshToken)
+               + '&type=' + encodeURIComponent(type);
+        }
+      }
+
+      // 파라미터 없으면 그냥 앱만 열기 (앱 내 폴링 버튼으로 처리)
+      return 'dotori://';
+    }
+
+    var deepLink = buildDeepLink();
+    document.getElementById('appBtn').href = deepLink;
+
+    // 500ms 후 자동으로 앱 열기 시도
+    setTimeout(function() { window.location.href = deepLink; }, 500);
   </script>
 </body>
 </html>
