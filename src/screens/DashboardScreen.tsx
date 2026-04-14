@@ -33,8 +33,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import SummaryCard from '../components/SummaryCard';
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
-import { DashboardSummary } from '../types';
+import { Chore, DashboardSummary } from '../types';
 import { RootTabParamList, RootStackParamList } from '../navigation';
+import {
+  generateOccurrences,
+  thisWeekRange as choreWeekRange,
+  thisMonthStart as choreMonthStart,
+  thisMonthEnd as choreMonthEnd,
+  todayStr as choreToday,
+} from '../lib/choreUtils';
 import { STORAGE_KEY_FAMILY_NAME, STORAGE_KEY_NICKNAME, STORAGE_KEY_NOTIFY_DAYS, STORAGE_KEY_ENABLED_FEATURES, ALL_FEATURES } from './SettingsScreen';
 
 type DashboardNavigationProp = CompositeNavigationProp<
@@ -59,6 +66,22 @@ function daysLater(n: number): string {
 function firstDayOfMonth(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+function lastDayOfMonth(): string {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0];
+}
+
+function thisWeekRange(): [string, string] {
+  const d = new Date();
+  const day = d.getDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + diffToMonday);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return [monday.toISOString().split('T')[0], sunday.toISOString().split('T')[0]];
 }
 
 // 3자리 + 만원 단위 포맷 (FinanceScreen과 동일)
@@ -93,38 +116,29 @@ async function fetchDashboardSummary(
       supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false).lt('expiry_date', today()),
       supabase.from('transactions').select('amount').eq('family_id', familyId).eq('type', 'expense').gte('transaction_date', firstDayOfMonth()),
       supabase.from('transactions').select('amount').eq('family_id', familyId).eq('type', 'income').gte('transaction_date', firstDayOfMonth()),
-      supabase.from('chores').select('id, title, repeat_type, repeat_interval, is_done, last_done_at, due_date').eq('family_id', familyId).eq('is_active', true),
+      supabase.from('chores').select('*').eq('family_id', familyId).eq('is_active', true),
       supabase.from('supplies').select('quantity, low_stock_threshold').eq('family_id', familyId).eq('is_active', true),
       supabase.from('assets').select('amount').eq('family_id', familyId).eq('is_active', true),
     ]);
 
-  // 반복 타입별 완료 여부 계산
-  const choreList = choresRes.data ?? [];
-  const isDone = (c: { repeat_type: string; repeat_interval: number | null; is_done: boolean; last_done_at: string | null }) => {
-    if (c.repeat_type === 'none') return c.is_done;
-    if (!c.last_done_at) return false;
-    const now = new Date(); now.setHours(0, 0, 0, 0);
-    const last = new Date(c.last_done_at); last.setHours(0, 0, 0, 0);
-    const days = Math.floor((now.getTime() - last.getTime()) / 86400000);
-    if (c.repeat_type === 'daily') return days === 0;
-    if (c.repeat_type === 'weekly') return days < 7;
-    if (c.repeat_type === 'monthly') return days < 30;
-    if (c.repeat_type === 'custom') return days < (c.repeat_interval ?? 1);
-    return false;
-  };
-  const pendingCount = choreList.filter(c => !isDone(c)).length;
-  const overdueCount = choreList.filter(c => !isDone(c) && c.due_date && c.due_date < today()).length;
-  // 오늘 할 일: 매일 반복(미완) + 마감일=오늘(반복 타입 무관, 미완)
-  const todayTitles = choreList
-    .filter(c => !isDone(c) && (
-      c.repeat_type === 'daily' ||
-      (c.due_date === today())
-    ))
-    .map(c => c.title);
-  // 기한 초과: 마감일 < 오늘(반복 타입 무관, 미완) — daily는 todayTitles에서 처리하므로 제외
-  const overdueTitles = choreList
-    .filter(c => !isDone(c) && c.repeat_type !== 'daily' && c.due_date != null && c.due_date < today())
-    .map(c => c.title);
+  // generateOccurrences로 ChoresScreen과 동일한 로직 사용
+  const choreList = (choresRes.data ?? []) as Chore[];
+  const tStr = choreToday();
+  const [weekStart, weekEnd] = choreWeekRange();
+  const monthStart = choreMonthStart();
+  const monthEnd = choreMonthEnd();
+
+  const todayOccs   = generateOccurrences(choreList, tStr, tStr);
+  const weekOccs    = generateOccurrences(choreList, weekStart, weekEnd);
+  const monthOccs   = generateOccurrences(choreList, monthStart, monthEnd);
+
+  const todayTitles   = todayOccs.filter(o => !o.isDone).map(o => o.chore.title);
+  const weekTitles    = weekOccs.filter(o => !o.isDone).map(o => o.chore.title);
+  const monthTitles   = monthOccs.filter(o => !o.isDone).map(o => o.chore.title);
+  const overdueTitles = todayOccs.filter(o => o.isOverdue).map(o => o.chore.title);
+
+  const pendingCount = todayTitles.length;
+  const overdueCount = overdueTitles.length;
 
   const totalExpense = (expenseRes.data ?? []).reduce((sum, t) => sum + t.amount, 0);
   const totalIncome = (incomeRes.data ?? []).reduce((sum, t) => sum + t.amount, 0);
@@ -135,7 +149,7 @@ async function fetchDashboardSummary(
   return {
     fridge: { totalItems: fridgeRes.count ?? 0, expiringCount: expiringSoonRes.count ?? 0, expiredCount: expiredRes.count ?? 0 },
     finance: { thisMonthExpense: totalExpense, thisMonthIncome: totalIncome, totalAssets, assetCount },
-    chores: { pendingCount, overdueCount, todayTitles, overdueTitles },
+    chores: { pendingCount, overdueCount, todayTitles, overdueTitles, weekTitles, monthTitles },
     supplies: { lowStockCount },
   };
 }
@@ -157,6 +171,7 @@ const DashboardScreen: React.FC = () => {
   const [notifyDays, setNotifyDays]   = useState<number>(3);
   const [showAccountSheet, setShowAccountSheet] = useState(false);
   const [enabledFeatures, setEnabledFeatures] = useState<string[]>([...ALL_FEATURES]);
+  const [choreViewMode, setChoreViewMode] = useState<'오늘' | '이번주' | '이번달'>('오늘');
 
   const loadLocalSettings = useCallback(async () => {
     const storedName     = await AsyncStorage.getItem(STORAGE_KEY_FAMILY_NAME);
@@ -185,7 +200,7 @@ const DashboardScreen: React.FC = () => {
         setSummary({
           fridge: { totalItems: 0, expiringCount: 0, expiredCount: 0 },
           finance: { thisMonthExpense: 0, thisMonthIncome: 0, totalAssets: 0, assetCount: 0 },
-          chores: { pendingCount: 0, overdueCount: 0, todayTitles: [], overdueTitles: [] },
+          chores: { pendingCount: 0, overdueCount: 0, todayTitles: [], overdueTitles: [], weekTitles: [], monthTitles: [] },
           supplies: { lowStockCount: 0 },
         });
         if (localName) setFamilyName(localName);
@@ -198,6 +213,18 @@ const DashboardScreen: React.FC = () => {
         setFamilyName(families.name);
         await AsyncStorage.setItem(STORAGE_KEY_FAMILY_NAME, families.name);
       }
+
+      // 닉네임은 항상 Supabase에서 직접 읽어서 동기화 (로그인 계정 전환 대응)
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: prof } = await supabase
+          .from('user_profiles').select('nickname').eq('id', user.id).single();
+        if (prof?.nickname) {
+          setNickname(prof.nickname);
+          await AsyncStorage.setItem(STORAGE_KEY_NICKNAME, prof.nickname);
+        }
+      }
+
       const data = await fetchDashboardSummary(familyId, days);
       setSummary(data);
     } catch (e) {
@@ -273,7 +300,10 @@ const DashboardScreen: React.FC = () => {
               onPress={() => setShowAccountSheet(true)}
               activeOpacity={0.7}
             >
-              <Text style={styles.nickname}>{familyName}</Text>
+              <View style={styles.accountInfo}>
+                {nickname ? <Text style={styles.nickname}>{nickname}</Text> : null}
+                <Text style={styles.familyNameLabel}>{familyName}</Text>
+              </View>
               <CircleUser color="#8B5E3C" size={28} strokeWidth={1.5} />
             </TouchableOpacity>
           </View>
@@ -322,56 +352,88 @@ const DashboardScreen: React.FC = () => {
               ]}
             />
           )}
-          {enabledFeatures.includes('Chores') && (
-            <TouchableOpacity style={[styles.gridCard, choreCardStyles.card]} onPress={() => navigation.navigate('Chores')} activeOpacity={0.85}>
-              <View style={[choreCardStyles.header, { backgroundColor: '#A87850' }]}>
-                <Calendar color="#FFFFFF" size={18} strokeWidth={1.8} />
-                <Text style={choreCardStyles.headerTitle}>루틴</Text>
-                {(summary?.chores.pendingCount ?? 0) > 0 && (
-                  <View style={choreCardStyles.badge}>
-                    <Text style={choreCardStyles.badgeText}>{summary?.chores.pendingCount}</Text>
-                  </View>
-                )}
-              </View>
-              <View style={choreCardStyles.body}>
-                {(summary?.chores.todayTitles ?? []).length === 0 && (summary?.chores.overdueTitles ?? []).length === 0 ? (
-                  <Text style={choreCardStyles.empty}>오늘 할 일이 없습니다</Text>
-                ) : (
-                  <>
-                    {/* 기간이 지난 루틴 */}
-                    {(summary?.chores.overdueTitles ?? []).length > 0 && (
-                      <>
-                        <Text style={choreCardStyles.sectionLabel}>기간이 지난 루틴</Text>
-                        {(summary?.chores.overdueTitles ?? []).slice(0, 2).map((t, i) => (
-                          <View key={`od-${i}`} style={choreCardStyles.item}>
-                            <View style={[choreCardStyles.dot, { backgroundColor: '#D95F4B' }]} />
-                            <Text style={[choreCardStyles.itemText, { color: '#D95F4B' }]} numberOfLines={1}>{t}</Text>
-                          </View>
-                        ))}
-                      </>
-                    )}
-                    {/* 오늘 할 루틴 */}
-                    {(summary?.chores.todayTitles ?? []).length > 0 && (
-                      <>
-                        <Text style={[choreCardStyles.sectionLabel, (summary?.chores.overdueTitles ?? []).length > 0 && { marginTop: 8 }]}>오늘 할 루틴</Text>
-                        {(summary?.chores.todayTitles ?? []).slice(0, 2).map((t, i) => (
-                          <View key={`td-${i}`} style={choreCardStyles.item}>
-                            <View style={choreCardStyles.dot} />
-                            <Text style={choreCardStyles.itemText} numberOfLines={1}>{t}</Text>
-                          </View>
-                        ))}
-                      </>
-                    )}
-                    {((summary?.chores.todayTitles ?? []).length + (summary?.chores.overdueTitles ?? []).length) > 4 && (
-                      <Text style={choreCardStyles.more}>
-                        + {(summary?.chores.todayTitles ?? []).length + (summary?.chores.overdueTitles ?? []).length - 4}개 더
+          {enabledFeatures.includes('Chores') && (() => {
+            const viewTitles =
+              choreViewMode === '오늘' ? (summary?.chores.todayTitles ?? []) :
+              choreViewMode === '이번주' ? (summary?.chores.weekTitles ?? []) :
+              (summary?.chores.monthTitles ?? []);
+            const overdue = summary?.chores.overdueTitles ?? [];
+            const showOverdue = choreViewMode === '오늘';
+            const totalCount = viewTitles.length + (showOverdue ? overdue.length : 0);
+
+            return (
+              <View style={[styles.gridCard, choreCardStyles.card]}>
+                {/* 헤더 */}
+                <TouchableOpacity
+                  style={[choreCardStyles.header, { backgroundColor: '#A87850' }]}
+                  onPress={() => navigation.navigate('Chores')}
+                  activeOpacity={0.85}
+                >
+                  <Calendar color="#FFFFFF" size={18} strokeWidth={1.8} />
+                  <Text style={choreCardStyles.headerTitle}>일정</Text>
+                  {totalCount > 0 && (
+                    <View style={choreCardStyles.badge}>
+                      <Text style={choreCardStyles.badgeText}>{totalCount}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+
+                {/* 기간 선택 탭 */}
+                <View style={choreCardStyles.modeRow}>
+                  {(['오늘', '이번주', '이번달'] as const).map(mode => (
+                    <TouchableOpacity
+                      key={mode}
+                      style={[choreCardStyles.modeBtn, choreViewMode === mode && choreCardStyles.modeBtnActive]}
+                      onPress={() => setChoreViewMode(mode)}
+                    >
+                      <Text style={[choreCardStyles.modeBtnText, choreViewMode === mode && choreCardStyles.modeBtnTextActive]}>
+                        {mode}
                       </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* 내용 */}
+                <TouchableOpacity onPress={() => navigation.navigate('Chores')} activeOpacity={0.85}>
+                  <View style={choreCardStyles.body}>
+                    {totalCount === 0 ? (
+                      <Text style={choreCardStyles.empty}>{choreViewMode}에 할 일이 없어요</Text>
+                    ) : (
+                      <>
+                        {showOverdue && overdue.length > 0 && (
+                          <>
+                            <Text style={choreCardStyles.sectionLabel}>기간이 지난 일정</Text>
+                            {overdue.slice(0, 2).map((t, i) => (
+                              <View key={`od-${i}`} style={choreCardStyles.item}>
+                                <View style={[choreCardStyles.dot, { backgroundColor: '#D95F4B' }]} />
+                                <Text style={[choreCardStyles.itemText, { color: '#D95F4B' }]} numberOfLines={1}>{t}</Text>
+                              </View>
+                            ))}
+                          </>
+                        )}
+                        {viewTitles.length > 0 && (
+                          <>
+                            {showOverdue && overdue.length > 0 && (
+                              <Text style={[choreCardStyles.sectionLabel, { marginTop: 8 }]}>{choreViewMode} 할 일정</Text>
+                            )}
+                            {viewTitles.slice(0, showOverdue && overdue.length > 0 ? 2 : 4).map((t, i) => (
+                              <View key={`vt-${i}`} style={choreCardStyles.item}>
+                                <View style={choreCardStyles.dot} />
+                                <Text style={choreCardStyles.itemText} numberOfLines={1}>{t}</Text>
+                              </View>
+                            ))}
+                          </>
+                        )}
+                        {totalCount > 4 && (
+                          <Text style={choreCardStyles.more}>+ {totalCount - 4}개 더</Text>
+                        )}
+                      </>
                     )}
-                  </>
-                )}
+                  </View>
+                </TouchableOpacity>
               </View>
-            </TouchableOpacity>
-          )}
+            );
+          })()}
         </View>
 
         <View style={{ height: 16 }} />
@@ -474,10 +536,18 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
   },
+  accountInfo: {
+    alignItems: 'flex-end',
+  },
   nickname: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#5C3D1E',
+  },
+  familyNameLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#A87850',
   },
 
   // 알림 배너
@@ -694,6 +764,31 @@ const choreCardStyles = StyleSheet.create({
     color: '#A87850',
     letterSpacing: 0.3,
     marginBottom: 4,
+  },
+  modeRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EDD9C0',
+  },
+  modeBtn: {
+    flex: 1,
+    paddingVertical: 4,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modeBtnActive: {
+    backgroundColor: '#EDD9C0',
+  },
+  modeBtnText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#A87850',
+  },
+  modeBtnTextActive: {
+    color: '#5C3D1E',
   },
 });
 

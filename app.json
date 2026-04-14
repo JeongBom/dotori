@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "home-manager",
-    "slug": "home-manager",
+    "name": "도토리",
+    "slug": "dotori",
     "scheme": "dotori",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -14,7 +14,9 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bbom16.homemanager",
+      "entitlements": {}
     },
     "android": {
       "adaptiveIcon": {
@@ -22,7 +24,8 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.bbom16.homemanager"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -39,6 +42,12 @@
           "androidCollapsedTitle": "유통기한 알림"
         }
       ]
-    ]
+    ],
+    "owner": "bbom16",
+    "extra": {
+      "eas": {
+        "projectId": "72d90ea3-ff0d-4006-b440-e00abfa69ac5"
+      }
+    }
   }
 }

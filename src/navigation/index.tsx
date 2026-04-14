@@ -13,7 +13,7 @@ import { View, ActivityIndicator, StyleSheet, Linking } from 'react-native';
 import { NavigationContainer, NavigationContainerRef, useIsFocused } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Home, Refrigerator, Wallet, Calendar, ShoppingCart } from 'lucide-react-native';
+import { Home, Refrigerator, Wallet, Calendar, ShoppingCart, NotebookPen } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Session } from '@supabase/supabase-js';
 import { STORAGE_KEY_ENABLED_FEATURES, ALL_FEATURES } from '../screens/SettingsScreen';
@@ -29,6 +29,8 @@ import AddSupplyScreen from '../screens/AddSupplyScreen';
 import AddChoreScreen from '../screens/AddChoreScreen';
 import FamilyFoodsScreen from '../screens/FamilyFoodsScreen';
 import AssetHistoryScreen from '../screens/AssetHistoryScreen';
+import NotesScreen from '../screens/NotesScreen';
+import NoteDetailScreen from '../screens/NoteDetailScreen';
 import AuthScreen from '../screens/auth/AuthScreen';
 import ProfileSetupScreen from '../screens/auth/ProfileSetupScreen';
 import FamilySetupScreen from '../screens/auth/FamilySetupScreen';
@@ -46,6 +48,7 @@ export type RootTabParamList = {
   Finance: undefined;
   Chores: undefined;
   Supplies: undefined;
+  Notes: undefined;
 };
 
 export type RootStackParamList = {
@@ -60,9 +63,10 @@ export type RootStackParamList = {
   Settings: undefined;
   AddFridgeItem: { familyId?: string; itemId?: string };
   AddSupply: { familyId?: string; supplyId?: string };
-  AddChore: { familyId?: string; choreId?: string };
+  AddChore: { familyId?: string; choreId?: string; occurrenceDate?: string; editMode?: 'this' | 'future' | 'all' };
   FamilyFoods: undefined;
   AssetHistory: undefined;
+  NoteDetail: { noteId: string };
 };
 
 // ---- 탭 아이콘 / 라벨 ----
@@ -78,10 +82,11 @@ const TAB_ICONS: Record<keyof RootTabParamList, React.FC<IconProps>> = {
   Finance:  ({ color, size }) => <Wallet color={color} size={size} strokeWidth={1.5} />,
   Chores:   ({ color, size }) => <Calendar color={color} size={size} strokeWidth={1.5} />,
   Supplies: ({ color, size }) => <ShoppingCart color={color} size={size} strokeWidth={1.5} />,
+  Notes:    ({ color, size }) => <NotebookPen color={color} size={size} strokeWidth={1.5} />,
 };
 
 const TAB_LABELS: Record<keyof RootTabParamList, string> = {
-  Home: '홈', Fridge: '음식', Finance: '자산', Chores: '루틴', Supplies: '생필품',
+  Home: '홈', Fridge: '음식', Finance: '자산', Chores: '일정', Supplies: '생필품', Notes: '메모',
 };
 
 // ---- 하단 탭 ----
@@ -139,6 +144,11 @@ function MainTabs() {
         name="Chores"
         component={ChoresScreen}
         options={{ tabBarButton: enabledFeatures.includes('Chores') ? undefined : () => null }}
+      />
+      <Tab.Screen
+        name="Notes"
+        component={NotesScreen}
+        options={{ tabBarButton: enabledFeatures.includes('Notes') ? undefined : () => null }}
       />
     </Tab.Navigator>
   );
@@ -211,17 +221,20 @@ export default function AppNavigator({ navigationRef }: AppNavigatorProps) {
     // 딥링크 처리 (앱이 백그라운드에 있다가 링크로 열릴 때)
     const handleDeepLink = async (url: string) => {
       try {
-        // dotori://#access_token=...&type=recovery 형태 처리
         const fragment = url.includes('#') ? url.split('#')[1] : url.split('?')[1];
         if (!fragment) return;
         const params = new URLSearchParams(fragment);
         const type = params.get('type');
+        const code = params.get('code');
         const accessToken = params.get('access_token');
         const refreshToken = params.get('refresh_token');
 
-        if (accessToken && refreshToken && (type === 'recovery' || type === 'signup')) {
+        if (code) {
+          // PKCE flow (Supabase 신버전 이메일 인증/비밀번호 재설정)
+          await supabase.auth.exchangeCodeForSession(code);
+        } else if (accessToken && refreshToken && (type === 'recovery' || type === 'signup')) {
+          // 구버전 token flow
           await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-          // setSession 후 onAuthStateChange가 SIGNED_IN / PASSWORD_RECOVERY 이벤트 발생
         }
       } catch (e) {
         console.error('Deep link handling error:', e);
@@ -286,6 +299,7 @@ export default function AppNavigator({ navigationRef }: AppNavigatorProps) {
             <Stack.Screen name="AddChore" component={AddChoreScreen} options={{ presentation: 'modal' }} />
             <Stack.Screen name="FamilyFoods" component={FamilyFoodsScreen} options={{ presentation: 'modal' }} />
             <Stack.Screen name="AssetHistory" component={AssetHistoryScreen} />
+            <Stack.Screen name="NoteDetail" component={NoteDetailScreen} />
           </>
         )}
       </Stack.Navigator>

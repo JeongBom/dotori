@@ -5,7 +5,7 @@
 // - 초대 코드로 가족 참여 (기존 데이터 소프트 삭제)
 // - 가족 나가기 (기존 데이터 복구)
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -36,14 +36,15 @@ export const STORAGE_KEY_NICKNAME         = '@home_manager:nickname';
 export const STORAGE_KEY_NOTIFY_DAYS      = '@home_manager:notify_days_before';
 export const STORAGE_KEY_ENABLED_FEATURES = '@home_manager:enabled_features';
 
-export const ALL_FEATURES = ['Fridge', 'Supplies', 'Finance', 'Chores'] as const;
+export const ALL_FEATURES = ['Fridge', 'Supplies', 'Finance', 'Chores', 'Notes'] as const;
 type FeatureKey = typeof ALL_FEATURES[number];
 
 const FEATURE_LABELS: Record<FeatureKey, string> = {
   Fridge:   '음식',
   Supplies: '생필품',
   Finance:  '자산',
-  Chores:   '루틴',
+  Chores:   '일정',
+  Notes:    '메모',
 };
 
 const NOTIFY_OPTIONS = [1, 2, 3, 5, 7] as const;
@@ -63,13 +64,50 @@ const SettingsScreen: React.FC = () => {
   const [enabledFeatures, setEnabledFeatures] = useState<string[]>([...ALL_FEATURES]);
 
   // 가족 참여 관련 상태
-  const [joinCode, setJoinCode]     = useState('');
-  const [joining, setJoining]       = useState(false);
-  const [leaving, setLeaving]       = useState(false);
+  const [joinCode, setJoinCode]         = useState('');
+  const [joining, setJoining]           = useState(false);
+  const [leaving, setLeaving]           = useState(false);
+  const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
+  const [joinRequests, setJoinRequests] = useState<{ id: string; requester_nickname: string; requester_id: string }[]>([]);
+  const [familyMembers, setFamilyMembers] = useState<{ id: string; nickname: string; role: string }[]>([]);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // 초기 로드
   useEffect(() => {
     loadAll();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
+  // 가족장: 대기 중인 가입 요청 로드
+  const loadJoinRequests = useCallback(async (fid: string) => {
+    const { data } = await supabase
+      .from('family_join_requests')
+      .select('id, requester_nickname, requester_id')
+      .eq('family_id', fid)
+      .eq('status', 'pending');
+    setJoinRequests(data ?? []);
+  }, []);
+
+  // 요청자: 내 요청 승인 여부 폴링
+  const startPolling = useCallback((requestId: string, currentFamilyId: string, targetFamilyId: string, userId: string) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      const { data } = await supabase
+        .from('family_join_requests')
+        .select('status')
+        .eq('id', requestId)
+        .single();
+      if (data?.status === 'approved') {
+        clearInterval(pollRef.current!);
+        setPendingRequestId(null);
+        await joinFamily(userId, currentFamilyId, targetFamilyId);
+        await loadAll();
+      } else if (data?.status === 'rejected') {
+        clearInterval(pollRef.current!);
+        setPendingRequestId(null);
+        Alert.alert('거절됨', '가입 요청이 거절되었습니다.');
+      }
+    }, 5000);
   }, []);
 
   const loadAll = async () => {
@@ -80,6 +118,7 @@ const SettingsScreen: React.FC = () => {
     if (storedDays)     setNotifyDays(parseInt(storedDays) as 1|2|3|5|7);
     if (storedFeatures) setEnabledFeatures(JSON.parse(storedFeatures));
 
+    let loadedProfile: UserProfile | null = null;
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { data: prof } = await supabase
@@ -88,7 +127,8 @@ const SettingsScreen: React.FC = () => {
         .eq('id', user.id)
         .single();
       if (prof) {
-        setProfile(prof as UserProfile);
+        loadedProfile = prof as UserProfile;
+        setProfile(loadedProfile);
         setNickname(prof.nickname ?? storedNickname ?? '');
       }
     }
@@ -114,6 +154,17 @@ const SettingsScreen: React.FC = () => {
         setNotifyDays(settings.notify_days_before as 1|2|3|5|7);
         await AsyncStorage.setItem(STORAGE_KEY_NOTIFY_DAYS, String(settings.notify_days_before));
       }
+      // 가족장이면 대기 중인 가입 요청 로드
+      if (loadedProfile?.role === 'owner') {
+        await loadJoinRequests(fid);
+      }
+
+      // 가족 구성원 로드
+      const { data: members } = await supabase
+        .from('user_profiles')
+        .select('id, nickname, role')
+        .eq('family_id', fid);
+      setFamilyMembers(members ?? []);
     }
   };
 
@@ -160,7 +211,7 @@ const SettingsScreen: React.FC = () => {
     }
   };
 
-  // ── 초대 코드로 가족 참여 ──────────────────────
+  // ── 초대 코드로 가족 참여 (가족장 승인 방식) ──────────────────────
 
   const handleJoin = async () => {
     const trimmed = joinCode.trim().toUpperCase();
@@ -186,23 +237,34 @@ const SettingsScreen: React.FC = () => {
     }
 
     Alert.alert(
-      `'${targetFamily.name}'에 합류할까요?`,
-      '합류하면 내 기존 데이터는 보이지 않게 됩니다.\n가족을 나가면 다시 복구돼요.',
+      `'${targetFamily.name}'에 합류 요청할까요?`,
+      '가족장이 승인하면 합류가 완료돼요.\n합류하면 내 기존 데이터는 보이지 않게 됩니다.',
       [
         { text: '취소', style: 'cancel' },
         {
-          text: '합류하기',
+          text: '요청하기',
           onPress: async () => {
             if (!profile || !familyId) return;
             setJoining(true);
             try {
-              const err = await joinFamily(profile.id, familyId, targetFamily.id);
-              if (err) throw err;
-              Alert.alert('완료', `'${targetFamily.name}'에 합류했어요.`);
-              setJoinCode('');
-              await loadAll();
+              const { data: request, error: reqErr } = await supabase
+                .from('family_join_requests')
+                .insert({
+                  family_id: targetFamily.id,
+                  requester_id: profile.id,
+                  requester_nickname: nickname.trim() || profile.nickname || '알 수 없음',
+                })
+                .select()
+                .single();
+              if (reqErr) throw reqErr;
+              if (request) {
+                setPendingRequestId(request.id);
+                setJoinCode('');
+                startPolling(request.id, familyId, targetFamily.id, profile.id);
+                Alert.alert('요청 완료', `'${targetFamily.name}' 가족장의 승인을 기다리고 있어요.`);
+              }
             } catch (e) {
-              Alert.alert('오류', '합류에 실패했습니다.');
+              Alert.alert('오류', '요청에 실패했습니다.');
               console.error(e);
             } finally {
               setJoining(false);
@@ -213,10 +275,44 @@ const SettingsScreen: React.FC = () => {
     );
   };
 
+  // ── 가족 합류 요청 승인/거절 (가족장) ───────────────────────────
+
+  const handleApprove = async (requestId: string, requesterId: string) => {
+    try {
+      const { data: requesterProfile } = await supabase
+        .from('user_profiles')
+        .select('family_id')
+        .eq('id', requesterId)
+        .single();
+      if (!requesterProfile) throw new Error('requester not found');
+
+      await joinFamily(requesterId, requesterProfile.family_id, familyId!);
+
+      await supabase
+        .from('family_join_requests')
+        .update({ status: 'approved' })
+        .eq('id', requestId);
+
+      if (familyId) await loadJoinRequests(familyId);
+      Alert.alert('완료', '합류 요청을 승인했어요.');
+    } catch (e) {
+      Alert.alert('오류', '승인에 실패했습니다.');
+      console.error(e);
+    }
+  };
+
+  const handleReject = async (requestId: string) => {
+    await supabase
+      .from('family_join_requests')
+      .update({ status: 'rejected' })
+      .eq('id', requestId);
+    if (familyId) await loadJoinRequests(familyId);
+  };
+
   // ── 가족 나가기 ───────────────────────────────
 
   const handleLeaveFamily = () => {
-    if (!profile?.personal_family_id) return;
+    if (!profile) return;
 
     Alert.alert(
       '가족 나가기',
@@ -229,8 +325,24 @@ const SettingsScreen: React.FC = () => {
           onPress: async () => {
             setLeaving(true);
             try {
-              const err = await leaveFamily(profile.id, profile.personal_family_id!);
-              if (err) throw err;
+              if (profile.personal_family_id) {
+                // 기존 개인 가족으로 복귀
+                const err = await leaveFamily(profile.id, profile.personal_family_id);
+                if (err) throw err;
+              } else {
+                // personal_family_id가 없으면 새 가족 생성 후 이동
+                const { data: newFamily, error: familyErr } = await supabase
+                  .from('families')
+                  .insert({ name: '내 가족' })
+                  .select()
+                  .single();
+                if (familyErr) throw familyErr;
+                const { error: profileErr } = await supabase
+                  .from('user_profiles')
+                  .update({ family_id: newFamily.id, personal_family_id: null, role: 'owner' })
+                  .eq('id', profile.id);
+                if (profileErr) throw profileErr;
+              }
               await loadAll();
             } catch (e) {
               Alert.alert('오류', '가족 나가기에 실패했습니다.');
@@ -246,7 +358,7 @@ const SettingsScreen: React.FC = () => {
 
   // ── 렌더 ────────────────────────────────────
 
-  const isInOtherFamily = !!profile?.personal_family_id;
+  const isInOtherFamily = profile?.role === 'member';
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -289,8 +401,8 @@ const SettingsScreen: React.FC = () => {
             </View>
           </View>
 
-          {/* ── 초대 코드 ── */}
-          {inviteCode && !isInOtherFamily && (
+          {/* ── 초대 코드 (모든 멤버에게 보임) ── */}
+          {inviteCode && (
             <>
               <View style={styles.sectionHeader}>
                 <Users color="#8B5E3C" size={16} strokeWidth={1.8} />
@@ -299,7 +411,7 @@ const SettingsScreen: React.FC = () => {
               <View style={styles.card}>
                 <View style={styles.fieldGroup}>
                   <Text style={styles.fieldLabel}>초대 코드</Text>
-                  <Text style={styles.fieldDesc}>파트너에게 코드를 공유하면 함께 앱을 사용할 수 있어요</Text>
+                  <Text style={styles.fieldDesc}>가족에게 코드를 공유하면 함께 앱을 사용할 수 있어요</Text>
                   <View style={styles.inviteRow}>
                     <Text style={styles.inviteCode}>{inviteCode}</Text>
                     <TouchableOpacity
@@ -314,7 +426,69 @@ const SettingsScreen: React.FC = () => {
             </>
           )}
 
-          {/* ── 가족 참여 (코드 입력) ── */}
+          {/* ── 가족 구성원 ── */}
+          {familyMembers.length > 0 && (
+            <>
+              <View style={styles.sectionHeader}>
+                <Users color="#8B5E3C" size={16} strokeWidth={1.8} />
+                <Text style={styles.sectionTitle}>가족 구성원</Text>
+              </View>
+              <View style={styles.card}>
+                {familyMembers.map((member, idx) => (
+                  <View key={member.id}>
+                    {idx > 0 && <View style={styles.divider} />}
+                    <View style={styles.memberRow}>
+                      <Text style={styles.memberNickname}>
+                        {member.nickname || '(닉네임 없음)'}
+                        {member.id === profile?.id ? '  (나)' : ''}
+                      </Text>
+                      <View style={[styles.memberRoleBadge, member.role === 'owner' && styles.memberRoleBadgeOwner]}>
+                        <Text style={[styles.memberRoleText, member.role === 'owner' && styles.memberRoleTextOwner]}>
+                          {member.role === 'owner' ? '가족장' : '멤버'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
+
+          {/* ── 가족장: 대기 중인 합류 요청 ── */}
+          {!isInOtherFamily && joinRequests.length > 0 && (
+            <>
+              <View style={styles.sectionHeader}>
+                <Users color="#8B5E3C" size={16} strokeWidth={1.8} />
+                <Text style={styles.sectionTitle}>합류 요청</Text>
+              </View>
+              <View style={styles.card}>
+                {joinRequests.map((req, idx) => (
+                  <View key={req.id}>
+                    {idx > 0 && <View style={styles.divider} />}
+                    <View style={styles.requestRow}>
+                      <Text style={styles.requestNickname}>{req.requester_nickname}</Text>
+                      <View style={styles.requestBtns}>
+                        <TouchableOpacity
+                          style={styles.rejectBtn}
+                          onPress={() => handleReject(req.id)}
+                        >
+                          <Text style={styles.rejectBtnText}>거절</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.approveBtn}
+                          onPress={() => handleApprove(req.id, req.requester_id)}
+                        >
+                          <Text style={styles.approveBtnText}>승인</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
+
+          {/* ── 다른 가족에 참여 (코드 입력 or 대기 중 안내) ── */}
           {!isInOtherFamily && (
             <>
               <View style={styles.sectionHeader}>
@@ -323,30 +497,52 @@ const SettingsScreen: React.FC = () => {
               </View>
               <View style={styles.card}>
                 <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>초대 코드 입력</Text>
-                  <Text style={styles.fieldDesc}>파트너에게 받은 코드를 입력하면 가족에 합류해요</Text>
-                  <View style={styles.joinRow}>
-                    <TextInput
-                      style={styles.joinInput}
-                      value={joinCode}
-                      onChangeText={text => setJoinCode(text.toUpperCase())}
-                      placeholder="A1B2C3"
-                      placeholderTextColor="#C49A6C"
-                      autoCapitalize="characters"
-                      autoCorrect={false}
-                      maxLength={6}
-                    />
-                    <TouchableOpacity
-                      style={[styles.joinBtn, joining && { opacity: 0.5 }]}
-                      onPress={handleJoin}
-                      disabled={joining}
-                    >
-                      {joining
-                        ? <ActivityIndicator color="#FFFFFF" size="small" />
-                        : <Text style={styles.joinBtnText}>참여</Text>
-                      }
-                    </TouchableOpacity>
-                  </View>
+                  {pendingRequestId ? (
+                    <>
+                      <Text style={styles.fieldLabel}>대기 중</Text>
+                      <Text style={styles.fieldDesc}>가족장의 승인을 기다리고 있어요.{'\n'}승인되면 자동으로 합류돼요.</Text>
+                      <TouchableOpacity
+                        style={styles.cancelRequestBtn}
+                        onPress={async () => {
+                          if (pollRef.current) clearInterval(pollRef.current);
+                          await supabase
+                            .from('family_join_requests')
+                            .update({ status: 'rejected' })
+                            .eq('id', pendingRequestId);
+                          setPendingRequestId(null);
+                        }}
+                      >
+                        <Text style={styles.cancelRequestText}>요청 취소</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.fieldLabel}>초대 코드 입력</Text>
+                      <Text style={styles.fieldDesc}>파트너에게 받은 코드를 입력하면 가족에 합류 요청해요</Text>
+                      <View style={styles.joinRow}>
+                        <TextInput
+                          style={styles.joinInput}
+                          value={joinCode}
+                          onChangeText={text => setJoinCode(text.toUpperCase())}
+                          placeholder="A1B2C3"
+                          placeholderTextColor="#C49A6C"
+                          autoCapitalize="characters"
+                          autoCorrect={false}
+                          maxLength={6}
+                        />
+                        <TouchableOpacity
+                          style={[styles.joinBtn, joining && { opacity: 0.5 }]}
+                          onPress={handleJoin}
+                          disabled={joining}
+                        >
+                          {joining
+                            ? <ActivityIndicator color="#FFFFFF" size="small" />
+                            : <Text style={styles.joinBtnText}>요청</Text>
+                          }
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
                 </View>
               </View>
             </>
@@ -374,6 +570,20 @@ const SettingsScreen: React.FC = () => {
                   </TouchableOpacity>
                 ))}
               </View>
+            </View>
+          </View>
+
+          {/* ── 일정 안내 ── */}
+          <View style={styles.sectionHeader}>
+            <Bell color="#8B5E3C" size={16} strokeWidth={1.8} />
+            <Text style={styles.sectionTitle}>일정 안내</Text>
+          </View>
+          <View style={styles.card}>
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldDesc}>
+                반복 일정은 올해 12월 31일까지만 표시돼요.{'\n'}
+                새해가 되면 자동으로 다음 해 일정이 생성됩니다.
+              </Text>
             </View>
           </View>
 
@@ -521,6 +731,42 @@ const styles = StyleSheet.create({
   notifyChipActive: { backgroundColor: '#8B5E3C', borderColor: '#8B5E3C' },
   notifyChipText: { fontSize: 13, color: '#8B5E3C', fontWeight: '600' },
   notifyChipTextActive: { color: '#FFFFFF' },
+
+  // 가족 구성원
+  memberRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12,
+  },
+  memberNickname: { fontSize: 15, fontWeight: '500', color: '#5C3D1E', flex: 1 },
+  memberRoleBadge: {
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20,
+    backgroundColor: '#F0E6D9', borderWidth: 1, borderColor: '#DEC8A8',
+  },
+  memberRoleBadgeOwner: { backgroundColor: '#8B5E3C', borderColor: '#8B5E3C' },
+  memberRoleText: { fontSize: 12, fontWeight: '600', color: '#8B5E3C' },
+  memberRoleTextOwner: { color: '#FFFFFF' },
+
+  // 합류 요청 (가족장 승인 UI)
+  requestRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12,
+  },
+  requestNickname: { fontSize: 15, fontWeight: '600', color: '#5C3D1E', flex: 1 },
+  requestBtns: { flexDirection: 'row', gap: 8 },
+  rejectBtn: {
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8,
+    borderWidth: 1, borderColor: '#D95F4B',
+  },
+  rejectBtnText: { fontSize: 13, fontWeight: '600', color: '#D95F4B' },
+  approveBtn: {
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: '#8B5E3C',
+  },
+  approveBtnText: { fontSize: 13, fontWeight: '600', color: '#FFFFFF' },
+
+  // 요청 취소
+  cancelRequestBtn: {
+    marginTop: 10, paddingVertical: 10, alignItems: 'center',
+    borderWidth: 1, borderColor: '#DEC8A8', borderRadius: 10,
+  },
+  cancelRequestText: { fontSize: 14, fontWeight: '600', color: '#8B5E3C' },
 
   // 가족 나가기
   leaveBtn: {

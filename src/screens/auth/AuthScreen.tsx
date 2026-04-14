@@ -3,7 +3,7 @@
 // - 회원가입: 이메일 + 비밀번호 + 닉네임 한 번에 입력
 // - 회원가입 완료 → 이메일 인증 안내 → 인증 후 자동으로 FamilySetup 이동
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -36,6 +36,17 @@ const AuthScreen: React.FC = () => {
   const [nickname, setNickname] = useState('');
   const [loading, setLoading] = useState(false);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const pendingPassword = useRef('');
+
+  // 다른 기기에서 인증한 경우 자동 감지 (3초마다 세션 확인)
+  useEffect(() => {
+    if (!pendingEmail) return;
+    const interval = setInterval(async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) clearInterval(interval); // onAuthStateChange가 자동으로 화면 전환
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [pendingEmail]);
 
   const switchTab = (t: AuthTab) => {
     setTab(t);
@@ -97,6 +108,9 @@ const AuthScreen: React.FC = () => {
     const { data, error } = await supabase.auth.signUp({
       email: email.trim().toLowerCase(),
       password,
+      options: {
+        emailRedirectTo: 'https://jeongbom.github.io/dotori/auth-callback.html',
+      },
     });
 
     if (error) {
@@ -131,6 +145,7 @@ const AuthScreen: React.FC = () => {
 
     if (!data.session) {
       // 이메일 인증 필요 → 안내 화면
+      pendingPassword.current = password;
       setPendingEmail(email.trim().toLowerCase());
     } else {
       // 이메일 인증 OFF → onAuthStateChange가 자동 전환
@@ -140,6 +155,19 @@ const AuthScreen: React.FC = () => {
   // ── 이메일 인증 대기 화면 ───────────────────
 
   if (pendingEmail) {
+    const handleCheckVerified = async () => {
+      setLoading(true);
+      const { error } = await supabase.auth.signInWithPassword({
+        email: pendingEmail,
+        password: pendingPassword.current,
+      });
+      setLoading(false);
+      if (error) {
+        Alert.alert('아직 인증 전이에요', '메일함에서 링크를 클릭한 후 다시 눌러주세요.');
+      }
+      // 성공 시 onAuthStateChange가 자동으로 화면 전환
+    };
+
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.pendingBox}>
@@ -148,9 +176,19 @@ const AuthScreen: React.FC = () => {
           <Text style={styles.pendingDesc}>
             <Text style={{ fontWeight: '700' }}>{pendingEmail}</Text>
             {'\n'}로 인증 메일을 보냈어요.{'\n\n'}
-            메일의 링크를 클릭하면{'\n'}
-            앱으로 돌아와 자동으로 시작돼요.
+            1. 메일함에서 인증 링크를 클릭하세요{'\n'}
+            2. 앱으로 돌아와 아래 버튼을 눌러주세요
           </Text>
+          <TouchableOpacity
+            style={[styles.verifiedBtn, loading && { opacity: 0.5 }]}
+            onPress={handleCheckVerified}
+            disabled={loading}
+          >
+            {loading
+              ? <ActivityIndicator color="#FFFFFF" />
+              : <Text style={styles.verifiedBtnText}>인증 완료했어요</Text>
+            }
+          </TouchableOpacity>
           <TouchableOpacity style={styles.pendingBackBtn} onPress={() => setPendingEmail(null)}>
             <Text style={styles.pendingBackText}>로그인으로 돌아가기</Text>
           </TouchableOpacity>
@@ -325,6 +363,16 @@ const styles = StyleSheet.create({
   pendingEmoji: { fontSize: 56, marginBottom: 20 },
   pendingTitle: { fontSize: 22, fontWeight: '800', color: '#5C3D1E', marginBottom: 14 },
   pendingDesc: { fontSize: 15, color: '#8B5E3C', textAlign: 'center', lineHeight: 26, marginBottom: 40 },
+  verifiedBtn: {
+    backgroundColor: '#8B5E3C',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    alignItems: 'center',
+    marginBottom: 12,
+    width: '100%',
+  },
+  verifiedBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   pendingBackBtn: { paddingVertical: 12, paddingHorizontal: 24 },
   pendingBackText: { fontSize: 15, color: '#8B5E3C', fontWeight: '600' },
 });

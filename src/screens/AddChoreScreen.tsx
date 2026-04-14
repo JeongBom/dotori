@@ -131,6 +131,8 @@ const AddChoreScreen: React.FC = () => {
   const route = useRoute<RouteType>();
 
   const choreId = route.params?.choreId ?? null;
+  const occurrenceDate = route.params?.occurrenceDate ?? null;
+  const editMode = route.params?.editMode ?? null; // null = 전체 수정 (기본)
   const isEditing = !!choreId;
 
   const [familyId, setFamilyId] = useState<string | null>(route.params?.familyId ?? null);
@@ -142,7 +144,11 @@ const AddChoreScreen: React.FC = () => {
   const [tagId, setTagId] = useState<string | null>(null);
   const [assignedTo, setAssignedTo] = useState<string | null>(null); // null = 모두
   const [repeatType, setRepeatType] = useState<RepeatType>('none');
-  const [repeatInterval, setRepeatInterval] = useState('7');
+  // custom 전용
+  const [customUnit, setCustomUnit] = useState<'week' | 'month'>('week');
+  const [customCount, setCustomCount] = useState(1); // N주 or N개월
+  const [customDayOfWeek, setCustomDayOfWeek] = useState(new Date().getDay()); // 0=일~6=토
+  const [customWeekOfMonth, setCustomWeekOfMonth] = useState(1); // 1~4
   const [dueDate, setDueDate] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -174,7 +180,10 @@ const AddChoreScreen: React.FC = () => {
           setTagId(data.tag_id ?? null);
           setAssignedTo(data.assigned_to ?? null);
           setRepeatType(data.repeat_type as RepeatType);
-          setRepeatInterval(data.repeat_interval ? String(data.repeat_interval) : '7');
+          if (data.repeat_unit) setCustomUnit(data.repeat_unit as 'week' | 'month');
+          if (data.repeat_interval) setCustomCount(data.repeat_interval);
+          if (data.repeat_day_of_week != null) setCustomDayOfWeek(data.repeat_day_of_week);
+          if (data.repeat_week_of_month != null) setCustomWeekOfMonth(data.repeat_week_of_month);
           setDueDate(data.due_date ?? '');
         }
       }
@@ -201,10 +210,6 @@ const AddChoreScreen: React.FC = () => {
   // 저장
   const handleSave = async () => {
     if (!title.trim()) { Alert.alert('알림', '제목을 입력해주세요.'); return; }
-    const interval = repeatType === 'custom' ? parseInt(repeatInterval) : null;
-    if (repeatType === 'custom' && (!interval || interval < 1)) {
-      Alert.alert('알림', '반복 주기를 올바르게 입력해주세요. (1 이상)'); return;
-    }
 
     const fid = familyId ?? await getOrCreateFamilyId();
     if (!fid) { Alert.alert('오류', '가족 정보를 생성할 수 없습니다.'); return; }
@@ -217,20 +222,47 @@ const AddChoreScreen: React.FC = () => {
         tag_id: tagId,
         assigned_to: isSolo ? null : assignedTo,
         repeat_type: repeatType,
-        repeat_interval: interval,
+        repeat_interval: repeatType === 'custom' ? customCount : null,
+        repeat_unit: repeatType === 'custom' ? customUnit : null,
+        repeat_day_of_week: repeatType === 'custom' ? customDayOfWeek : null,
+        repeat_week_of_month: repeatType === 'custom' && customUnit === 'month' ? customWeekOfMonth : null,
         due_date: dueDate || null,
       };
 
-      if (isEditing && choreId) {
+      if (isEditing && choreId && editMode === 'this' && occurrenceDate) {
+        // 이 일정만 수정: 원본에서 이 날짜 제외 + 새 단발 일정 생성
+        const { data: orig } = await supabase.from('chores').select('excluded_dates').eq('id', choreId).single();
+        const newExcluded = [...((orig?.excluded_dates as string[] | null) ?? []), occurrenceDate];
+        await supabase.from('chores').update({ excluded_dates: newExcluded }).eq('id', choreId);
+        const { error } = await supabase.from('chores').insert({
+          family_id: fid, ...payload,
+          repeat_type: 'none', repeat_interval: null, repeat_unit: null,
+          repeat_day_of_week: null, repeat_week_of_month: null,
+          due_date: occurrenceDate,
+          is_done: false, last_done_at: null, is_active: true,
+        });
+        if (error) throw error;
+
+      } else if (isEditing && choreId && editMode === 'future' && occurrenceDate) {
+        // 이후 일정 모두 수정: 원본 종료일 설정 + 새 반복 일정 생성
+        await supabase.from('chores').update({ end_date: occurrenceDate }).eq('id', choreId);
+        const { error } = await supabase.from('chores').insert({
+          family_id: fid, ...payload,
+          due_date: occurrenceDate,
+          is_done: false, last_done_at: null, is_active: true,
+        });
+        if (error) throw error;
+
+      } else if (isEditing && choreId) {
+        // 전체 수정 (기본)
         const { error } = await supabase.from('chores').update(payload).eq('id', choreId);
         if (error) throw error;
+
       } else {
+        // 새로 추가
         const { error } = await supabase.from('chores').insert({
-          family_id: fid,
-          ...payload,
-          is_done: false,
-          last_done_at: null,
-          is_active: true,
+          family_id: fid, ...payload,
+          is_done: false, last_done_at: null, is_active: true,
         });
         if (error) throw error;
       }
@@ -250,7 +282,7 @@ const AddChoreScreen: React.FC = () => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <ChevronLeft color="#5C3D1E" size={24} strokeWidth={2} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{isEditing ? '루틴 수정' : '루틴 추가'}</Text>
+        <Text style={styles.headerTitle}>{isEditing ? '일정 수정' : '일정 추가'}</Text>
         <View style={styles.headerRight} />
       </View>
 
@@ -372,27 +404,84 @@ const AddChoreScreen: React.FC = () => {
             ))}
           </ScrollView>
 
-          {/* 직접 설정 선택 시 주기 입력 (다음 줄) */}
+          {/* 직접 설정: 요일 기반 반복 UI */}
           {repeatType === 'custom' && (
-            <View style={styles.customIntervalRow}>
-              <View style={styles.customIntervalBox}>
-                <TextInput
-                  style={styles.customIntervalInput}
-                  value={repeatInterval}
-                  onChangeText={v => setRepeatInterval(v.replace(/[^0-9]/g, ''))}
-                  keyboardType="number-pad"
-                  returnKeyType="done"
-                  onSubmitEditing={() => Keyboard.dismiss()}
-                  maxLength={3}
-                  selectTextOnFocus
-                />
+            <View style={styles.customBox}>
+              {/* 단위 선택: 주 / 개월 */}
+              <View style={styles.customUnitRow}>
+                {(['week', 'month'] as const).map(u => (
+                  <TouchableOpacity
+                    key={u}
+                    style={[styles.customUnitBtn, customUnit === u && styles.customUnitBtnActive]}
+                    onPress={() => setCustomUnit(u)}
+                  >
+                    <Text style={[styles.customUnitText, customUnit === u && styles.customUnitTextActive]}>
+                      {u === 'week' ? '주' : '개월'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-              <Text style={styles.customIntervalLabel}>일마다 반복</Text>
+
+              {/* N 선택 */}
+              <Text style={styles.customSubLabel}> 몇 {customUnit === 'week' ? '주' : '개월'}?</Text>
+              <View style={styles.customCountRow}>
+                {[1, 2, 3, 4, 6].map(n => (
+                  <TouchableOpacity
+                    key={n}
+                    style={[styles.customCountBtn, customCount === n && styles.customCountBtnActive]}
+                    onPress={() => setCustomCount(n)}
+                  >
+                    <Text style={[styles.customCountText, customCount === n && styles.customCountTextActive]}>{n}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* 개월 선택 시: 몇째 주? */}
+              {customUnit === 'month' && (
+                <>
+                  <Text style={styles.customSubLabel}>몇째 주?</Text>
+                  <View style={styles.customCountRow}>
+                    {[1, 2, 3, 4].map(w => (
+                      <TouchableOpacity
+                        key={w}
+                        style={[styles.customCountBtn, customWeekOfMonth === w && styles.customCountBtnActive]}
+                        onPress={() => setCustomWeekOfMonth(w)}
+                      >
+                        <Text style={[styles.customCountText, customWeekOfMonth === w && styles.customCountTextActive]}>{w}째</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {/* 요일 선택 */}
+              <Text style={styles.customSubLabel}>무슨 요일?</Text>
+              <View style={styles.dowRow}>
+                {['일', '월', '화', '수', '목', '금', '토'].map((d, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={[styles.dowBtn, customDayOfWeek === i && styles.dowBtnActive]}
+                    onPress={() => setCustomDayOfWeek(i)}
+                  >
+                    <Text style={[styles.dowText, customDayOfWeek === i && styles.dowTextActive]}>{d}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* 미리보기 */}
+              <Text style={styles.customPreview}>
+                {customCount >= 1 ? `${customCount}` : ''}
+                {customUnit === 'week' ? '주' : '개월'}
+                {'마다'}
+                {customUnit === 'month' ? ` ${customWeekOfMonth}째주` : ''}
+                {' '}
+                {['일', '월', '화', '수', '목', '금', '토'][customDayOfWeek]}요일
+              </Text>
             </View>
           )}
 
-          {/* 날짜 */}
-          <Text style={[styles.label, { marginTop: 24 }]}>날짜</Text>
+          {/* 날짜 / 종료일 */}
+          <Text style={[styles.label, { marginTop: 24 }]}>{repeatType === 'custom' ? '종료일' : '날짜'}</Text>
           <TouchableOpacity style={styles.dateRow} onPress={() => setShowDatePicker(true)}>
             <Text style={[styles.dateText, !dueDate && styles.datePlaceholder]}>
               {dueDate ? formatDisplayDate(dueDate) : '없음 (선택사항)'}
@@ -483,14 +572,40 @@ const styles = StyleSheet.create({
   repeatBtnText: { fontSize: 14, fontWeight: '600', color: '#8B5E3C' },
   repeatBtnTextActive: { color: '#FFFFFF' },
 
-  // 직접 설정 다음 줄 입력
-  customIntervalRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
-  customIntervalBox: {
-    width: 72, backgroundColor: '#FFF8F0', borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: '#DEC8A8', alignItems: 'center',
+  // 직접 설정 박스
+  customBox: {
+    backgroundColor: '#FFF8F0', borderRadius: 14, padding: 14, marginTop: 8,
+    borderWidth: 1, borderColor: '#DEC8A8',
   },
-  customIntervalInput: { fontSize: 18, fontWeight: '700', color: '#5C3D1E', textAlign: 'center', padding: 0, width: '100%' },
-  customIntervalLabel: { fontSize: 15, color: '#5C3D1E', fontWeight: '500' },
+  customSubLabel: { fontSize: 12, fontWeight: '600', color: '#8B5E3C', marginBottom: 8, marginTop: 12 },
+  customUnitRow: { flexDirection: 'row', gap: 8 },
+  customUnitBtn: {
+    flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center',
+    backgroundColor: '#FDF6EC', borderWidth: 1, borderColor: '#DEC8A8',
+  },
+  customUnitBtnActive: { backgroundColor: '#8B5E3C', borderColor: '#8B5E3C' },
+  customUnitText: { fontSize: 15, fontWeight: '700', color: '#8B5E3C' },
+  customUnitTextActive: { color: '#FFFFFF' },
+  customCountRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  customCountBtn: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: '#FDF6EC', borderWidth: 1, borderColor: '#DEC8A8',
+  },
+  customCountBtnActive: { backgroundColor: '#8B5E3C', borderColor: '#8B5E3C' },
+  customCountText: { fontSize: 14, fontWeight: '600', color: '#8B5E3C' },
+  customCountTextActive: { color: '#FFFFFF' },
+  dowRow: { flexDirection: 'row', gap: 6 },
+  dowBtn: {
+    flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center',
+    backgroundColor: '#FDF6EC', borderWidth: 1, borderColor: '#DEC8A8',
+  },
+  dowBtnActive: { backgroundColor: '#8B5E3C', borderColor: '#8B5E3C' },
+  dowText: { fontSize: 13, fontWeight: '600', color: '#8B5E3C' },
+  dowTextActive: { color: '#FFFFFF' },
+  customPreview: {
+    marginTop: 12, fontSize: 13, fontWeight: '600', color: '#A87850',
+    textAlign: 'center',
+  },
 
   // 솔로 안내
   soloHint: { fontSize: 13, color: '#C49A6C', fontStyle: 'italic' },

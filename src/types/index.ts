@@ -124,8 +124,13 @@ export interface Chore {
   tag_id: string | null;
   assigned_to: string | null;  // user_profiles.id, null = 모두
   repeat_type: RepeatType;
-  repeat_interval: number | null; // days (custom 전용)
+  repeat_interval: number | null;      // custom: N주 or N개월
+  repeat_unit: 'week' | 'month' | null; // custom 전용
+  repeat_day_of_week: number | null;   // 0=일~6=토 (custom 전용)
+  repeat_week_of_month: number | null; // 1~4 (custom+month 전용)
   due_date: string | null;        // YYYY-MM-DD
+  end_date: string | null;        // YYYY-MM-DD (이후 발생 모두 삭제 시 사용)
+  excluded_dates: string[] | null; // 건너뛴 특정 발생 날짜 목록
   last_done_at: string | null;    // YYYY-MM-DD (반복 완료 추적)
   is_done: boolean;               // none 타입 전용
   is_active: boolean;
@@ -218,6 +223,19 @@ export interface GoalItem {
 
 export type NewGoalItem = Omit<GoalItem, 'id'>;
 
+// ---- 메모 ----
+
+export interface Note {
+  id: string;
+  family_id: string;
+  title: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type NewNote = Omit<Note, 'id' | 'created_at' | 'updated_at'>;
+
 // ---- 대시보드 요약 데이터 (홈 화면용) ----
 
 export interface DashboardSummary {
@@ -237,6 +255,8 @@ export interface DashboardSummary {
     overdueCount: number;     // 기한 지난 집안일 수
     todayTitles: string[];    // 오늘 할 일 제목 목록 (매일 반복 + 마감일=오늘)
     overdueTitles: string[];  // 기한 초과 제목 목록 (마감일 < 오늘)
+    weekTitles: string[];     // 이번주 할 일 제목 목록
+    monthTitles: string[];    // 이번달 할 일 제목 목록
   };
   supplies: {
     lowStockCount: number;    // 재고 부족 항목 수

@@ -168,6 +168,26 @@ supplies
 
 ---
 
+## iOS 빌드 주의사항
+
+### npx expo prebuild 후 반드시 실행
+`npx expo prebuild --platform ios` 실행 시마다 `ios/Dotori/Dotori.entitlements`가 초기화되어 Push Notifications 권한이 추가됨.
+무료 Apple 계정은 Push Notifications 미지원이므로 prebuild 후 아래처럼 반드시 초기화:
+
+```xml
+<!-- ios/Dotori/Dotori.entitlements -->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+  </dict>
+</plist>
+```
+
+그 다음 Xcode → Product → Clean Build Folder → ▶ 실행
+
+---
+
 ## 주의사항
 
 - 음식 관리 관련 기존 코드/테이블은 수정하지 말 것

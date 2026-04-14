@@ -37,21 +37,44 @@ type ChoresNavProp = CompositeNavigationProp<
 
 // ── 날짜 헬퍼 ─────────────────────────────────
 
-function todayStr(): string {
-  return new Date().toISOString().split('T')[0];
+// toISOString()은 UTC 기준이라 한국(UTC+9)에서 날짜가 밀림 → 로컬 기준 포맷 사용
+function localDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
-// DST 문제 없는 날짜 덧셈
+function todayStr(): string {
+  return localDateStr(new Date());
+}
+
 function addDays(base: string, n: number): string {
-  const d = new Date(base);
+  const d = new Date(base + 'T00:00:00'); // 로컬 자정 기준 파싱
   d.setDate(d.getDate() + n);
-  return d.toISOString().split('T')[0];
+  return localDateStr(d);
+}
+
+function thisMonthStart(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
 }
 
 function thisMonthEnd(): string {
   const d = new Date();
-  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  return last.toISOString().split('T')[0];
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0); // 다음달 0일 = 이번달 말일
+  return localDateStr(last);
+}
+
+function thisWeekRange(): [string, string] {
+  const d = new Date();
+  const day = d.getDay(); // 0=일, 1=월 ... 6=토
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + diffToMonday);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return [localDateStr(monday), localDateStr(sunday)];
 }
 
 // ── 발생(Occurrence) 타입 ────────────────────
@@ -65,21 +88,104 @@ interface ChoreOccurrence {
 
 type PeriodFilter = '전체' | '오늘' | '이번주' | '이번달';
 
-// ── 반복 주기 → 일수 변환 ────────────────────
+// ── 반복 주기 → 일수 변환 (custom day-based 제외) ────────────────────
 
 function getIntervalDays(chore: Chore): number | null {
   if (chore.repeat_type === 'none') return null;
   if (chore.repeat_type === 'daily') return 1;
   if (chore.repeat_type === 'weekly') return 7;
   if (chore.repeat_type === 'monthly') return 30;
-  if (chore.repeat_type === 'custom') return chore.repeat_interval ?? null;
+  if (chore.repeat_type === 'custom') {
+    // 요일 기반 custom은 별도 처리
+    if (chore.repeat_unit === 'week' || chore.repeat_unit === 'month') return null;
+    return chore.repeat_interval ?? null; // 레거시: 일 단위
+  }
   return null;
 }
 
-// last_done_at >= occDate 이면 완료 (이후 완료 = 이 날짜 포함 완료로 간주)
+// last_done_at >= occDate 이면 완료
 function isOccurrenceDone(chore: Chore, occDate: string): boolean {
   if (!chore.last_done_at) return false;
   return chore.last_done_at >= occDate;
+}
+
+// 매 N주 특정 요일 발생 생성
+function generateWeeklyDayOccurrences(
+  chore: Chore, fromDate: string, toDate: string,
+  nWeeks: number, dayOfWeek: number,
+): ChoreOccurrence[] {
+  const today = todayStr();
+  const result: ChoreOccurrence[] = [];
+  const anchor = chore.due_date ?? chore.created_at.split('T')[0];
+
+  // anchor 이후 첫 번째 해당 요일 찾기
+  const anchorDate = new Date(anchor + 'T00:00:00');
+  const anchorDay = anchorDate.getDay();
+  const diffToTarget = ((dayOfWeek - anchorDay) + 7) % 7;
+  const firstOccDate = new Date(anchorDate);
+  firstOccDate.setDate(anchorDate.getDate() + diffToTarget);
+  const firstOcc = localDateStr(firstOccDate);
+
+  const intervalDays = nWeeks * 7;
+  const firstOccTime = new Date(firstOcc + 'T00:00:00').getTime();
+  const fromTime = new Date(fromDate + 'T00:00:00').getTime();
+  const nStart = Math.max(0, Math.floor((fromTime - firstOccTime) / (intervalDays * 86400000)));
+
+  for (let n = nStart; ; n++) {
+    const occDate = addDays(firstOcc, n * intervalDays);
+    if (occDate > toDate) break;
+    if (chore.end_date && occDate >= chore.end_date) break;
+    if (occDate < fromDate) continue;
+    if (occDate < today) continue; // 직접 반복: 오늘 이전 발생 제외
+    if (chore.excluded_dates?.includes(occDate)) continue;
+    const done = isOccurrenceDone(chore, occDate);
+    result.push({ chore, date: occDate, isDone: done, isOverdue: !done && occDate < today });
+  }
+  return result;
+}
+
+// 매 N개월 K째주 특정 요일 발생 생성
+function generateMonthlyDayOccurrences(
+  chore: Chore, fromDate: string, toDate: string,
+  nMonths: number, weekOfMonth: number, dayOfWeek: number,
+): ChoreOccurrence[] {
+  const today = todayStr();
+  const result: ChoreOccurrence[] = [];
+  const anchor = chore.due_date ?? chore.created_at.split('T')[0];
+  const anchorD = new Date(anchor + 'T00:00:00');
+  const anchorTotalMonths = anchorD.getFullYear() * 12 + anchorD.getMonth();
+
+  const toD = new Date(toDate + 'T00:00:00');
+  const toTotalMonths = toD.getFullYear() * 12 + toD.getMonth();
+  const fromD = new Date(fromDate + 'T00:00:00');
+  const fromTotalMonths = fromD.getFullYear() * 12 + fromD.getMonth();
+
+  const nStart = Math.max(0, Math.floor((fromTotalMonths - anchorTotalMonths) / nMonths));
+
+  for (let n = nStart; ; n++) {
+    const totalMonths = anchorTotalMonths + n * nMonths;
+    if (totalMonths > toTotalMonths + 1) break;
+    const year = Math.floor(totalMonths / 12);
+    const month = totalMonths % 12;
+
+    // K째주 dayOfWeek 찾기
+    const firstDay = new Date(year, month, 1);
+    const firstDow = firstDay.getDay();
+    const diff = ((dayOfWeek - firstDow) + 7) % 7;
+    const dayNum = 1 + diff + (weekOfMonth - 1) * 7;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    if (dayNum > daysInMonth) continue; // 해당 달에 없는 날짜
+
+    const occDate = localDateStr(new Date(year, month, dayNum));
+    if (occDate > toDate) break;
+    if (chore.end_date && occDate >= chore.end_date) break;
+    if (occDate < fromDate) continue;
+    if (occDate < today) continue; // 직접 반복: 오늘 이전 발생 제외
+    if (chore.excluded_dates?.includes(occDate)) continue;
+    const done = isOccurrenceDone(chore, occDate);
+    result.push({ chore, date: occDate, isDone: done, isOverdue: !done && occDate < today });
+  }
+  return result;
 }
 
 // ── Occurrence 생성 ──────────────────────────
@@ -89,12 +195,21 @@ function generateOccurrences(chores: Chore[], fromDate: string, toDate: string):
   const result: ChoreOccurrence[] = [];
 
   for (const chore of chores) {
+    // custom 요일 기반 처리
+    if (chore.repeat_type === 'custom' && chore.repeat_unit === 'week' && chore.repeat_day_of_week != null) {
+      result.push(...generateWeeklyDayOccurrences(chore, fromDate, toDate, chore.repeat_interval ?? 1, chore.repeat_day_of_week));
+      continue;
+    }
+    if (chore.repeat_type === 'custom' && chore.repeat_unit === 'month' && chore.repeat_day_of_week != null && chore.repeat_week_of_month != null) {
+      result.push(...generateMonthlyDayOccurrences(chore, fromDate, toDate, chore.repeat_interval ?? 1, chore.repeat_week_of_month, chore.repeat_day_of_week));
+      continue;
+    }
+
     const interval = getIntervalDays(chore);
 
     if (interval === null) {
       // 단발 to-do
       if (!chore.due_date) {
-        // 날짜 없음: 전체에서만 표시
         result.push({ chore, date: null, isDone: chore.is_done, isOverdue: false });
       } else if (chore.due_date >= fromDate && chore.due_date <= toDate) {
         result.push({
@@ -107,27 +222,19 @@ function generateOccurrences(chores: Chore[], fromDate: string, toDate: string):
       continue;
     }
 
-    // 반복 chore: 앵커(due_date 또는 생성일)부터 간격마다 발생 생성
     const anchor = chore.due_date ?? chore.created_at.split('T')[0];
-
-    // anchor 기준으로 fromDate 이상이 되는 첫 번째 n 계산
-    const anchorTime = new Date(anchor).getTime();
-    const fromTime = new Date(fromDate).getTime();
+    const anchorTime = new Date(anchor + 'T00:00:00').getTime();
+    const fromTime = new Date(fromDate + 'T00:00:00').getTime();
     const intervalMs = interval * 86400000;
     const nStart = Math.max(0, Math.ceil((fromTime - anchorTime) / intervalMs));
 
     for (let n = nStart; ; n++) {
-      // 정수 기반 날짜 계산 (DST 안전)
       const occDate = addDays(anchor, n * interval);
       if (occDate > toDate) break;
-
+      if (chore.end_date && occDate >= chore.end_date) break;
+      if (chore.excluded_dates?.includes(occDate)) continue;
       const done = isOccurrenceDone(chore, occDate);
-      result.push({
-        chore,
-        date: occDate,
-        isDone: done,
-        isOverdue: !done && occDate < today,
-      });
+      result.push({ chore, date: occDate, isDone: done, isOverdue: !done && occDate < today });
     }
   }
 
@@ -136,22 +243,40 @@ function generateOccurrences(chores: Chore[], fromDate: string, toDate: string):
 
 // ── 기간 필터 → 날짜 범위 ────────────────────
 
+function thisYearEnd(): string {
+  return `${new Date().getFullYear()}-12-31`;
+}
+
 function getPeriodRange(period: PeriodFilter): [string, string] {
   const today = todayStr();
-  if (period === '오늘')   return [addDays(today, -30), today];
-  if (period === '이번주') return [today, addDays(today, 7)];
-  if (period === '이번달') return [today, thisMonthEnd()];
-  return [addDays(today, -7), addDays(today, 30)]; // 전체
+  const yearEnd = thisYearEnd();
+  if (period === '오늘')   return [today, today];
+  if (period === '이번주') return thisWeekRange();
+  if (period === '이번달') return [thisMonthStart(), thisMonthEnd()];
+  return [addDays(today, -60), yearEnd]; // 전체: 과거 2달 ~ 올해 말
 }
 
 // ── 반복 라벨 ────────────────────────────────
 
-function getRepeatLabel(repeat_type: RepeatType, repeat_interval: number | null): string | null {
+const DOW_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
+
+function getRepeatLabel(chore: Chore): string | null {
+  const { repeat_type, repeat_interval, repeat_unit, repeat_day_of_week, repeat_week_of_month } = chore;
   if (repeat_type === 'none')    return null;
   if (repeat_type === 'daily')   return '매일';
   if (repeat_type === 'weekly')  return '매주';
   if (repeat_type === 'monthly') return '매달';
-  if (repeat_type === 'custom')  return `${repeat_interval ?? '?'}일마다`;
+  if (repeat_type === 'custom') {
+    const dow = repeat_day_of_week != null ? DOW_LABELS[repeat_day_of_week] : '?';
+    if (repeat_unit === 'week') {
+      return repeat_interval && repeat_interval > 1 ? `${repeat_interval}주 ${dow}` : `매주 ${dow}`;
+    }
+    if (repeat_unit === 'month') {
+      const wom = repeat_week_of_month ?? 1;
+      return repeat_interval && repeat_interval > 1 ? `${repeat_interval}개월 ${wom}째 ${dow}` : `매달 ${wom}째 ${dow}`;
+    }
+    return `${repeat_interval ?? '?'}일마다`; // 레거시
+  }
   return null;
 }
 
@@ -178,25 +303,36 @@ const swipeStyles = StyleSheet.create({
 
 // ── 아이템 행 ─────────────────────────────────
 
+type DeleteMode = 'this' | 'future' | 'all';
+
 interface ChoreRowProps {
   occurrence: ChoreOccurrence;
   isSolo: boolean;
   onToggle: (occurrence: ChoreOccurrence) => void;
-  onEdit: (chore: Chore) => void;
-  onDelete: (chore: Chore) => void;
+  onEdit: (occurrence: ChoreOccurrence) => void;
+  onDelete: (occurrence: ChoreOccurrence, mode: DeleteMode) => void;
 }
 
 const ChoreRow: React.FC<ChoreRowProps> = React.memo(({ occurrence, isSolo, onToggle, onEdit, onDelete }) => {
   const swipeRef = useRef<Swipeable>(null);
   const { chore, date, isDone, isOverdue } = occurrence;
-  const repeatLabel = getRepeatLabel(chore.repeat_type, chore.repeat_interval);
+  const repeatLabel = getRepeatLabel(chore);
 
   const handleDelete = () => {
     swipeRef.current?.close();
-    Alert.alert('삭제 확인', `'${chore.title}'을(를) 삭제할까요?`, [
-      { text: '취소', style: 'cancel', onPress: () => swipeRef.current?.close() },
-      { text: '삭제', style: 'destructive', onPress: () => onDelete(chore) },
-    ]);
+    const isRepeating = chore.repeat_type !== 'none';
+    if (!isRepeating || !date) {
+      Alert.alert('삭제 확인', `'${chore.title}'을(를) 삭제할까요?`, [
+        { text: '취소', style: 'cancel', onPress: () => swipeRef.current?.close() },
+        { text: '삭제', style: 'destructive', onPress: () => onDelete(occurrence, 'all') },
+      ]);
+    } else {
+      Alert.alert('일정 삭제', `'${chore.title}'`, [
+        { text: '취소', style: 'cancel', onPress: () => swipeRef.current?.close() },
+        { text: '이 일정만 삭제', onPress: () => onDelete(occurrence, 'this') },
+        { text: '이후 일정 모두 삭제', style: 'destructive', onPress: () => onDelete(occurrence, 'future') },
+      ]);
+    }
   };
 
   return (
@@ -211,7 +347,7 @@ const ChoreRow: React.FC<ChoreRowProps> = React.memo(({ occurrence, isSolo, onTo
         </TouchableOpacity>
 
         {/* 콘텐츠 */}
-        <TouchableOpacity style={rowStyles.content} onPress={() => onEdit(chore)} activeOpacity={0.7}>
+        <TouchableOpacity style={rowStyles.content} onPress={() => onEdit(occurrence)} activeOpacity={0.7}>
           <Text
             style={[rowStyles.title, isDone && rowStyles.titleDone, isOverdue && rowStyles.titleOverdue]}
             numberOfLines={2}
@@ -464,14 +600,55 @@ const ChoresScreen: React.FC = () => {
   }, []);
 
   // ── 삭제 ────────────────────────────────────
-  const handleDelete = useCallback(async (chore: Chore) => {
-    await supabase.from('chores').update({ is_active: false }).eq('id', chore.id);
-    setChores(prev => prev.filter(c => c.id !== chore.id));
+  const handleDelete = useCallback(async (occurrence: ChoreOccurrence, mode: DeleteMode) => {
+    const { chore, date } = occurrence;
+    if (mode === 'all' || !date) {
+      // 전체 삭제 (소프트)
+      await supabase.from('chores').update({ is_active: false }).eq('id', chore.id);
+      setChores(prev => prev.filter(c => c.id !== chore.id));
+    } else if (mode === 'this') {
+      // 이 발생만 건너뜀
+      const newExcluded = [...(chore.excluded_dates ?? []), date];
+      await supabase.from('chores').update({ excluded_dates: newExcluded }).eq('id', chore.id);
+      setChores(prev => prev.map(c =>
+        c.id === chore.id ? { ...c, excluded_dates: newExcluded } : c
+      ));
+    } else if (mode === 'future') {
+      // 이 날짜 이후(포함) 모두 삭제 → end_date 설정
+      await supabase.from('chores').update({ end_date: date }).eq('id', chore.id);
+      setChores(prev => prev.map(c =>
+        c.id === chore.id ? { ...c, end_date: date } : c
+      ));
+    }
   }, []);
 
   // ── 수정 이동 ────────────────────────────────
-  const handleEdit = useCallback((chore: Chore) => {
-    navigation.navigate('AddChore', { choreId: chore.id, familyId: familyId ?? undefined });
+  const handleEdit = useCallback((occurrence: ChoreOccurrence) => {
+    const { chore, date } = occurrence;
+    const isRepeating = chore.repeat_type !== 'none';
+
+    if (!isRepeating || !date) {
+      navigation.navigate('AddChore', { choreId: chore.id, familyId: familyId ?? undefined });
+      return;
+    }
+
+    Alert.alert('일정 수정', `'${chore.title}'`, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '이 일정만 수정',
+        onPress: () => navigation.navigate('AddChore', {
+          choreId: chore.id, familyId: familyId ?? undefined,
+          occurrenceDate: date, editMode: 'this',
+        }),
+      },
+      {
+        text: '이후 일정 모두 수정',
+        onPress: () => navigation.navigate('AddChore', {
+          choreId: chore.id, familyId: familyId ?? undefined,
+          occurrenceDate: date, editMode: 'future',
+        }),
+      },
+    ]);
   }, [navigation, familyId]);
 
   // ── 태그 저장/삭제 ───────────────────────────
@@ -557,7 +734,7 @@ const ChoresScreen: React.FC = () => {
       {/* 헤더 */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.title}>루틴</Text>
+          <Text style={styles.title}>일정</Text>
           {pendingCount > 0 && (
             <View style={styles.pendingBadge}>
               <Text style={styles.pendingBadgeText}>{pendingCount}</Text>
@@ -621,9 +798,13 @@ const ChoresScreen: React.FC = () => {
         ))}
       </View>
 
-      {/* 날짜 범위 표시 */}
+      {/* 날짜 범위 표시 (전체는 날짜 숨김) */}
       <View style={styles.rangeBar}>
-        <Text style={styles.rangeText}>{fromDate.replace(/-/g, '.')} ~ {toDate.replace(/-/g, '.')}</Text>
+        {periodFilter !== '전체' ? (
+          <Text style={styles.rangeText}>{fromDate.replace(/-/g, '.')} ~ {toDate.replace(/-/g, '.')}</Text>
+        ) : (
+          <View />
+        )}
         <Text style={styles.countText}>{sortedOccurrences.length}개</Text>
       </View>
 
@@ -631,7 +812,7 @@ const ChoresScreen: React.FC = () => {
       {sortedOccurrences.length === 0 ? (
         <View style={styles.empty}>
           <Text style={styles.emptyText}>
-            {chores.length === 0 ? '루틴을 추가해 보세요' : '해당 기간에 할 일이 없어요'}
+            {chores.length === 0 ? '일정을 추가해 보세요' : '해당 기간에 할 일이 없어요'}
           </Text>
         </View>
       ) : (
