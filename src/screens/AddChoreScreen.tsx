@@ -470,7 +470,7 @@ const AddChoreScreen: React.FC = () => {
 
               {/* 미리보기 */}
               <Text style={styles.customPreview}>
-                {customCount >= 1 ? `${customCount}` : ''}
+                {customCount >=- 1 ? `${customCount}` : ''}
                 {customUnit === 'week' ? '주' : '개월'}
                 {'마다'}
                 {customUnit === 'month' ? ` ${customWeekOfMonth}째주` : ''}

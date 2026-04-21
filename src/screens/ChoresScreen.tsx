@@ -24,7 +24,7 @@ import { useNavigation, useIsFocused, CompositeNavigationProp } from '@react-nav
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Swipeable } from 'react-native-gesture-handler';
-import { Plus, CheckCircle2, Circle, Trash2, X, RefreshCw } from 'lucide-react-native';
+import { Plus, CheckCircle2, Circle, Trash2, X, RefreshCw, Calendar, List as ListIcon } from 'lucide-react-native';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { Chore, ChoreTag, RepeatType, UserProfile } from '../types';
@@ -285,6 +285,30 @@ function formatShortDate(dateStr: string): string {
   return `${parseInt(m)}/${parseInt(d)}`;
 }
 
+function formatDayLabel(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  const dow = DOW_LABELS[d.getDay()];
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 (${dow})`;
+}
+
+// 달력 그리드: [[날짜문자열 | null] * 7] * N주
+function buildCalendarGrid(year: number, month: number): (string | null)[][] {
+  const firstDay = new Date(year, month, 1).getDay();
+  const lastDate = new Date(year, month + 1, 0).getDate();
+  const weeks: (string | null)[][] = [];
+  let week: (string | null)[] = new Array(firstDay).fill(null);
+  for (let d = 1; d <= lastDate; d++) {
+    const ds = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    week.push(ds);
+    if (week.length === 7) { weeks.push(week); week = []; }
+  }
+  if (week.length > 0) {
+    while (week.length < 7) week.push(null);
+    weeks.push(week);
+  }
+  return weeks;
+}
+
 // ── 스와이프 삭제 ─────────────────────────────
 
 const RightAction: React.FC<{ onDelete: () => void }> = ({ onDelete }) => (
@@ -503,6 +527,99 @@ const TagModal: React.FC<TagModalProps> = ({ visible, editing, onClose, onSave, 
   );
 };
 
+// ── 달력 뷰 ──────────────────────────────────
+
+interface CalendarViewProps {
+  year: number;
+  month: number;
+  occsByDate: Map<string, ChoreOccurrence[]>;
+  selectedDate: string;
+  onSelectDate: (date: string) => void;
+  today: string;
+}
+
+const CalendarView: React.FC<CalendarViewProps> = React.memo(({
+  year, month, occsByDate, selectedDate, onSelectDate, today,
+}) => {
+  const grid = useMemo(() => buildCalendarGrid(year, month), [year, month]);
+
+  return (
+    <View style={calStyles.container}>
+      {/* 요일 헤더 */}
+      <View style={calStyles.dowRow}>
+        {DOW_LABELS.map((d, i) => (
+          <Text key={i} style={[calStyles.dowText, i === 0 && calStyles.sunText, i === 6 && calStyles.satText]}>{d}</Text>
+        ))}
+      </View>
+
+      {/* 날짜 그리드 */}
+      {grid.map((week, wi) => (
+        <View key={wi} style={calStyles.weekRow}>
+          {week.map((dateStr, di) => {
+            if (!dateStr) return <View key={di} style={calStyles.dayCell} />;
+
+            const dayOccs = occsByDate.get(dateStr) ?? [];
+            const hasOverdue  = dayOccs.some(o => o.isOverdue);
+            const hasPending  = dayOccs.some(o => !o.isDone && !o.isOverdue);
+            const hasDone     = dayOccs.some(o => o.isDone);
+            const isSelected  = dateStr === selectedDate;
+            const isToday     = dateStr === today;
+            const dayNum      = parseInt(dateStr.split('-')[2], 10);
+
+            return (
+              <TouchableOpacity key={di} style={calStyles.dayCell} onPress={() => onSelectDate(dateStr)} activeOpacity={0.7}>
+                <View style={[
+                  calStyles.dayNumWrap,
+                  isSelected && calStyles.selectedWrap,
+                  isToday && !isSelected && calStyles.todayWrap,
+                ]}>
+                  <Text style={[
+                    calStyles.dayNum,
+                    isSelected && calStyles.selectedNum,
+                    isToday && !isSelected && calStyles.todayNum,
+                    di === 0 && !isSelected && calStyles.sunNum,
+                    di === 6 && !isSelected && calStyles.satNum,
+                  ]}>
+                    {dayNum}
+                  </Text>
+                </View>
+                <View style={calStyles.dotsRow}>
+                  {hasOverdue  && <View style={[calStyles.dot, calStyles.dotOverdue]} />}
+                  {hasPending  && <View style={[calStyles.dot, calStyles.dotPending]} />}
+                  {hasDone     && <View style={[calStyles.dot, calStyles.dotDone]} />}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+});
+
+const calStyles = StyleSheet.create({
+  container: { marginHorizontal: 8, marginTop: 4, marginBottom: 4 },
+  dowRow: { flexDirection: 'row', marginBottom: 2 },
+  dowText: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '700', color: '#8B5E3C', paddingVertical: 6 },
+  sunText: { color: '#D95F4B' },
+  satText: { color: '#6B8ED6' },
+  weekRow: { flexDirection: 'row' },
+  dayCell: { flex: 1, alignItems: 'center', paddingVertical: 4, minHeight: 50 },
+  dayNumWrap: { width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
+  selectedWrap: { backgroundColor: '#8B5E3C' },
+  todayWrap: { backgroundColor: '#EDD9C0' },
+  dayNum: { fontSize: 14, fontWeight: '600', color: '#5C3D1E' },
+  selectedNum: { color: '#FFFFFF', fontWeight: '700' },
+  todayNum: { color: '#8B5E3C', fontWeight: '700' },
+  sunNum: { color: '#D95F4B' },
+  satNum: { color: '#6B8ED6' },
+  dotsRow: { flexDirection: 'row', gap: 2, marginTop: 2, height: 6 },
+  dot: { width: 5, height: 5, borderRadius: 2.5 },
+  dotOverdue: { backgroundColor: '#D95F4B' },
+  dotPending: { backgroundColor: '#8B5E3C' },
+  dotDone: { backgroundColor: '#DEC8A8' },
+});
+
 const tagModalStyles = StyleSheet.create({
   kavWrapper: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: '#FFF8F0', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingBottom: 40, paddingTop: 12 },
@@ -531,6 +648,8 @@ const ChoresScreen: React.FC = () => {
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('전체');
   const [hideDone, setHideDone] = useState(true);
   const [tagModal, setTagModal] = useState<{ visible: boolean; editing: ChoreTag | null }>({ visible: false, editing: null });
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string>(todayStr());
 
   const isSolo = members.length <= 1;
 
@@ -679,11 +798,35 @@ const ChoresScreen: React.FC = () => {
   }, [tagFilter]);
 
   // ── Occurrence 계산 ──────────────────────────
-  const [fromDate, toDate] = getPeriodRange(periodFilter);
+  // 달력 모드는 항상 이번달 전체 로드
+  const [fromDate, toDate] = viewMode === 'calendar'
+    ? [thisMonthStart(), thisMonthEnd()]
+    : getPeriodRange(periodFilter);
 
   const allOccurrences = useMemo(() => {
     return generateOccurrences(chores, fromDate, toDate);
   }, [chores, fromDate, toDate]);
+
+  // 달력 모드: 날짜 → 발생 목록 맵
+  const occsByDate = useMemo(() => {
+    if (viewMode !== 'calendar') return new Map<string, ChoreOccurrence[]>();
+    const map = new Map<string, ChoreOccurrence[]>();
+    allOccurrences.forEach(occ => {
+      if (!occ.date) return;
+      const list = map.get(occ.date) ?? [];
+      list.push(occ);
+      map.set(occ.date, list);
+    });
+    return map;
+  }, [viewMode, allOccurrences]);
+
+  // 달력 모드: 선택된 날의 발생 목록 (태그·완료 필터 적용)
+  const selectedDateOccs = useMemo(() => {
+    if (viewMode !== 'calendar') return [];
+    return (occsByDate.get(selectedCalendarDate) ?? [])
+      .filter(o => tagFilter === '전체' || o.chore.tag_id === tagFilter)
+      .filter(o => !hideDone || !o.isDone);
+  }, [viewMode, occsByDate, selectedCalendarDate, tagFilter, hideDone]);
 
   const displayOccurrences = useMemo(() => {
     return allOccurrences.filter(occ => {
@@ -741,14 +884,22 @@ const ChoresScreen: React.FC = () => {
             </View>
           )}
         </View>
-        <TouchableOpacity
-          style={[styles.hideToggle, !hideDone && styles.hideToggleActive]}
-          onPress={() => setHideDone(v => !v)}
-        >
-          <Text style={[styles.hideToggleText, !hideDone && styles.hideToggleTextActive]}>
-            {hideDone ? '완료 보기' : '완료 숨기기'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={[styles.hideToggle, !hideDone && styles.hideToggleActive]}
+            onPress={() => setHideDone(v => !v)}
+          >
+            <Text style={[styles.hideToggleText, !hideDone && styles.hideToggleTextActive]}>
+              {hideDone ? '완료 보기' : '완료 숨기기'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setViewMode('list')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <ListIcon color={viewMode === 'list' ? '#8B5E3C' : '#C49A6C'} size={22} strokeWidth={1.5} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setViewMode('calendar')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Calendar color={viewMode === 'calendar' ? '#8B5E3C' : '#C49A6C'} size={22} strokeWidth={1.5} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* 태그 필터 */}
@@ -785,31 +936,73 @@ const ChoresScreen: React.FC = () => {
         />
       </View>
 
-      {/* 기간 필터 탭 */}
-      <View style={styles.periodRow}>
-        {(['전체', '오늘', '이번주', '이번달'] as PeriodFilter[]).map(p => (
-          <TouchableOpacity
-            key={p}
-            style={[styles.periodTab, periodFilter === p && styles.periodTabActive]}
-            onPress={() => setPeriodFilter(p)}
-          >
-            <Text style={[styles.periodText, periodFilter === p && styles.periodTextActive]}>{p}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {/* 기간 필터 탭 (달력 모드에서 숨김) */}
+      {viewMode === 'list' && (
+        <View style={styles.periodRow}>
+          {(['전체', '오늘', '이번주', '이번달'] as PeriodFilter[]).map(p => (
+            <TouchableOpacity
+              key={p}
+              style={[styles.periodTab, periodFilter === p && styles.periodTabActive]}
+              onPress={() => setPeriodFilter(p)}
+            >
+              <Text style={[styles.periodText, periodFilter === p && styles.periodTextActive]}>{p}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
-      {/* 날짜 범위 표시 (전체는 날짜 숨김) */}
-      <View style={styles.rangeBar}>
-        {periodFilter !== '전체' ? (
-          <Text style={styles.rangeText}>{fromDate.replace(/-/g, '.')} ~ {toDate.replace(/-/g, '.')}</Text>
-        ) : (
-          <View />
-        )}
-        <Text style={styles.countText}>{sortedOccurrences.length}개</Text>
-      </View>
+      {/* 날짜 범위 표시 (달력 모드에서 숨김) */}
+      {viewMode === 'list' && (
+        <View style={styles.rangeBar}>
+          {periodFilter !== '전체' ? (
+            <Text style={styles.rangeText}>{fromDate.replace(/-/g, '.')} ~ {toDate.replace(/-/g, '.')}</Text>
+          ) : (
+            <View />
+          )}
+          <Text style={styles.countText}>{sortedOccurrences.length}개</Text>
+        </View>
+      )}
 
-      {/* 리스트 */}
-      {sortedOccurrences.length === 0 ? (
+      {/* 컨텐츠: 달력 or 리스트 */}
+      {viewMode === 'calendar' ? (
+        <FlatList
+          data={selectedDateOccs}
+          keyExtractor={o => `${o.chore.id}-${o.date ?? 'undated'}`}
+          ListHeaderComponent={
+            <>
+              <CalendarView
+                year={new Date().getFullYear()}
+                month={new Date().getMonth()}
+                occsByDate={occsByDate}
+                selectedDate={selectedCalendarDate}
+                onSelectDate={setSelectedCalendarDate}
+                today={todayStr()}
+              />
+              <View style={styles.dayHeader}>
+                <Text style={styles.dayHeaderText}>{formatDayLabel(selectedCalendarDate)}</Text>
+                <Text style={styles.countText}>{selectedDateOccs.length}개</Text>
+              </View>
+            </>
+          }
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>이 날은 할 일이 없어요</Text>
+            </View>
+          }
+          renderItem={({ item }) => (
+            <ChoreRow
+              occurrence={item}
+              isSolo={isSolo}
+              onToggle={handleToggle}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+            />
+          )}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        />
+      ) : sortedOccurrences.length === 0 ? (
         <View style={styles.empty}>
           <Text style={styles.emptyText}>
             {chores.length === 0 ? '일정을 추가해 보세요' : '해당 기간에 할 일이 없어요'}
@@ -864,6 +1057,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16,
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   title: { fontSize: 26, fontWeight: '800', color: '#5C3D1E' },
   pendingBadge: {
     backgroundColor: '#8B5E3C', borderRadius: 12,
@@ -903,8 +1097,14 @@ const styles = StyleSheet.create({
   rangeText: { fontSize: 11, color: '#C49A6C', fontWeight: '500' },
   countText: { fontSize: 13, color: '#C49A6C', fontWeight: '500' },
 
-  empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  empty: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 40 },
   emptyText: { fontSize: 15, color: '#C49A6C', fontWeight: '500' },
+  dayHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 10,
+    borderTopWidth: 1, borderTopColor: '#EDD9C0', marginTop: 4,
+  },
+  dayHeaderText: { fontSize: 14, fontWeight: '700', color: '#5C3D1E' },
 
   fab: {
     position: 'absolute', bottom: 24, right: 24, backgroundColor: '#8B5E3C',
