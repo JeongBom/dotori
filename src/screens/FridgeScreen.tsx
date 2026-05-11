@@ -1,70 +1,56 @@
-// 냉장고 관리 화면
-// - 필터(전체/냉장/냉동/먹은 음식), 정렬(유통기한/이름/넣은날짜)
-// - D-day 색상 코딩, 체크박스로 다먹음 처리, 스와이프 삭제
-
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+// 음식 화면 — 새 디자인 (도토리 v2)
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
-  View,
-  Text,
-  FlatList,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  TextInput,
+  View, Text, SectionList, StyleSheet, TouchableOpacity,
+  ActivityIndicator, Alert, ScrollView, TextInput, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useIsFocused, CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Swipeable } from 'react-native-gesture-handler';
-import { Plus, ArrowUpDown, CheckCircle2, Circle } from 'lucide-react-native';
+import { Plus } from 'lucide-react-native';
+import Svg, { Path, Rect, Circle } from 'react-native-svg';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { FridgeItem } from '../types';
 import { RootTabParamList, RootStackParamList } from '../navigation';
 import { cancelExpiryNotification } from '../lib/notifications';
 
-type FridgeNavProp = CompositeNavigationProp<
+// ── 디자인 토큰 ───────────────────────────────
+const C = {
+  brown:   '#8B5E3C', warmOak: '#A87850', lightOak: '#C49A6C',
+  ivory:   '#FFF8F0', cream:   '#FDF6EC', edge:     '#DEC8A8',
+  dark:    '#5C3D1E', deep:    '#6B4226',
+  danger:  '#D95F4B', warn:    '#E09B4B',
+};
+
+type FridgeNav = CompositeNavigationProp<
   BottomTabNavigationProp<RootTabParamList, 'Fridge'>,
   NativeStackNavigationProp<RootStackParamList>
 >;
 
-// ── 타입 ──────────────────────────────────────
-
 type FilterType = '전체' | '냉장' | '냉동' | '실온' | '먹은 음식';
-type SortType = '유통기한' | '이름' | '넣은날짜';
+type SortType   = '유통기한' | '이름' | '넣은날짜';
+type SectionKey = '기한 지남' | '임박' | '여유' | '기한없음' | '먹은 음식';
 
 // ── D-day 계산 ────────────────────────────────
-
-interface DDay {
-  label: string;
-  color: string;
-}
-
-function getDDay(expiryDate: string | null): DDay {
-  if (!expiryDate) return { label: '기한없음', color: '#C49A6C' };
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expiry = new Date(expiryDate);
-  expiry.setHours(0, 0, 0, 0);
+function getDDay(expiryDate: string | null): { label: string; color: string; status: 'expired' | 'soon' | 'ok' | 'none' } {
+  if (!expiryDate) return { label: '기한없음', color: C.lightOak, status: 'none' };
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const expiry = new Date(expiryDate); expiry.setHours(0, 0, 0, 0);
   const diff = Math.round((expiry.getTime() - today.getTime()) / 86400000);
-
-  if (diff < 0) return { label: `D+${Math.abs(diff)}`, color: '#D95F4B' };
-  if (diff === 0) return { label: 'D-day', color: '#D95F4B' };
-  if (diff <= 3) return { label: `D-${diff}`, color: '#D95F4B' };
-  if (diff <= 7) return { label: `D-${diff}`, color: '#E09B4B' };
-  return { label: `D-${diff}`, color: '#8B5E3C' };
+  if (diff < 0)  return { label: `D+${Math.abs(diff)}`, color: C.danger, status: 'expired' };
+  if (diff === 0) return { label: 'D-day', color: C.danger, status: 'soon' };
+  if (diff <= 3)  return { label: `D-${diff}`,  color: C.danger, status: 'soon' };
+  if (diff <= 7)  return { label: `D-${diff}`,  color: C.warn,   status: 'soon' };
+  return { label: `D-${diff}`, color: C.brown, status: 'ok' };
 }
-
-// ── 정렬 함수 ─────────────────────────────────
 
 function sortItems(items: FridgeItem[], sort: SortType): FridgeItem[] {
   return [...items].sort((a, b) => {
     if (sort === '이름') return a.name.localeCompare(b.name, 'ko');
     if (sort === '넣은날짜') return b.stored_date.localeCompare(a.stored_date);
-    // 유통기한 임박순: null을 마지막으로
     if (!a.expiry_date && !b.expiry_date) return 0;
     if (!a.expiry_date) return 1;
     if (!b.expiry_date) return -1;
@@ -72,196 +58,193 @@ function sortItems(items: FridgeItem[], sort: SortType): FridgeItem[] {
   });
 }
 
-// ── 스와이프 삭제 액션 ────────────────────────
-
-const RightAction: React.FC<{ onDelete: () => void }> = ({ onDelete }) => (
-  <TouchableOpacity style={swipeStyles.deleteBtn} onPress={onDelete}>
-    <Text style={swipeStyles.deleteText}>삭제</Text>
-  </TouchableOpacity>
-);
-
-const swipeStyles = StyleSheet.create({
-  deleteBtn: {
-    backgroundColor: '#D95F4B',
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 80,
-    marginBottom: 10,
-    borderTopRightRadius: 14,
-    borderBottomRightRadius: 14,
-  },
-  deleteText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
+// ── 아이콘 버튼 ───────────────────────────────
+function IconBtn({ children, onPress }: { children: React.ReactNode; onPress?: () => void }) {
+  return (
+    <TouchableOpacity style={ic.btn} onPress={onPress} activeOpacity={0.7}>
+      {children}
+    </TouchableOpacity>
+  );
+}
+const ic = StyleSheet.create({
+  btn: { width: 36, height: 36, borderRadius: 12, backgroundColor: C.ivory, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.edge + '66' },
 });
 
-// ── 개별 아이템 행 ────────────────────────────
+// ── StatBlock ─────────────────────────────────
+function StatBlock({ primary, label, sub, color }: { primary: string | number; label: string; sub: string; color: string }) {
+  return (
+    <View style={sb.card}>
+      <View style={sb.top}>
+        <Text style={[sb.primary, { color }]}>{primary}</Text>
+        <Text style={sb.label}>{label}</Text>
+      </View>
+      <Text style={sb.sub}>{sub}</Text>
+    </View>
+  );
+}
+const sb = StyleSheet.create({
+  card:    { flex: 1, backgroundColor: C.ivory, borderRadius: 14, padding: 12, shadowColor: C.brown, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  top:     { flexDirection: 'row', alignItems: 'baseline', gap: 4, marginBottom: 3 },
+  primary: { fontSize: 24, fontWeight: '800', letterSpacing: -0.5, lineHeight: 26 },
+  label:   { fontSize: 10, color: C.warmOak, fontWeight: '600' },
+  sub:     { fontSize: 10, color: C.lightOak, fontWeight: '500' },
+});
 
-interface FridgeItemRowProps {
+// ── 섹션 라벨 ────────────────────────────────
+function SectionLabel({ label, count, color }: { label: string; count: number; color: string }) {
+  return (
+    <View style={sl.row}>
+      <View style={[sl.dot, { backgroundColor: color }]} />
+      <Text style={sl.label}>{label}</Text>
+      <Text style={sl.count}>{count}</Text>
+    </View>
+  );
+}
+const sl = StyleSheet.create({
+  row:   { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 },
+  dot:   { width: 6, height: 6, borderRadius: 3 },
+  label: { fontSize: 10, fontWeight: '700', color: C.dark, letterSpacing: 0.3 },
+  count: { fontSize: 10, color: C.lightOak, fontWeight: '600' },
+});
+
+// ── 스와이프 삭제 ─────────────────────────────
+const RightAction: React.FC<{ onDelete: () => void }> = ({ onDelete }) => (
+  <TouchableOpacity style={sw.btn} onPress={onDelete}>
+    <Text style={sw.text}>삭제</Text>
+  </TouchableOpacity>
+);
+const sw = StyleSheet.create({
+  btn:  { backgroundColor: C.danger, justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 8, borderTopRightRadius: 14, borderBottomRightRadius: 14 },
+  text: { color: '#fff', fontWeight: '700', fontSize: 14 },
+});
+
+// ── FoodRow ───────────────────────────────────
+interface FoodRowProps {
   item: FridgeItem;
-  onToggleConsumed: (item: FridgeItem) => void;
+  onToggle: (item: FridgeItem) => void;
   onDelete: (item: FridgeItem) => void;
-  onQuantityChange: (item: FridgeItem, delta: number) => void;
+  onQtyChange: (item: FridgeItem, delta: number) => void;
   onEdit: (item: FridgeItem) => void;
 }
 
-const FridgeItemRow: React.FC<FridgeItemRowProps> = React.memo(({ item, onToggleConsumed, onDelete, onQuantityChange, onEdit }) => {
+const FoodRow: React.FC<FoodRowProps> = React.memo(({ item, onToggle, onDelete, onQtyChange, onEdit }) => {
   const swipeRef = useRef<Swipeable>(null);
   const dday = getDDay(item.expiry_date);
   const [editingQty, setEditingQty] = useState(false);
   const [qtyInput, setQtyInput] = useState(String(item.quantity ?? 1));
 
-  const startQtyEdit = () => {
-    setQtyInput(String(item.quantity ?? 1));
-    setEditingQty(true);
-  };
-
-  const commitQtyEdit = () => {
-    setEditingQty(false);
-    const parsed = parseInt(qtyInput);
-    if (!isNaN(parsed) && parsed > 0 && parsed !== (item.quantity ?? 1)) {
-      onQuantityChange(item, parsed - (item.quantity ?? 1));
-    } else if (parsed <= 0) {
-      onQuantityChange(item, -(item.quantity ?? 1)); // 0 이하 → 다먹음
-    }
-  };
+  const storageBg = item.storage_type === '냉동' ? '#C8D8F0' : item.storage_type === '실온' ? '#F0E8D4' : '#EDD9C0';
+  const storageFg = item.storage_type === '냉동' ? '#5A7EC9' : item.storage_type === '실온' ? '#A07840' : C.brown;
 
   const handleDelete = () => {
     swipeRef.current?.close();
-    Alert.alert(
-      '삭제 확인',
-      `${item.name}을(를) 삭제할까요?`,
-      [
-        { text: '취소', style: 'cancel', onPress: () => swipeRef.current?.close() },
-        { text: '삭제', style: 'destructive', onPress: () => onDelete(item) },
-      ],
-    );
+    Alert.alert('삭제 확인', `'${item.name}'을(를) 삭제할까요?`, [
+      { text: '취소', style: 'cancel', onPress: () => swipeRef.current?.close() },
+      { text: '삭제', style: 'destructive', onPress: () => onDelete(item) },
+    ]);
+  };
+
+  const commitQty = () => {
+    setEditingQty(false);
+    const parsed = parseInt(qtyInput);
+    if (!isNaN(parsed) && parsed > 0 && parsed !== (item.quantity ?? 1)) {
+      onQtyChange(item, parsed - (item.quantity ?? 1));
+    } else if (!isNaN(parsed) && parsed <= 0) {
+      onQtyChange(item, -(item.quantity ?? 1));
+    }
   };
 
   return (
-    <Swipeable
-      ref={swipeRef}
-      renderRightActions={() => <RightAction onDelete={handleDelete} />}
-      overshootRight={false}
-    >
-      <View style={rowStyles.row}>
+    <Swipeable ref={swipeRef} renderRightActions={() => <RightAction onDelete={handleDelete} />} overshootRight={false}>
+      <View style={[fr.row, item.is_consumed && fr.rowDone]}>
         {/* 체크박스 */}
-        <TouchableOpacity onPress={() => onToggleConsumed(item)} style={rowStyles.checkbox}>
-          {item.is_consumed
-            ? <CheckCircle2 color="#8B5E3C" size={24} strokeWidth={2} />
-            : <Circle color="#D4B896" size={24} strokeWidth={1.5} />
-          }
+        <TouchableOpacity onPress={() => onToggle(item)} style={fr.checkbox} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <View style={[fr.checkCircle, item.is_consumed && fr.checkCircleDone]}>
+            {item.is_consumed && (
+              <Svg width={11} height={11} viewBox="0 0 24 24" fill="none">
+                <Path d="M5 12l5 5 10-11" stroke="#fff" strokeWidth={3} strokeLinecap="round" />
+              </Svg>
+            )}
+          </View>
         </TouchableOpacity>
 
-        {/* 음식 정보 (탭하면 수정) */}
-        <TouchableOpacity style={rowStyles.info} onPress={() => onEdit(item)} activeOpacity={0.7}>
-          <View style={rowStyles.topRow}>
-            <Text style={[rowStyles.name, item.is_consumed && rowStyles.nameConsumed]}>
-              {item.name}
-            </Text>
-          </View>
-          <View style={rowStyles.bottomRow}>
-            <View style={[rowStyles.storageChip, item.storage_type === '냉동' && rowStyles.storageChipFreezer, item.storage_type === '실온' && rowStyles.storageChipRoom]}>
-              <Text style={[rowStyles.storageText, item.storage_type === '냉동' && rowStyles.storageTextFreezer, item.storage_type === '실온' && rowStyles.storageTextRoom]}>
-                {item.storage_type}
-              </Text>
+        {/* 음식 정보 */}
+        <TouchableOpacity style={fr.info} onPress={() => onEdit(item)} activeOpacity={0.7}>
+          <Text style={[fr.name, item.is_consumed && fr.nameDone]} numberOfLines={1}>{item.name}</Text>
+          <View style={fr.meta}>
+            <View style={[fr.chip, { backgroundColor: storageBg }]}>
+              <Text style={[fr.chipText, { color: storageFg }]}>{item.storage_type}</Text>
             </View>
-            <Text style={{ fontSize: 12, color: '#C49A6C' }}>
-              넣은 날: {item.stored_date.replace(/-/g, '.')}
-            </Text>
+            <Text style={fr.date}>넣은날 {item.stored_date.slice(5).replace('-', '.')}</Text>
           </View>
         </TouchableOpacity>
 
         {/* 수량 + D-day */}
-        <View style={rowStyles.rightCol}>
-          {!item.is_consumed && (
-            <View style={rowStyles.qtyRow}>
-              <TouchableOpacity onPress={() => onQuantityChange(item, -1)} style={rowStyles.qtyBtn}>
-                <Text style={rowStyles.qtyBtnText}>−</Text>
+        {!item.is_consumed && (
+          <View style={fr.right}>
+            <View style={fr.qtyRow}>
+              <TouchableOpacity onPress={() => onQtyChange(item, -1)} style={fr.qtyBtn}>
+                <Text style={fr.qtyBtnText}>−</Text>
               </TouchableOpacity>
               {editingQty ? (
                 <TextInput
-                  style={rowStyles.qtyInput}
+                  style={fr.qtyInput}
                   value={qtyInput}
                   onChangeText={setQtyInput}
                   keyboardType="number-pad"
-                  onBlur={commitQtyEdit}
-                  onSubmitEditing={commitQtyEdit}
+                  onBlur={commitQty}
+                  onSubmitEditing={commitQty}
                   autoFocus
                   selectTextOnFocus
                   maxLength={4}
                 />
               ) : (
-                <TouchableOpacity onPress={startQtyEdit}>
-                  <Text style={rowStyles.qtyNum}>{item.quantity ?? 1}</Text>
+                <TouchableOpacity onPress={() => { setQtyInput(String(item.quantity ?? 1)); setEditingQty(true); }}>
+                  <Text style={fr.qtyNum}>{item.quantity ?? 1}</Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity onPress={() => onQuantityChange(item, 1)} style={rowStyles.qtyBtn}>
-                <Text style={rowStyles.qtyBtnText}>+</Text>
+              <TouchableOpacity onPress={() => onQtyChange(item, 1)} style={fr.qtyBtn}>
+                <Text style={fr.qtyBtnText}>+</Text>
               </TouchableOpacity>
             </View>
-          )}
-          {!item.is_consumed && (
-            <Text style={[rowStyles.dday, { color: dday.color }]}>{dday.label}</Text>
-          )}
-          {item.is_consumed && item.consumed_at && (
-            <Text style={rowStyles.consumedDate}>{item.consumed_at.replace(/-/g, '.')}</Text>
-          )}
-        </View>
+            <Text style={[fr.dday, { color: dday.color }]}>{dday.label}</Text>
+          </View>
+        )}
+        {item.is_consumed && (
+          <Text style={fr.consumedAt}>{item.consumed_at?.slice(5).replace('-', '.') ?? ''}</Text>
+        )}
       </View>
     </Swipeable>
   );
 });
 
-const rowStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF8F0',
-    marginHorizontal: 16,
-    marginBottom: 10,
-    borderRadius: 14,
-    padding: 14,
-    shadowColor: '#8B5E3C',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  checkbox: { marginRight: 12 },
-  info: { flex: 1 },
-  topRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  name: { fontSize: 15, fontWeight: '600', color: '#5C3D1E' },
-  nameConsumed: { color: '#C49A6C', textDecorationLine: 'line-through' },
-  bottomRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  storageChip: {
-    paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6,
-    backgroundColor: '#EDD9C0',
-  },
-  storageChipFreezer: { backgroundColor: '#C8D8F0' },
-  storageChipRoom: { backgroundColor: '#F0E8D4' },
-  storageText: { fontSize: 11, color: '#8B5E3C', fontWeight: '600' },
-  storageTextFreezer: { color: '#5A7EC9' },
-  storageTextRoom: { color: '#A07840' },
-  rightCol: { alignItems: 'flex-end', gap: 4 },
-  qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  qtyBtn: {
-    width: 24, height: 24, borderRadius: 12,
-    backgroundColor: '#EDD9C0', alignItems: 'center', justifyContent: 'center',
-  },
-  qtyBtnText: { fontSize: 14, fontWeight: '700', color: '#5C3D1E', lineHeight: 18 },
-  qtyNum: { fontSize: 14, fontWeight: '700', color: '#5C3D1E', minWidth: 20, textAlign: 'center' },
-  qtyInput: {
-    fontSize: 14, fontWeight: '700', color: '#5C3D1E', textAlign: 'center',
-    minWidth: 36, paddingHorizontal: 4, paddingVertical: 0,
-    borderBottomWidth: 1.5, borderBottomColor: '#8B5E3C',
-  },
-  dday: { fontSize: 13, fontWeight: '800', minWidth: 44, textAlign: 'right' },
-  consumedDate: { fontSize: 11, color: '#C49A6C', textAlign: 'right' },
+const fr = StyleSheet.create({
+  row:          { flexDirection: 'row', alignItems: 'center', backgroundColor: C.ivory, marginHorizontal: 16, marginBottom: 8, borderRadius: 14, padding: 12, shadowColor: C.brown, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  rowDone:      { opacity: 0.55 },
+  checkbox:     { marginRight: 10 },
+  checkCircle:  { width: 22, height: 22, borderRadius: 11, borderWidth: 1.8, borderColor: C.edge, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
+  checkCircleDone: { backgroundColor: C.brown, borderColor: C.brown },
+  info:         { flex: 1 },
+  name:         { fontSize: 13, fontWeight: '700', color: C.dark, marginBottom: 4 },
+  nameDone:     { color: C.lightOak, textDecorationLine: 'line-through' },
+  meta:         { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  chip:         { paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 },
+  chipText:     { fontSize: 9, fontWeight: '700', lineHeight: 11 },
+  date:         { fontSize: 10, color: C.lightOak },
+  right:        { alignItems: 'flex-end', gap: 4 },
+  qtyRow:       { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  qtyBtn:       { width: 18, height: 18, borderRadius: 9, backgroundColor: C.edge + '88', alignItems: 'center', justifyContent: 'center' },
+  qtyBtnText:   { fontSize: 11, fontWeight: '700', color: C.dark, lineHeight: 16 },
+  qtyNum:       { fontSize: 12, fontWeight: '700', color: C.dark, minWidth: 12, textAlign: 'center' },
+  qtyInput:     { fontSize: 12, fontWeight: '700', color: C.dark, textAlign: 'center', minWidth: 32, paddingHorizontal: 2, paddingVertical: 0, borderBottomWidth: 1.5, borderBottomColor: C.brown },
+  dday:         { fontSize: 12, fontWeight: '800', minWidth: 36, textAlign: 'right' },
+  consumedAt:   { fontSize: 11, color: C.lightOak },
 });
 
 // ── 메인 화면 ─────────────────────────────────
 
 const FridgeScreen: React.FC = () => {
-  const navigation = useNavigation<FridgeNavProp>();
+  const navigation = useNavigation<FridgeNav>();
   const isFocused = useIsFocused();
 
   const [items, setItems] = useState<FridgeItem[]>([]);
@@ -271,7 +254,6 @@ const FridgeScreen: React.FC = () => {
   const [sort, setSort] = useState<SortType>('유통기한');
   const [showSortMenu, setShowSortMenu] = useState(false);
 
-  // 데이터 로드
   const loadItems = useCallback(async () => {
     try {
       const fid = await getOrCreateFamilyId();
@@ -289,39 +271,19 @@ const FridgeScreen: React.FC = () => {
   useEffect(() => { loadItems(); }, [loadItems]);
   useEffect(() => { if (isFocused) loadItems(); }, [isFocused, loadItems]);
 
-  // 다먹음 토글
-  const handleToggleConsumed = useCallback(async (item: FridgeItem) => {
-    const newConsumed = !item.is_consumed;
+  const handleToggle = useCallback(async (item: FridgeItem) => {
+    const next = !item.is_consumed;
     const today = new Date().toISOString().split('T')[0];
-
-    // 체크 해제 시 수량을 1로 복구
-    const updatePayload: Record<string, unknown> = {
-      is_consumed: newConsumed,
-      consumed_at: newConsumed ? today : null,
-    };
-    if (!newConsumed) updatePayload.quantity = 1;
-
-    const { error } = await supabase
-      .from('fridge_items')
-      .update(updatePayload)
-      .eq('id', item.id);
-
-    if (!error) {
-      setItems(prev => prev.map(i =>
-        i.id === item.id
-          ? { ...i, is_consumed: newConsumed, consumed_at: newConsumed ? today : null, quantity: newConsumed ? i.quantity : 1 }
-          : i
-      ));
-      // 다먹음 처리 시 알림 취소
-      if (newConsumed) await cancelExpiryNotification(item.id);
-    }
+    const payload: Record<string, unknown> = { is_consumed: next, consumed_at: next ? today : null };
+    if (!next) payload.quantity = 1;
+    await supabase.from('fridge_items').update(payload).eq('id', item.id);
+    setItems(prev => prev.map(i => i.id === item.id ? { ...i, is_consumed: next, consumed_at: next ? today : null, quantity: next ? i.quantity : 1 } : i));
+    if (next) await cancelExpiryNotification(item.id);
   }, []);
 
-  // 수량 변경 (0이 되면 자동으로 다먹음 처리)
-  const handleQuantityChange = useCallback(async (item: FridgeItem, delta: number) => {
+  const handleQtyChange = useCallback(async (item: FridgeItem, delta: number) => {
     const next = (item.quantity ?? 1) + delta;
     if (next <= 0) {
-      // 개수 0 → 다먹음 처리
       const today = new Date().toISOString().split('T')[0];
       setItems(prev => prev.map(i => i.id === item.id ? { ...i, quantity: 0, is_consumed: true, consumed_at: today } : i));
       await supabase.from('fridge_items').update({ quantity: 0, is_consumed: true, consumed_at: today }).eq('id', item.id);
@@ -332,188 +294,213 @@ const FridgeScreen: React.FC = () => {
     }
   }, []);
 
-  // 수정 화면으로 이동
+  const handleDelete = useCallback(async (item: FridgeItem) => {
+    await supabase.from('fridge_items').delete().eq('id', item.id);
+    setItems(prev => prev.filter(i => i.id !== item.id));
+    await cancelExpiryNotification(item.id);
+  }, []);
+
   const handleEdit = useCallback((item: FridgeItem) => {
     navigation.navigate('AddFridgeItem', { itemId: item.id, familyId: familyId ?? undefined });
   }, [navigation, familyId]);
 
-  // 삭제
-  const handleDelete = useCallback(async (item: FridgeItem) => {
-    const { error } = await supabase.from('fridge_items').delete().eq('id', item.id);
-    if (!error) {
-      setItems(prev => prev.filter(i => i.id !== item.id));
-      await cancelExpiryNotification(item.id);
-    }
-  }, []);
+  // ── 통계 (non-consumed 기준) ──────────────────
+  const activeItems  = items.filter(i => !i.is_consumed);
+  const expiredCount = activeItems.filter(i => getDDay(i.expiry_date).status === 'expired').length;
+  const soonCount    = activeItems.filter(i => getDDay(i.expiry_date).status === 'soon').length;
 
-  // 필터 + 정렬 적용
-  const displayItems = sortItems(
-    items.filter(item => {
+  // ── 섹션 데이터 구성 ──────────────────────────
+  const sections = useMemo(() => {
+    const filtered = items.filter(item => {
       if (filter === '먹은 음식') return item.is_consumed;
       if (filter === '냉장') return !item.is_consumed && item.storage_type === '냉장';
       if (filter === '냉동') return !item.is_consumed && item.storage_type === '냉동';
       if (filter === '실온') return !item.is_consumed && item.storage_type === '실온';
-      return !item.is_consumed; // 전체
-    }),
-    sort,
-  );
+      return !item.is_consumed;
+    });
 
-  const FILTERS: FilterType[] = ['전체', '냉장', '냉동', '실온', '먹은 음식'];
+    const sorted = sortItems(filtered, sort);
+
+    if (filter === '먹은 음식' || sort !== '유통기한') {
+      return [{ key: filter === '먹은 음식' ? '먹은 음식' as SectionKey : '여유' as SectionKey, data: sorted }];
+    }
+
+    const expired = sorted.filter(i => getDDay(i.expiry_date).status === 'expired');
+    const soon    = sorted.filter(i => getDDay(i.expiry_date).status === 'soon');
+    const ok      = sorted.filter(i => getDDay(i.expiry_date).status === 'ok');
+    const none    = sorted.filter(i => getDDay(i.expiry_date).status === 'none');
+
+    return [
+      expired.length > 0 ? { key: '기한 지남' as SectionKey, data: expired } : null,
+      soon.length    > 0 ? { key: '임박'     as SectionKey, data: soon    } : null,
+      ok.length      > 0 ? { key: '여유'     as SectionKey, data: ok      } : null,
+      none.length    > 0 ? { key: '기한없음' as SectionKey, data: none    } : null,
+    ].filter(Boolean) as { key: SectionKey; data: FridgeItem[] }[];
+  }, [items, filter, sort]);
+
+  const totalDisplay = sections.reduce((s, sec) => s + sec.data.length, 0);
+
+  const SECTION_COLORS: Record<SectionKey, string> = {
+    '기한 지남': C.danger, '임박': C.warn, '여유': C.brown, '기한없음': C.lightOak, '먹은 음식': C.lightOak,
+  };
   const SORTS: SortType[] = ['유통기한', '이름', '넣은날짜'];
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.centered}>
-        <ActivityIndicator size="large" color="#8B5E3C" />
+      <SafeAreaView style={s.centered}>
+        <ActivityIndicator size="large" color={C.brown} />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      {/* 헤더 */}
-      <View style={styles.header}>
-        <Text style={styles.title}>음식</Text>
+    <SafeAreaView style={s.safe}>
+      {/* ── 헤더 ── */}
+      <View style={s.header}>
+        <View>
+          <Text style={s.subLabel}>우리 집 냉장고</Text>
+          <Text style={s.title}>음식</Text>
+        </View>
+        <View style={s.headerBtns}>
+          <IconBtn onPress={() => setShowSortMenu(v => !v)}>
+            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+              <Path d="M3 6h18M6 12h12M9 18h6" stroke={C.dark} strokeWidth={1.8} strokeLinecap="round" />
+            </Svg>
+          </IconBtn>
+        </View>
       </View>
 
-      {/* 필터 탭 */}
-      <View style={styles.filterRow}>
-        {FILTERS.map(f => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.filterTab, filter === f && styles.filterTabActive]}
-            onPress={() => setFilter(f)}
-          >
-            <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>{f}</Text>
-          </TouchableOpacity>
-        ))}
+      {/* ── StatBlock 3개 ── */}
+      <View style={s.statRow}>
+        <StatBlock primary={activeItems.length} label="전체" sub="보관 중" color={C.brown} />
+        <StatBlock primary={soonCount} label="임박" sub="D-3 이내" color={C.warn} />
+        <StatBlock primary={expiredCount} label="초과" sub="D-day 넘음" color={C.danger} />
       </View>
 
-      {/* 정렬 바 */}
-      <View style={styles.sortBar}>
-        <Text style={styles.countText}>{displayItems.length}개</Text>
-        <TouchableOpacity style={styles.sortBtn} onPress={() => setShowSortMenu(!showSortMenu)}>
-          <ArrowUpDown color="#8B5E3C" size={14} strokeWidth={2} />
-          <Text style={styles.sortBtnText}>{sort}순</Text>
-        </TouchableOpacity>
-
-        {/* 정렬 드롭다운 */}
-        {showSortMenu && (
-          <View style={styles.sortMenu}>
-            {SORTS.map(s => (
+      {/* ── 필터 탭 ── */}
+      {Dimensions.get('window').width >= 768 ? (
+        <View style={s.filterWrapTablet}>
+          {(['전체', '냉장', '냉동', '실온', '먹은 음식'] as FilterType[]).map(f => (
+            <TouchableOpacity
+              key={f}
+              style={[s.filterTab, filter === f && s.filterTabActive]}
+              onPress={() => setFilter(f)}
+            >
+              <Text style={[s.filterText, filter === f && s.filterTextActive]}>{f}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : (
+        <View style={s.filterScrollWrapper}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterWrap}>
+            {(['전체', '냉장', '냉동', '실온', '먹은 음식'] as FilterType[]).map(f => (
               <TouchableOpacity
-                key={s}
-                style={[styles.sortMenuItem, sort === s && styles.sortMenuItemActive]}
-                onPress={() => { setSort(s); setShowSortMenu(false); }}
+                key={f}
+                style={[s.filterTab, filter === f && s.filterTabActive]}
+                onPress={() => setFilter(f)}
               >
-                <Text style={[styles.sortMenuText, sort === s && styles.sortMenuTextActive]}>{s}순</Text>
+                <Text style={[s.filterText, filter === f && s.filterTextActive]}>{f}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* ── 정렬 바 ── */}
+      <View style={s.sortBar}>
+        <Text style={s.sortCount}>{totalDisplay}개 · {sort}순</Text>
+        <TouchableOpacity style={s.sortBtn} onPress={() => setShowSortMenu(v => !v)}>
+          <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+            <Path d="M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3" stroke={C.warmOak} strokeWidth={2} strokeLinecap="round" />
+          </Svg>
+          <Text style={s.sortBtnText}>{sort}순</Text>
+        </TouchableOpacity>
+        {showSortMenu && (
+          <View style={s.sortMenu}>
+            {SORTS.map(o => (
+              <TouchableOpacity key={o} style={[s.sortItem, sort === o && s.sortItemActive]} onPress={() => { setSort(o); setShowSortMenu(false); }}>
+                <Text style={[s.sortItemText, sort === o && s.sortItemTextActive]}>{o}순</Text>
               </TouchableOpacity>
             ))}
           </View>
         )}
       </View>
 
-      {/* 리스트 */}
-      {displayItems.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyText}>
-            {filter === '먹은 음식' ? '다먹은 음식이 없어요' : '음식을 추가해 보세요 🍱'}
-          </Text>
+      {/* ── 리스트 ── */}
+      {totalDisplay === 0 ? (
+        <View style={s.empty}>
+          <Text style={s.emptyText}>{filter === '먹은 음식' ? '다먹은 음식이 없어요' : '음식을 추가해 보세요 🍱'}</Text>
         </View>
       ) : (
-        <FlatList
-          data={displayItems}
+        <SectionList
+          sections={sections}
           keyExtractor={item => item.id}
+          renderSectionHeader={({ section }) => (
+            sort === '유통기한' && filter !== '먹은 음식'
+              ? <SectionLabel label={section.key} count={section.data.length} color={SECTION_COLORS[section.key]} />
+              : null
+          )}
           renderItem={({ item }) => (
-            <FridgeItemRow
+            <FoodRow
               item={item}
-              onToggleConsumed={handleToggleConsumed}
+              onToggle={handleToggle}
               onDelete={handleDelete}
-              onQuantityChange={handleQuantityChange}
+              onQtyChange={handleQtyChange}
               onEdit={handleEdit}
             />
           )}
-          contentContainerStyle={{ paddingTop: 8, paddingBottom: 24 }}
+          contentContainerStyle={{ paddingTop: 4, paddingBottom: 100 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          stickySectionHeadersEnabled={false}
         />
       )}
-      {/* 음식 추가 FAB */}
+
+      {/* ── FAB ── */}
       <TouchableOpacity
-        style={styles.addFab}
+        style={s.fab}
         onPress={() => navigation.navigate('AddFridgeItem', { familyId: familyId ?? undefined })}
         activeOpacity={0.85}
       >
-        <Plus color="#FFFFFF" size={26} strokeWidth={2.5} />
+        <Plus color="#fff" size={24} strokeWidth={2.5} />
       </TouchableOpacity>
-
     </SafeAreaView>
   );
 };
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#FDF6EC' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FDF6EC' },
+const s = StyleSheet.create({
+  safe:    { flex: 1, backgroundColor: C.cream },
+  centered:{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.cream },
 
-  // 헤더
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16,
-  },
-  title: { fontSize: 26, fontWeight: '800', color: '#5C3D1E' },
-  addFab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    backgroundColor: '#8B5E3C',
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#6B4226',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
+  header:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 6, paddingBottom: 14 },
+  subLabel:  { fontSize: 11, color: C.lightOak, fontWeight: '600' },
+  title:     { fontSize: 24, fontWeight: '800', color: C.dark, letterSpacing: -0.4, marginTop: 1 },
+  headerBtns:{ flexDirection: 'row', gap: 8 },
 
-  // 필터
-  filterRow: {
-    flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 12,
-  },
-  filterTab: {
-    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
-    backgroundColor: '#FFF8F0', borderWidth: 1, borderColor: '#DEC8A8',
-  },
-  filterTabActive: { backgroundColor: '#8B5E3C', borderColor: '#8B5E3C' },
-  filterText: { fontSize: 13, color: '#8B5E3C', fontWeight: '600' },
-  filterTextActive: { color: '#FFFFFF' },
+  statRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 14 },
 
-  // 정렬 바
-  sortBar: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, marginBottom: 4, position: 'relative', zIndex: 10,
-  },
-  countText: { fontSize: 13, color: '#C49A6C', fontWeight: '500' },
-  sortBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  sortBtnText: { fontSize: 13, color: '#8B5E3C', fontWeight: '600' },
-  sortMenu: {
-    position: 'absolute', right: 16, top: 28,
-    backgroundColor: '#FFF8F0', borderRadius: 12,
-    borderWidth: 1, borderColor: '#DEC8A8',
-    shadowColor: '#8B5E3C', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12, shadowRadius: 8, elevation: 6,
-    overflow: 'hidden',
-  },
-  sortMenuItem: { paddingHorizontal: 20, paddingVertical: 12 },
-  sortMenuItemActive: { backgroundColor: '#FDF6EC' },
-  sortMenuText: { fontSize: 14, color: '#8B5E3C', fontWeight: '500' },
-  sortMenuTextActive: { color: '#5C3D1E', fontWeight: '700' },
+  filterScrollWrapper: { height: 44 },
+  filterWrap:        { paddingLeft: 16, paddingRight: 8, gap: 6, alignItems: 'center' },
+  filterWrapTablet:  { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, height: 44 },
+  filterTab:   { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 14, backgroundColor: C.ivory, borderWidth: 1, borderColor: C.edge },
+  filterTabActive: { backgroundColor: C.brown, borderColor: C.brown },
+  filterText:  { fontSize: 11, fontWeight: '600', color: C.warmOak },
+  filterTextActive: { color: '#fff' },
 
-  // 빈 상태
-  empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  emptyText: { fontSize: 15, color: '#C49A6C', fontWeight: '500' },
+  sortBar:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 6, position: 'relative', zIndex: 10 },
+  sortCount:   { fontSize: 11, color: C.lightOak, fontWeight: '500' },
+  sortBtn:     { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  sortBtnText: { fontSize: 11, color: C.warmOak, fontWeight: '600' },
+  sortMenu:    { position: 'absolute', right: 16, top: 30, backgroundColor: C.ivory, borderRadius: 12, borderWidth: 1, borderColor: C.edge, shadowColor: C.brown, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 6, overflow: 'hidden' },
+  sortItem:    { paddingHorizontal: 20, paddingVertical: 12 },
+  sortItemActive: { backgroundColor: C.cream },
+  sortItemText:   { fontSize: 14, color: C.warmOak, fontWeight: '500' },
+  sortItemTextActive: { color: C.dark, fontWeight: '700' },
+
+  empty:     { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  emptyText: { fontSize: 15, color: C.lightOak, fontWeight: '500' },
+
+  fab: { position: 'absolute', bottom: 24, right: 24, backgroundColor: C.brown, width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', shadowColor: C.deep, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6 },
 });
 
 export default FridgeScreen;

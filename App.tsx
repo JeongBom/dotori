@@ -1,30 +1,30 @@
-// App.tsx: 앱의 진입점 (entry point)
-// index.ts에서 이 파일을 import해서 앱을 시작함
-//
-// GestureHandlerRootView: React Navigation의 제스처(스와이프 등)가 동작하려면 필요
-// StatusBar: 상단 시스템 바(시간, 배터리) 스타일 설정
-
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
+import * as ExpoSplashScreen from 'expo-splash-screen';
 import { NavigationContainerRef } from '@react-navigation/native';
 import AppNavigator from './src/navigation';
+import SplashScreen from './src/screens/SplashScreen';
 import { rescheduleAllNotifications } from './src/lib/notifications';
 import { RootStackParamList } from './src/navigation';
 
+// 네이티브 스플래시를 수동으로 제어
+ExpoSplashScreen.preventAutoHideAsync();
+
 export default function App() {
   const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
+  const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
-    // 앱 시작 시 알림 권한 요청 + 기존 음식 알림 재등록
+    // 네이티브 스플래시 즉시 숨기고 커스텀 스플래시로 전환
+    ExpoSplashScreen.hideAsync();
+
     rescheduleAllNotifications();
 
-    // 알림을 탭했을 때 음식 화면으로 이동
     const sub = Notifications.addNotificationResponseReceivedListener(response => {
       const itemId = response.notification.request.content.data?.itemId as string | undefined;
       if (itemId && navigationRef.current) {
-        // 탭 바의 음식(Fridge) 탭으로 이동
         navigationRef.current.navigate('Main' as never);
       }
     });
@@ -33,10 +33,12 @@ export default function App() {
   }, []);
 
   return (
-    // style={{ flex: 1 }}: 화면 전체를 채우도록 설정
     <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style="dark" />
       <AppNavigator navigationRef={navigationRef} />
+      {showSplash && (
+        <SplashScreen onFinish={() => setShowSplash(false)} />
+      )}
     </GestureHandlerRootView>
   );
 }

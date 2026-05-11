@@ -1,31 +1,18 @@
-// 생필품 재고 관리 화면
-// - 사용자 정의 카테고리 (추가/수정/삭제 + 색상 피커)
-// - 카테고리 필터(롱프레스 → 수정), 정렬, 수량 +/-, 스와이프 삭제
-// - 재고 임계값 이하 시 경고 표시 및 즉시 알림
+// 생필품 재고 관리 화면 — 도토리 v2 디자인
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
-  View,
-  Text,
-  FlatList,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  TextInput,
-  Modal,
-  Pressable,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Keyboard,
+  View, Text, FlatList, SectionList, StyleSheet,
+  TouchableOpacity, ActivityIndicator, Alert,
+  TextInput, Modal, Pressable, KeyboardAvoidingView,
+  Platform, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useIsFocused, CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Swipeable } from 'react-native-gesture-handler';
-import { Plus, ArrowUpDown, AlertTriangle, X, Trash2 } from 'lucide-react-native';
+import Svg, { Path, Circle, Rect } from 'react-native-svg';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { Supply, SupplyCategoryEntry } from '../types';
@@ -40,10 +27,84 @@ type SuppliesNavProp = CompositeNavigationProp<
 type FilterType = '전체' | string;
 type SortType = '이름순' | '재고적은순' | '추가순';
 
-const CAT_COLOR = '#8B5E3C'; // 모든 카테고리 통일 색상
+// ── 디자인 토큰 ───────────────────────────────
+const C = {
+  brown:    '#8B5E3C',
+  warmOak:  '#A87850',
+  lightOak: '#C49A6C',
+  ivory:    '#FFF8F0',
+  cream:    '#FDF6EC',
+  edge:     '#DEC8A8',
+  dark:     '#5C3D1E',
+  deep:     '#6B4226',
+  danger:   '#D95F4B',
+  warn:     '#E09B4B',
+  success:  '#5AAF6E',
+} as const;
+
+const CAT_COLOR = C.brown;
+
+// ── 물품명 → 이모지 매핑 ──────────────────────
+function getSupplyEmoji(name: string, category?: string): string {
+  const n = name;
+
+  // 욕실 / 세면
+  if (/샴푸|린스|컨디셔너/.test(n)) return '🚿';
+  if (/비누|핸드워시|손비누|폼클/.test(n)) return '🫧';
+  if (/치약|칫솔/.test(n)) return '🦷';
+  if (/면도기|면도|쉐이빙/.test(n)) return '🪒';
+  if (/바디워시|샤워젤|바디클/.test(n)) return '🛁';
+  if (/로션|보디로션|핸드크림|크림/.test(n)) return '🧴';
+  if (/면봉/.test(n)) return '🩺';
+  if (/선크림|선스크린|자외선차단/.test(n)) return '☀️';
+
+  // 세탁
+  if (/섬유유연제|유연제/.test(n)) return '🌸';
+  if (/세탁세제|세탁|빨래/.test(n)) return '🧺';
+
+  // 주방 / 설거지
+  if (/주방세제|설거지세제/.test(n)) return '🍽️';
+  if (/수세미/.test(n)) return '🧽';
+  if (/고무장갑|위생장갑/.test(n)) return '🧤';
+  if (/종이컵|일회용컵/.test(n)) return '☕';
+  if (/지퍼백|비닐봉투|랩|호일/.test(n)) return '📦';
+  if (/쓰레기봉투|쓰레기|봉투/.test(n)) return '🗑️';
+
+  // 청소
+  if (/락스|표백제|염소/.test(n)) return '🧪';
+  if (/청소포|물걸레|청소티슈/.test(n)) return '🫧';
+  if (/세제/.test(n)) return '🧴';
+  if (/청소/.test(n)) return '🧹';
+
+  // 화장지 / 티슈
+  if (/화장지|두루마리휴지|두루마리/.test(n)) return '🧻';
+  if (/물티슈/.test(n)) return '💧';
+  if (/휴지|티슈|화장솜/.test(n)) return '🧻';
+
+  // 위생 / 헬스
+  if (/기저귀|팸퍼스|하기스/.test(n)) return '👶';
+  if (/생리대|탐폰|생리팬티/.test(n)) return '🩹';
+  if (/마스크/.test(n)) return '😷';
+  if (/밴드|반창고|붕대/.test(n)) return '🩹';
+  if (/소독|알코올|과산화수소/.test(n)) return '🧪';
+  if (/진통제|소화제|약|비타민/.test(n)) return '💊';
+
+  // 방향 / 탈취
+  if (/방향제|탈취제|디퓨저|향수/.test(n)) return '🌸';
+  if (/방충제|모기/.test(n)) return '🪰';
+
+  // 카테고리 fallback
+  if (category) {
+    if (/욕실|세면/.test(category)) return '🚿';
+    if (/주방/.test(category))      return '🍽️';
+    if (/세탁|세제/.test(category)) return '🧺';
+    if (/청소/.test(category))      return '🧹';
+  }
+
+  return '📦';
+}
 
 // ── 정렬 ─────────────────────────────────────
-
 function sortItems(items: Supply[], sort: SortType): Supply[] {
   return [...items].sort((a, b) => {
     if (sort === '이름순') return a.name.localeCompare(b.name, 'ko');
@@ -52,37 +113,68 @@ function sortItems(items: Supply[], sort: SortType): Supply[] {
   });
 }
 
-// ── 스와이프 삭제 ─────────────────────────────
+// ── 아이콘 버튼 ──────────────────────────────
+function IconBtn({ onPress, children }: { onPress?: () => void; children: React.ReactNode }) {
+  return (
+    <TouchableOpacity onPress={onPress} style={iconBtnStyle} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+      {children}
+    </TouchableOpacity>
+  );
+}
+const iconBtnStyle: object = {
+  width: 36, height: 36, borderRadius: 18,
+  backgroundColor: C.ivory, borderWidth: 1, borderColor: C.edge,
+  justifyContent: 'center', alignItems: 'center',
+};
 
-const RightAction: React.FC<{ onDelete: () => void }> = ({ onDelete }) => (
-  <TouchableOpacity style={swipeStyles.deleteBtn} onPress={onDelete}>
-    <Text style={swipeStyles.deleteText}>삭제</Text>
-  </TouchableOpacity>
-);
-
-const swipeStyles = StyleSheet.create({
-  deleteBtn: {
-    backgroundColor: '#D95F4B', justifyContent: 'center', alignItems: 'center',
-    width: 80, marginBottom: 10, borderTopRightRadius: 14, borderBottomRightRadius: 14,
-  },
-  deleteText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
+// ── 섹션 라벨 ────────────────────────────────
+function SectionLabel({ label, count, color }: { label: string; count: number; color: string }) {
+  return (
+    <View style={sl.wrap}>
+      <View style={[sl.dot, { backgroundColor: color }]} />
+      <Text style={[sl.label, { color }]}>{label}</Text>
+      <Text style={sl.count}>{count}</Text>
+    </View>
+  );
+}
+const sl = StyleSheet.create({
+  wrap: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 6 },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  label: { fontSize: 12, fontWeight: '700' },
+  count: { fontSize: 11, color: C.lightOak, fontWeight: '500' },
 });
 
-// ── 개별 아이템 행 ────────────────────────────
+// ── 스와이프 삭제 ─────────────────────────────
+const RightAction: React.FC<{ onDelete: () => void }> = ({ onDelete }) => (
+  <TouchableOpacity style={swipe.btn} onPress={onDelete}>
+    <Text style={swipe.text}>삭제</Text>
+  </TouchableOpacity>
+);
+const swipe = StyleSheet.create({
+  btn: {
+    backgroundColor: C.danger, justifyContent: 'center', alignItems: 'center',
+    width: 80, marginBottom: 8, borderTopRightRadius: 14, borderBottomRightRadius: 14,
+  },
+  text: { color: '#fff', fontWeight: '700', fontSize: 14 },
+});
 
+// ── 생필품 행 ─────────────────────────────────
 interface SupplyRowProps {
   item: Supply;
-  catColor: string;
   onDelete: (item: Supply) => void;
   onQuantityChange: (item: Supply, delta: number) => void;
   onEdit: (item: Supply) => void;
 }
 
-const SupplyRow: React.FC<SupplyRowProps> = React.memo(({ item, catColor, onDelete, onQuantityChange, onEdit }) => {
+const SupplyRow: React.FC<SupplyRowProps> = React.memo(({ item, onDelete, onQuantityChange, onEdit }) => {
   const swipeRef = useRef<Swipeable>(null);
   const isLow = item.quantity <= item.low_stock_threshold;
   const [editingQty, setEditingQty] = useState(false);
   const [qtyInput, setQtyInput] = useState(String(item.quantity));
+
+  // 재고 레벨 (0~1): threshold*3을 만재로 봄
+  const level = Math.min(item.quantity / Math.max(item.low_stock_threshold * 3, 1), 1);
+  const barColor = isLow ? C.danger : level > 0.8 ? C.success : C.warn;
 
   const commitQtyEdit = () => {
     setEditingQty(false);
@@ -94,94 +186,131 @@ const SupplyRow: React.FC<SupplyRowProps> = React.memo(({ item, catColor, onDele
 
   const handleDelete = () => {
     swipeRef.current?.close();
-    Alert.alert('삭제 확인', `${item.name}을(를) 삭제할까요?`, [
+    Alert.alert('삭제 확인', `'${item.name}'을(를) 삭제할까요?`, [
       { text: '취소', style: 'cancel', onPress: () => swipeRef.current?.close() },
       { text: '삭제', style: 'destructive', onPress: () => onDelete(item) },
     ]);
   };
 
+  const emoji = getSupplyEmoji(item.name, item.category);
+
   return (
     <Swipeable ref={swipeRef} renderRightActions={() => <RightAction onDelete={handleDelete} />} overshootRight={false}>
-      <TouchableOpacity style={[rowStyles.row, isLow && rowStyles.rowLow]} onPress={() => onEdit(item)} activeOpacity={0.75}>
-        <View style={[rowStyles.catBar, { backgroundColor: catColor }]} />
-        <View style={rowStyles.info}>
-          <View style={rowStyles.topRow}>
-            <Text style={rowStyles.name}>{item.name}</Text>
-            {isLow && <AlertTriangle color="#D95F4B" size={15} strokeWidth={2} />}
+      <TouchableOpacity
+        style={[row.card, isLow && row.cardLow]}
+        onPress={() => onEdit(item)}
+        activeOpacity={0.8}
+      >
+        {/* 이모지 아이콘 */}
+        <View style={row.iconBox}>
+          <Text style={row.iconEmoji}>{emoji}</Text>
+        </View>
+
+        {/* 정보 */}
+        <View style={row.body}>
+          <View style={row.nameRow}>
+            <Text style={row.name} numberOfLines={1}>{item.name}</Text>
             {item.category ? (
-              <View style={[rowStyles.catBadge, { backgroundColor: catColor }]}>
-                <Text style={rowStyles.catText}>{item.category}</Text>
+              <View style={row.catChip}>
+                <Text style={row.catText}>{item.category}</Text>
               </View>
             ) : null}
           </View>
-          {item.note ? <Text style={rowStyles.note} numberOfLines={1}>{item.note}</Text> : null}
-        </View>
-        <View style={rowStyles.rightCol}>
-          <View style={rowStyles.qtyRow}>
-            <TouchableOpacity onPress={() => onQuantityChange(item, -1)} style={rowStyles.qtyBtn}>
-              <Text style={rowStyles.qtyBtnText}>−</Text>
-            </TouchableOpacity>
-            {editingQty ? (
-              <TextInput
-                style={rowStyles.qtyInput}
-                value={qtyInput}
-                onChangeText={setQtyInput}
-                keyboardType="number-pad"
-                onBlur={commitQtyEdit}
-                onSubmitEditing={commitQtyEdit}
-                autoFocus
-                selectTextOnFocus
-                maxLength={4}
-              />
-            ) : (
-              <TouchableOpacity onPress={() => { setQtyInput(String(item.quantity)); setEditingQty(true); }}>
-                <Text style={[rowStyles.qtyNum, isLow && rowStyles.qtyNumLow]}>{item.quantity}개</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity onPress={() => onQuantityChange(item, 1)} style={rowStyles.qtyBtn}>
-              <Text style={rowStyles.qtyBtnText}>+</Text>
-            </TouchableOpacity>
+
+          {/* 프로그레스 바 */}
+          <View style={row.barTrack}>
+            <View style={[row.barFill, { width: `${Math.max(level * 100, 3)}%` as any, backgroundColor: barColor }]} />
           </View>
-          {isLow && <Text style={rowStyles.lowLabel}>재고 부족</Text>}
+
+          <View style={row.bottomRow}>
+            {item.note ? (
+              <Text style={row.note} numberOfLines={1}>{item.note}</Text>
+            ) : (
+              <Text style={row.threshold}>최소 {item.low_stock_threshold}개</Text>
+            )}
+            {isLow && <Text style={row.lowLabel}>부족</Text>}
+          </View>
+        </View>
+
+        {/* 수량 스텝퍼 */}
+        <View style={row.stepper}>
+          <TouchableOpacity onPress={() => onQuantityChange(item, 1)} style={row.stepBtnPlus}>
+            <Text style={row.stepPlusText}>+</Text>
+          </TouchableOpacity>
+          {editingQty ? (
+            <TextInput
+              style={row.qtyInput}
+              value={qtyInput}
+              onChangeText={setQtyInput}
+              keyboardType="number-pad"
+              onBlur={commitQtyEdit}
+              onSubmitEditing={commitQtyEdit}
+              autoFocus
+              selectTextOnFocus
+              maxLength={4}
+            />
+          ) : (
+            <TouchableOpacity onPress={() => { setQtyInput(String(item.quantity)); setEditingQty(true); }}>
+              <Text style={[row.qtyNum, isLow && row.qtyNumLow]}>{item.quantity}</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={() => onQuantityChange(item, -1)} style={row.stepBtnMinus}>
+            <Text style={row.stepMinusText}>−</Text>
+          </TouchableOpacity>
         </View>
       </TouchableOpacity>
     </Swipeable>
   );
 });
 
-const rowStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF8F0',
-    marginHorizontal: 16, marginBottom: 10, borderRadius: 14, overflow: 'hidden',
-    shadowColor: '#8B5E3C', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 2,
+const row = StyleSheet.create({
+  card: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: C.ivory, marginHorizontal: 16, marginBottom: 8,
+    borderRadius: 14, padding: 10,
+    shadowColor: C.brown, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
   },
-  rowLow: { borderWidth: 1, borderColor: '#F5C2BB' },
-  catBar: { width: 4, alignSelf: 'stretch' },
-  info: { flex: 1, paddingVertical: 14, paddingHorizontal: 12 },
-  topRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
-  name: { fontSize: 15, fontWeight: '600', color: '#5C3D1E', flex: 1 },
-  catBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
-  catText: { fontSize: 10, color: '#FFFFFF', fontWeight: '600' },
-  note: { fontSize: 12, color: '#C49A6C', marginTop: 2 },
-  rightCol: { alignItems: 'flex-end', paddingRight: 14, gap: 4 },
-  qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  qtyBtn: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#EDD9C0', alignItems: 'center', justifyContent: 'center' },
-  qtyBtnText: { fontSize: 14, fontWeight: '700', color: '#5C3D1E', lineHeight: 18 },
-  qtyNum: { fontSize: 14, fontWeight: '700', color: '#5C3D1E', minWidth: 32, textAlign: 'center' },
-  qtyNumLow: { color: '#D95F4B' },
+  cardLow: { borderWidth: 1, borderColor: '#F5C2BB' },
+  iconBox: {
+    width: 36, height: 36, borderRadius: 10, backgroundColor: C.cream,
+    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+  },
+  iconEmoji: { fontSize: 18 },
+  body: { flex: 1, minWidth: 0 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  name: { fontSize: 13, fontWeight: '700', color: C.dark, flex: 1 },
+  catChip: { backgroundColor: C.cream, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 },
+  catText: { fontSize: 9, fontWeight: '600', color: C.lightOak },
+  barTrack: { height: 4, backgroundColor: C.edge + '66', borderRadius: 2, marginBottom: 4, overflow: 'hidden' },
+  barFill: { height: '100%', borderRadius: 2 },
+  bottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  note: { fontSize: 10, color: C.lightOak, flex: 1 },
+  threshold: { fontSize: 10, color: C.lightOak },
+  lowLabel: { fontSize: 10, fontWeight: '700', color: C.danger },
+  stepper: { alignItems: 'center', gap: 2, flexShrink: 0 },
+  stepBtnPlus: {
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: C.brown, justifyContent: 'center', alignItems: 'center',
+  },
+  stepPlusText: { fontSize: 13, fontWeight: '700', color: '#fff', lineHeight: 16 },
+  stepBtnMinus: {
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: C.edge, justifyContent: 'center', alignItems: 'center',
+  },
+  stepMinusText: { fontSize: 13, fontWeight: '700', color: C.dark, lineHeight: 16 },
+  qtyNum: { fontSize: 15, fontWeight: '800', color: C.dark, minWidth: 20, textAlign: 'center' },
+  qtyNumLow: { color: C.danger },
   qtyInput: {
-    fontSize: 14, fontWeight: '700', color: '#5C3D1E', textAlign: 'center',
-    minWidth: 36, paddingHorizontal: 4, paddingVertical: 0,
-    borderBottomWidth: 1.5, borderBottomColor: '#8B5E3C',
+    fontSize: 14, fontWeight: '700', color: C.dark, textAlign: 'center',
+    minWidth: 28, borderBottomWidth: 1.5, borderBottomColor: C.brown,
+    paddingHorizontal: 2, paddingVertical: 0,
   },
-  lowLabel: { fontSize: 11, color: '#D95F4B', fontWeight: '600' },
 });
 
-// ── 카테고리 모달 (추가 / 수정 겸용) ──────────
-
+// ── 카테고리 모달 ─────────────────────────────
 interface CategoryModalProps {
   visible: boolean;
-  editing: SupplyCategoryEntry | null; // null → 추가 모드
+  editing: SupplyCategoryEntry | null;
   onClose: () => void;
   onSave: (name: string, id?: string) => Promise<void>;
   onDelete: (cat: SupplyCategoryEntry) => void;
@@ -191,11 +320,7 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ visible, editing, onClose
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (visible) {
-      setName(editing?.name ?? '');
-    }
-  }, [visible, editing]);
+  useEffect(() => { if (visible) setName(editing?.name ?? ''); }, [visible, editing]);
 
   const handleSave = async () => {
     if (!name.trim()) { Alert.alert('알림', '카테고리 이름을 입력해주세요.'); return; }
@@ -208,7 +333,7 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ visible, editing, onClose
 
   const handleDelete = () => {
     if (!editing) return;
-    Alert.alert('카테고리 삭제', `'${editing.name}' 카테고리를 삭제할까요?\n해당 카테고리로 등록된 생필품은 카테고리 없음으로 변경됩니다.`, [
+    Alert.alert('카테고리 삭제', `'${editing.name}' 카테고리를 삭제할까요?`, [
       { text: '취소', style: 'cancel' },
       { text: '삭제', style: 'destructive', onPress: () => { handleClose(); onDelete(editing); } },
     ]);
@@ -216,33 +341,33 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ visible, editing, onClose
 
   return (
     <Modal visible={visible} transparent animationType="slide">
-      <KeyboardAvoidingView
-        style={modalStyles.kavWrapper}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+      <KeyboardAvoidingView style={cm.kav} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
-        <View style={modalStyles.sheet}>
-          <View style={modalStyles.handle} />
-          <View style={modalStyles.headerRow}>
-            <Text style={modalStyles.title}>{editing ? '카테고리 수정' : '카테고리 추가'}</Text>
+        <View style={cm.sheet}>
+          <View style={cm.handle} />
+          <View style={cm.headerRow}>
+            <Text style={cm.title}>{editing ? '카테고리 수정' : '카테고리 추가'}</Text>
             <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
               {editing && (
                 <TouchableOpacity onPress={handleDelete}>
-                  <Trash2 color="#D95F4B" size={18} strokeWidth={2} />
+                  <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+                    <Path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke={C.danger} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+                  </Svg>
                 </TouchableOpacity>
               )}
               <TouchableOpacity onPress={handleClose}>
-                <X color="#8B5E3C" size={20} strokeWidth={2} />
+                <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+                  <Path d="M18 6L6 18M6 6l12 12" stroke={C.brown} strokeWidth={2} strokeLinecap="round" />
+                </Svg>
               </TouchableOpacity>
             </View>
           </View>
-
-          <Text style={modalStyles.label}>이름</Text>
-          <View style={modalStyles.inputBox}>
+          <Text style={cm.label}>이름</Text>
+          <View style={cm.inputBox}>
             <TextInput
-              style={modalStyles.input}
+              style={cm.input}
               placeholder="예) 욕실용품, 세탁용품"
-              placeholderTextColor="#C49A6C"
+              placeholderTextColor={C.lightOak}
               value={name}
               onChangeText={setName}
               returnKeyType="done"
@@ -250,13 +375,8 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ visible, editing, onClose
               maxLength={12}
             />
           </View>
-
-          <TouchableOpacity
-            style={[modalStyles.saveBtn, { marginTop: 20 }, saving && { opacity: 0.5 }]}
-            onPress={handleSave}
-            disabled={saving}
-          >
-            <Text style={modalStyles.saveBtnText}>{saving ? '저장 중...' : (editing ? '수정 완료' : '저장')}</Text>
+          <TouchableOpacity style={[cm.saveBtn, saving && { opacity: 0.5 }]} onPress={handleSave} disabled={saving}>
+            <Text style={cm.saveBtnText}>{saving ? '저장 중...' : editing ? '수정 완료' : '저장'}</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -264,36 +384,32 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ visible, editing, onClose
   );
 };
 
-const modalStyles = StyleSheet.create({
-  kavWrapper: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: '#FFF8F0', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingHorizontal: 24, paddingBottom: 40, paddingTop: 12,
-  },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#DEC8A8', alignSelf: 'center', marginBottom: 20 },
+const cm = StyleSheet.create({
+  kav: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: C.ivory, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingBottom: 40, paddingTop: 12 },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.edge, alignSelf: 'center', marginBottom: 20 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  title: { fontSize: 17, fontWeight: '700', color: '#5C3D1E' },
-  label: { fontSize: 13, fontWeight: '600', color: '#8B5E3C', marginBottom: 8 },
-  inputBox: { backgroundColor: '#FDF6EC', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: '#DEC8A8' },
-  input: { fontSize: 16, color: '#5C3D1E', padding: 0 },
-  saveBtn: { backgroundColor: '#8B5E3C', borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
-  saveBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  title: { fontSize: 17, fontWeight: '700', color: C.dark },
+  label: { fontSize: 13, fontWeight: '600', color: C.brown, marginBottom: 8 },
+  inputBox: { backgroundColor: C.cream, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: C.edge },
+  input: { fontSize: 16, color: C.dark, padding: 0 },
+  saveBtn: { backgroundColor: C.brown, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 20 },
+  saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
 
 // ── 메인 화면 ─────────────────────────────────
-
 const SORTS: SortType[] = ['이름순', '재고적은순', '추가순'];
 
 const SuppliesScreen: React.FC = () => {
   const navigation = useNavigation<SuppliesNavProp>();
   const isFocused = useIsFocused();
 
-  const [items, setItems] = useState<Supply[]>([]);
+  const [items, setItems]           = useState<Supply[]>([]);
   const [categories, setCategories] = useState<SupplyCategoryEntry[]>([]);
-  const [familyId, setFamilyId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<FilterType>('전체');
-  const [sort, setSort] = useState<SortType>('추가순');
+  const [familyId, setFamilyId]     = useState<string | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [filter, setFilter]         = useState<FilterType>('전체');
+  const [sort, setSort]             = useState<SortType>('추가순');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [categoryModal, setCategoryModal] = useState<{ visible: boolean; editing: SupplyCategoryEntry | null }>({ visible: false, editing: null });
 
@@ -316,14 +432,7 @@ const SuppliesScreen: React.FC = () => {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
-
-  // 화면 포커스 시: 데이터 갱신 + 필터를 전체로 리셋
-  useEffect(() => {
-    if (isFocused) {
-      setFilter('전체');
-      loadData();
-    }
-  }, [isFocused, loadData]);
+  useEffect(() => { if (isFocused) { setFilter('전체'); loadData(); } }, [isFocused, loadData]);
 
   const handleQuantityChange = useCallback(async (item: Supply, delta: number) => {
     const next = Math.max(0, item.quantity + delta);
@@ -343,15 +452,12 @@ const SuppliesScreen: React.FC = () => {
     if (!error) setItems(prev => prev.filter(i => i.id !== item.id));
   }, []);
 
-  // 카테고리 저장 (추가 또는 수정)
   const handleSaveCategory = useCallback(async (name: string, id?: string) => {
     if (!familyId) return;
     if (id) {
-      // 수정
       const { error } = await supabase.from('supply_categories').update({ name }).eq('id', id);
       if (!error) {
         setCategories(prev => prev.map(c => c.id === id ? { ...c, name } : c));
-        // 해당 카테고리를 사용하는 supply들도 이름 업데이트
         const oldName = categories.find(c => c.id === id)?.name;
         if (oldName && oldName !== name) {
           await supabase.from('supplies').update({ category: name }).eq('family_id', familyId).eq('category', oldName);
@@ -360,148 +466,177 @@ const SuppliesScreen: React.FC = () => {
         setCategoryModal({ visible: false, editing: null });
       }
     } else {
-      // 추가
       if (categories.some(c => c.name === name)) { Alert.alert('알림', '이미 같은 이름의 카테고리가 있어요.'); return; }
       const { data, error } = await supabase.from('supply_categories').insert({ family_id: familyId, name, color: CAT_COLOR }).select().single();
-      if (!error && data) {
-        setCategories(prev => [...prev, data as SupplyCategoryEntry]);
-        setCategoryModal({ visible: false, editing: null });
-      }
+      if (!error && data) { setCategories(prev => [...prev, data as SupplyCategoryEntry]); setCategoryModal({ visible: false, editing: null }); }
     }
   }, [familyId, categories]);
 
-  // 카테고리 삭제
   const handleDeleteCategory = useCallback(async (cat: SupplyCategoryEntry) => {
     await supabase.from('supply_categories').delete().eq('id', cat.id);
-    // 해당 카테고리 사용 중인 supply → 카테고리 없음('')으로
     await supabase.from('supplies').update({ category: '' }).eq('family_id', familyId).eq('category', cat.name);
     setCategories(prev => prev.filter(c => c.id !== cat.id));
     setItems(prev => prev.map(i => i.category === cat.name ? { ...i, category: '' } : i));
     if (filter === cat.name) setFilter('전체');
   }, [familyId, filter]);
 
-  const displayItems = sortItems(
-    items.filter(item => filter === '전체' || item.category === filter),
-    sort,
-  );
-  const lowStockCount = items.filter(i => i.quantity <= i.low_stock_threshold).length;
+  // 필터 + 정렬 + 섹션 분리
+  const filtered = useMemo(() => sortItems(
+    items.filter(item => filter === '전체' || item.category === filter), sort,
+  ), [items, filter, sort]);
+
+  const lowItems    = useMemo(() => filtered.filter(i => i.quantity <= i.low_stock_threshold), [filtered]);
+  const okItems     = useMemo(() => filtered.filter(i => i.quantity > i.low_stock_threshold), [filtered]);
+  const lowStockCount = useMemo(() => items.filter(i => i.quantity <= i.low_stock_threshold).length, [items]);
+
+  // 카테고리별 아이템 수 (필터 탭 카운트용)
+  const catCounts = useMemo(() => {
+    const map: Record<string, number> = { '전체': items.length };
+    categories.forEach(c => { map[c.name] = items.filter(i => i.category === c.name).length; });
+    return map;
+  }, [items, categories]);
+
+  const sections = useMemo(() => {
+    const result = [];
+    if (lowItems.length > 0) result.push({ key: 'low', data: lowItems });
+    if (okItems.length > 0)  result.push({ key: 'ok',  data: okItems });
+    return result;
+  }, [lowItems, okItems]);
 
   if (loading) {
-    return (
-      <SafeAreaView style={styles.centered}>
-        <ActivityIndicator size="large" color="#8B5E3C" />
-      </SafeAreaView>
-    );
+    return <SafeAreaView style={s.centered}><ActivityIndicator size="large" color={C.brown} /></SafeAreaView>;
   }
 
   const filterTabs: FilterType[] = ['전체', ...categories.map(c => c.name)];
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={s.safeArea}>
       {/* 헤더 */}
-      <View style={styles.header}>
-        <Text style={styles.title}>생필품</Text>
-        {lowStockCount > 0 && (
-          <View style={styles.lowStockBadge}>
-            <AlertTriangle color="#D95F4B" size={13} strokeWidth={2} />
-            <Text style={styles.lowStockBadgeText}>부족 {lowStockCount}개</Text>
-          </View>
-        )}
+      <View style={s.header}>
+        <View>
+          <Text style={s.subLabel}>우리 집 재고</Text>
+          <Text style={s.title}>생필품</Text>
+        </View>
+        <View style={s.headerRight}>
+          <IconBtn onPress={() => setShowSortMenu(v => !v)}>
+            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+              <Path d="M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3" stroke={C.dark} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+            </Svg>
+          </IconBtn>
+          <IconBtn onPress={() => navigation.navigate('AddSupply', { familyId: familyId ?? undefined })}>
+            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+              <Path d="M12 5v14M5 12h14" stroke={C.dark} strokeWidth={2} strokeLinecap="round" />
+            </Svg>
+          </IconBtn>
+        </View>
       </View>
 
-      {/* 카테고리 필터 + 추가 버튼 */}
-      <View style={styles.filterRow}>
+      {/* 정렬 메뉴 */}
+      {showSortMenu && (
+        <View style={s.sortMenu}>
+          {SORTS.map(sv => (
+            <TouchableOpacity key={sv} style={[s.sortMenuItem, sort === sv && s.sortMenuItemActive]}
+              onPress={() => { setSort(sv); setShowSortMenu(false); }}>
+              <Text style={[s.sortMenuText, sort === sv && s.sortMenuTextActive]}>{sv}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* 재고 부족 배너 */}
+      {lowStockCount > 0 && (
+        <View style={s.alertBanner}>
+          <View style={s.alertIcon}>
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+              <Path d="M12 7v6M12 17v.5" stroke="#fff" strokeWidth={2.2} strokeLinecap="round" />
+            </Svg>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.alertTitle}>재고 부족 {lowStockCount}개</Text>
+            <Text style={s.alertSub}>장보기 전에 확인하세요</Text>
+          </View>
+        </View>
+      )}
+
+      {/* 카테고리 필터 탭 */}
+      <View style={s.filterRow}>
         <FlatList
           horizontal
           data={filterTabs}
           keyExtractor={f => f}
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingLeft: 16, gap: 8, paddingRight: 8 }}
+          contentContainerStyle={{ paddingLeft: 16, gap: 6, paddingRight: 8 }}
           renderItem={({ item: f }) => (
             <TouchableOpacity
-              style={[styles.filterTab, filter === f && styles.filterTabActive]}
+              style={[s.filterTab, filter === f && s.filterTabActive]}
               onPress={() => setFilter(f)}
               onLongPress={() => {
-                // 전체 탭은 수정 불가
                 if (f === '전체') return;
                 const cat = categories.find(c => c.name === f);
                 if (cat) setCategoryModal({ visible: true, editing: cat });
               }}
               delayLongPress={400}
             >
-              <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>{f}</Text>
+              <Text style={[s.filterText, filter === f && s.filterTextActive]}>{f}</Text>
+              <Text style={[s.filterCount, filter === f && s.filterCountActive]}>{catCounts[f] ?? 0}</Text>
             </TouchableOpacity>
           )}
           ListFooterComponent={
-            <TouchableOpacity
-              style={styles.addCatBtn}
-              onPress={() => setCategoryModal({ visible: true, editing: null })}
-            >
-              <Plus color="#8B5E3C" size={14} strokeWidth={2.5} />
-              <Text style={styles.addCatBtnText}>카테고리</Text>
+            <TouchableOpacity style={s.addCatBtn} onPress={() => setCategoryModal({ visible: true, editing: null })}>
+              <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                <Path d="M12 5v14M5 12h14" stroke={C.brown} strokeWidth={2.5} strokeLinecap="round" />
+              </Svg>
+              <Text style={s.addCatText}>카테고리</Text>
             </TouchableOpacity>
           }
         />
       </View>
 
-      {/* 정렬 바 */}
-      <View style={styles.sortBar}>
-        <Text style={styles.countText}>{displayItems.length}개</Text>
-        <TouchableOpacity style={styles.sortBtn} onPress={() => setShowSortMenu(v => !v)}>
-          <ArrowUpDown color="#8B5E3C" size={14} strokeWidth={2} />
-          <Text style={styles.sortBtnText}>{sort}</Text>
-        </TouchableOpacity>
-        {showSortMenu && (
-          <View style={styles.sortMenu}>
-            {SORTS.map(s => (
-              <TouchableOpacity
-                key={s}
-                style={[styles.sortMenuItem, sort === s && styles.sortMenuItemActive]}
-                onPress={() => { setSort(s); setShowSortMenu(false); }}
-              >
-                <Text style={[styles.sortMenuText, sort === s && styles.sortMenuTextActive]}>{s}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
+      {/* 개수 */}
+      <View style={s.countBar}>
+        <Text style={s.countText}>{filtered.length}개 · {sort}</Text>
       </View>
 
-      {/* 리스트 */}
-      {displayItems.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyText}>
-            {items.length === 0 ? '생필품을 추가해 보세요' : `${filter} 항목이 없어요`}
-          </Text>
+      {/* 섹션 리스트 */}
+      {filtered.length === 0 ? (
+        <View style={s.empty}>
+          <Text style={s.emptyText}>{items.length === 0 ? '생필품을 추가해 보세요' : `${filter} 항목이 없어요`}</Text>
         </View>
       ) : (
-        <FlatList
-          data={displayItems}
+        <SectionList
+          sections={sections}
           keyExtractor={item => item.id}
+          renderSectionHeader={({ section }) => (
+            section.key === 'low'
+              ? <SectionLabel label="부족" count={lowItems.length} color={C.danger} />
+              : <SectionLabel label="충분" count={okItems.length} color={C.success} />
+          )}
           renderItem={({ item }) => (
             <SupplyRow
               item={item}
-              catColor={CAT_COLOR}
               onDelete={handleDelete}
               onQuantityChange={handleQuantityChange}
               onEdit={handleEdit}
             />
           )}
-          contentContainerStyle={{ paddingTop: 8, paddingBottom: 24 }}
+          contentContainerStyle={{ paddingBottom: 100 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          stickySectionHeadersEnabled={false}
         />
       )}
 
       {/* FAB */}
       <TouchableOpacity
-        style={styles.addFab}
+        style={s.fab}
         onPress={() => navigation.navigate('AddSupply', { familyId: familyId ?? undefined })}
         activeOpacity={0.85}
       >
-        <Plus color="#FFFFFF" size={26} strokeWidth={2.5} />
+        <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+          <Path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth={2.5} strokeLinecap="round" />
+        </Svg>
       </TouchableOpacity>
 
-      {/* 카테고리 추가/수정 모달 */}
       <CategoryModal
         visible={categoryModal.visible}
         editing={categoryModal.editing}
@@ -513,50 +648,70 @@ const SuppliesScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#FDF6EC' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FDF6EC' },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16 },
-  title: { fontSize: 26, fontWeight: '800', color: '#5C3D1E' },
-  lowStockBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#FDE8E5', paddingHorizontal: 10, paddingVertical: 4,
-    borderRadius: 12, borderWidth: 1, borderColor: '#F5C2BB',
+const s = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: C.cream },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.cream },
+
+  header: {
+    flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingTop: 6, paddingBottom: 14,
   },
-  lowStockBadgeText: { fontSize: 12, color: '#D95F4B', fontWeight: '700' },
-  filterRow: { marginBottom: 12 },
-  filterTab: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: '#FFF8F0', borderWidth: 1, borderColor: '#DEC8A8' },
-  filterTabActive: { backgroundColor: '#8B5E3C', borderColor: '#8B5E3C' },
-  filterText: { fontSize: 13, color: '#8B5E3C', fontWeight: '600' },
-  filterTextActive: { color: '#FFFFFF' },
-  addCatBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
-    backgroundColor: '#FFF8F0', borderWidth: 1, borderColor: '#DEC8A8', borderStyle: 'dashed',
-  },
-  addCatBtnText: { fontSize: 13, color: '#8B5E3C', fontWeight: '600' },
-  sortBar: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, marginBottom: 4, position: 'relative', zIndex: 10,
-  },
-  countText: { fontSize: 13, color: '#C49A6C', fontWeight: '500' },
-  sortBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  sortBtnText: { fontSize: 13, color: '#8B5E3C', fontWeight: '600' },
+  subLabel: { fontSize: 11, color: C.lightOak, fontWeight: '600', marginBottom: 1 },
+  title: { fontSize: 24, fontWeight: '800', color: C.dark, letterSpacing: -0.4 },
+  headerRight: { flexDirection: 'row', gap: 8 },
+
   sortMenu: {
-    position: 'absolute', right: 16, top: 28, backgroundColor: '#FFF8F0', borderRadius: 12,
-    borderWidth: 1, borderColor: '#DEC8A8',
-    shadowColor: '#8B5E3C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 6, overflow: 'hidden',
+    position: 'absolute', right: 60, top: 52, zIndex: 20,
+    backgroundColor: C.ivory, borderRadius: 12, borderWidth: 1, borderColor: C.edge,
+    shadowColor: C.brown, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 8,
+    overflow: 'hidden',
   },
   sortMenuItem: { paddingHorizontal: 20, paddingVertical: 12 },
-  sortMenuItemActive: { backgroundColor: '#FDF6EC' },
-  sortMenuText: { fontSize: 14, color: '#8B5E3C', fontWeight: '500' },
-  sortMenuTextActive: { color: '#5C3D1E', fontWeight: '700' },
+  sortMenuItemActive: { backgroundColor: C.cream },
+  sortMenuText: { fontSize: 14, color: C.brown, fontWeight: '500' },
+  sortMenuTextActive: { color: C.dark, fontWeight: '700' },
+
+  alertBanner: {
+    marginHorizontal: 16, marginBottom: 12, padding: 10,
+    backgroundColor: '#FDECEA', borderRadius: 14, borderWidth: 1, borderColor: C.danger + '33',
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+  },
+  alertIcon: {
+    width: 30, height: 30, borderRadius: 10, backgroundColor: C.danger,
+    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+  },
+  alertTitle: { fontSize: 12, fontWeight: '700', color: C.danger },
+  alertSub: { fontSize: 10, color: C.warmOak, marginTop: 1 },
+
+  filterRow: { marginBottom: 8 },
+  filterTab: {
+    paddingHorizontal: 11, paddingVertical: 5, borderRadius: 14,
+    backgroundColor: C.ivory, borderWidth: 1, borderColor: C.edge,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+  },
+  filterTabActive: { backgroundColor: C.brown, borderColor: C.brown },
+  filterText: { fontSize: 11, fontWeight: '600', color: C.warmOak, lineHeight: 16 },
+  filterTextActive: { color: '#fff' },
+  filterCount: { fontSize: 9, fontWeight: '600', color: C.lightOak, opacity: 0.75 },
+  filterCountActive: { color: 'rgba(255,255,255,0.75)' },
+  addCatBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 11, paddingVertical: 5, borderRadius: 14,
+    backgroundColor: C.ivory, borderWidth: 1, borderColor: C.edge, borderStyle: 'dashed',
+  },
+  addCatText: { fontSize: 11, fontWeight: '600', color: C.brown, lineHeight: 16 },
+
+  countBar: { paddingHorizontal: 20, marginBottom: 2 },
+  countText: { fontSize: 11, color: C.lightOak, fontWeight: '500' },
+
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  emptyText: { fontSize: 15, color: '#C49A6C', fontWeight: '500' },
-  addFab: {
-    position: 'absolute', bottom: 24, right: 24, backgroundColor: '#8B5E3C', width: 56, height: 56,
-    borderRadius: 28, justifyContent: 'center', alignItems: 'center',
-    shadowColor: '#6B4226', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6,
+  emptyText: { fontSize: 15, color: C.lightOak, fontWeight: '500' },
+
+  fab: {
+    position: 'absolute', bottom: 24, right: 24,
+    backgroundColor: C.deep, width: 52, height: 52, borderRadius: 26,
+    justifyContent: 'center', alignItems: 'center',
+    shadowColor: C.deep, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 16, elevation: 6,
   },
 });
 

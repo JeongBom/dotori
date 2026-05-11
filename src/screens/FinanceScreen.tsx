@@ -18,13 +18,63 @@ import {
   Keyboard,
   Platform,
   Dimensions,
+  Animated,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useIsFocused, CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Plus, X, History, ChevronRight, Target, Pencil, Trash2 } from 'lucide-react-native';
+import Svg, { Path, Circle, G, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { Swipeable } from 'react-native-gesture-handler';
+
+// ── SVG 아이콘 헬퍼 ──────────────────────────
+type IconProps = { color: string; size: number; strokeWidth?: number };
+const SvgX = ({ color, size, strokeWidth = 2 }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M18 6L6 18M6 6l12 12" />
+  </Svg>
+);
+const SvgPlus = ({ color, size, strokeWidth = 2 }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M12 5v14M5 12h14" />
+  </Svg>
+);
+const SvgChevronRight = ({ color, size, strokeWidth = 2 }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M9 18l6-6-6-6" />
+  </Svg>
+);
+const SvgHistory = ({ color, size, strokeWidth = 1.5 }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+    <Path d="M3 3v5h5" />
+    <Path d="M12 7v5l4 2" />
+  </Svg>
+);
+const SvgPencil = ({ color, size, strokeWidth = 1.8 }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+    <Path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+  </Svg>
+);
+const SvgTrash2 = ({ color, size, strokeWidth = 1.8 }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  </Svg>
+);
+const SvgChevronLeft = ({ color = '#8B5E3C', size = 22 }: Partial<IconProps>) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M15 18l-6-6 6-6" />
+  </Svg>
+);
+const SvgTarget = ({ color, size, strokeWidth = 1.8 }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+    <Circle cx="12" cy="12" r="10" />
+    <Circle cx="12" cy="12" r="6" />
+    <Circle cx="12" cy="12" r="2" />
+  </Svg>
+);
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { Asset, AssetCategory } from '../types';
@@ -67,27 +117,29 @@ function formatAmount(n: number): string {
 interface TotalCardProps {
   total: number;
   assetCount: number;
-  onHistoryPress: () => void;
+  onPress: () => void;
 }
 
-const TotalCard: React.FC<TotalCardProps> = ({ total, assetCount, onHistoryPress }) => (
-  <View style={cardStyles.card}>
-    <View style={cardStyles.topRow}>
-      <Text style={cardStyles.label}>우리 집 총 자산</Text>
-      <TouchableOpacity onPress={onHistoryPress} style={cardStyles.historyBtn}>
-        <History color="rgba(255,255,255,0.85)" size={16} strokeWidth={1.5} />
-        <Text style={cardStyles.historyBtnText}>히스토리</Text>
-      </TouchableOpacity>
-    </View>
+const TotalCard: React.FC<TotalCardProps> = ({ total, assetCount, onPress }) => (
+  <TouchableOpacity style={cardStyles.card} onPress={onPress} activeOpacity={0.88}>
+    <Text style={cardStyles.label}>우리 집 총 자산</Text>
     <Text style={cardStyles.amount}>{formatAmount(total)}</Text>
-    <Text style={cardStyles.sub}>{assetCount}개 항목</Text>
-  </View>
+    <Text style={cardStyles.sub}>{assetCount}개 항목  ·  내역 보기 →</Text>
+    <Svg width="100%" height={32} viewBox="0 0 300 32" preserveAspectRatio="none" style={{ marginTop: 10 }}>
+      <Path
+        d="M0,24 L30,22 L60,26 L90,20 L120,21 L150,16 L180,18 L210,10 L240,12 L270,7 L300,5"
+        stroke="rgba(255,255,255,0.85)"
+        strokeWidth={2}
+        fill="none"
+        strokeLinecap="round"
+      />
+    </Svg>
+  </TouchableOpacity>
 );
 
 const cardStyles = StyleSheet.create({
   card: {
-    marginHorizontal: 20,
-    marginBottom: 28,
+    marginBottom: 24,
     backgroundColor: '#8B5E3C',
     borderRadius: 20,
     paddingVertical: 28,
@@ -107,73 +159,127 @@ const cardStyles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.75)' },
   amount: { fontSize: 32, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5 },
   sub: { fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 6 },
-  historyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 10,
-  },
-  historyBtnText: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.85)' },
 });
 
 // ── 자산 행 ──────────────────────────────────
 
 interface AssetRowProps {
   asset: Asset;
-  ownerNickname: string | null; // 담당자 닉네임 (null이면 뱃지 미표시)
+  ownerNickname: string | null;
   isMe: boolean;
   onPress: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
 }
 
-const AssetRow: React.FC<AssetRowProps> = ({ asset, ownerNickname, isMe, onPress }) => (
-  <TouchableOpacity style={rowStyles.row} onPress={onPress} activeOpacity={0.7}>
-    <View style={rowStyles.left}>
-      <Text style={rowStyles.name}>{asset.name}</Text>
-      {/* 담당자 뱃지: 닉네임이 있을 때만 표시 */}
-      {ownerNickname && (
-        <View style={[rowStyles.badge, isMe ? rowStyles.badgeMe : rowStyles.badgePartner]}>
-          <Text style={[rowStyles.badgeText, isMe ? rowStyles.badgeTextMe : rowStyles.badgeTextPartner]}>
-            {ownerNickname}
-          </Text>
+const AssetRow: React.FC<AssetRowProps> = ({ asset, ownerNickname, isMe, onPress, onEdit, onDelete }) => {
+  const { color, emoji } = CAT_CONFIG[asset.category];
+  const swipeRef = React.useRef<Swipeable>(null);
+
+  const renderRightActions = () => (
+    <View style={rowStyles.swipeActions}>
+      <TouchableOpacity
+        style={rowStyles.swipeDelete}
+        onPress={() => { swipeRef.current?.close(); onDelete(); }}
+      >
+        <Text style={rowStyles.swipeDeleteText}>삭제</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  return (
+    <Swipeable ref={swipeRef} renderRightActions={renderRightActions} overshootRight={false}>
+      <TouchableOpacity style={rowStyles.row} onPress={onPress} activeOpacity={0.75}>
+        {/* 카테고리 이모지 아이콘 */}
+        <View style={[rowStyles.iconBox, { backgroundColor: color + '22' }]}>
+          <Text style={rowStyles.iconEmoji}>{emoji}</Text>
         </View>
-      )}
-    </View>
-    <View style={rowStyles.right}>
-      <Text style={rowStyles.amount}>{formatAmount(asset.amount)}</Text>
-      <ChevronRight color="#D4B896" size={16} strokeWidth={2} />
-    </View>
-  </TouchableOpacity>
-);
+        {/* 이름 + 카테고리 */}
+        <View style={rowStyles.left}>
+          <View style={rowStyles.nameRow}>
+            <Text style={rowStyles.name} numberOfLines={1}>{asset.name}</Text>
+            {ownerNickname && (
+              <View style={[rowStyles.badge, isMe ? rowStyles.badgeMe : rowStyles.badgePartner]}>
+                <Text style={[rowStyles.badgeText, isMe ? rowStyles.badgeTextMe : rowStyles.badgeTextPartner]}>
+                  {ownerNickname}
+                </Text>
+              </View>
+            )}
+          </View>
+          <Text style={[rowStyles.catLabel, { color }]}>{asset.category}</Text>
+        </View>
+        {/* 금액 + 수정 버튼 */}
+        <View style={rowStyles.right}>
+          <Text style={rowStyles.amount}>{formatAmount(asset.amount)}</Text>
+          <TouchableOpacity
+            style={rowStyles.editBtn}
+            onPress={onEdit}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Text style={rowStyles.editBtnText}>자산 업데이트</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Swipeable>
+  );
+};
 
 const rowStyles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 10,
     backgroundColor: '#FFF8F0',
     borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#DEC8A855',
     shadowColor: '#8B5E3C',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
     elevation: 1,
   },
-  left: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
-  name: { fontSize: 15, fontWeight: '600', color: '#5C3D1E' },
-  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
+  iconBox: {
+    width: 36, height: 36, borderRadius: 10,
+    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+  },
+  iconEmoji: { fontSize: 16 },
+  left: { flex: 1, gap: 2, minWidth: 0 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  name: { fontSize: 14, fontWeight: '700', color: '#5C3D1E', flexShrink: 1 },
+  catLabel: { fontSize: 10, fontWeight: '600' },
+  badge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6, flexShrink: 0 },
   badgeMe: { backgroundColor: '#EDD9C0' },
   badgePartner: { backgroundColor: '#EEE4F4' },
-  badgeText: { fontSize: 11, fontWeight: '700' },
+  badgeText: { fontSize: 10, fontWeight: '700' },
   badgeTextMe: { color: '#8B5E3C' },
   badgeTextPartner: { color: '#9478C9' },
-  right: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  amount: { fontSize: 15, fontWeight: '700', color: '#5C3D1E' },
+  right: { alignItems: 'flex-end', gap: 5, flexShrink: 0 },
+  amount: { fontSize: 14, fontWeight: '700', color: '#5C3D1E' },
+  editBtn: {
+    backgroundColor: '#EDD9C0',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  editBtnText: { fontSize: 11, fontWeight: '700', color: '#8B5E3C' },
+  swipeActions: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingLeft: 6,
+    marginBottom: 8,
+  },
+  swipeDelete: {
+    backgroundColor: '#DC2626',
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  swipeDeleteText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
 });
 
 // ── 카테고리 섹션 ────────────────────────────
@@ -190,17 +296,18 @@ interface CategorySectionProps {
   currentUserId: string | null;
   familyMembers: FamilyMemberBasic[];
   onPressAsset: (asset: Asset) => void;
+  onEditAsset: (asset: Asset) => void;
+  onDeleteAsset: (asset: Asset) => void;
 }
 
 const CategorySection: React.FC<CategorySectionProps> = ({
-  category, assets, currentUserId, familyMembers, onPressAsset,
+  category, assets, currentUserId, familyMembers, onPressAsset, onEditAsset, onDeleteAsset,
 }) => {
   if (assets.length === 0) return null;
 
   const { color, emoji } = CAT_CONFIG[category];
   const subtotal = assets.reduce((sum, a) => sum + a.amount, 0);
 
-  // user_id → 닉네임 맵
   const nicknameMap = Object.fromEntries(familyMembers.map(m => [m.id, m.nickname]));
 
   return (
@@ -220,6 +327,8 @@ const CategorySection: React.FC<CategorySectionProps> = ({
           ownerNickname={asset.user_id ? (nicknameMap[asset.user_id] ?? null) : null}
           isMe={asset.user_id === currentUserId}
           onPress={() => onPressAsset(asset)}
+          onEdit={() => onEditAsset(asset)}
+          onDelete={() => onDeleteAsset(asset)}
         />
       ))}
     </View>
@@ -227,18 +336,18 @@ const CategorySection: React.FC<CategorySectionProps> = ({
 };
 
 const sectionStyles = StyleSheet.create({
-  section: { marginBottom: 12 },
+  section: { marginBottom: 16 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 8,
     paddingHorizontal: 2,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  catName: { fontSize: 13, fontWeight: '700', color: '#5C3D1E' },
-  subtotal: { fontSize: 13, fontWeight: '600' },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  catName: { fontSize: 11, fontWeight: '700', color: '#A87850', letterSpacing: 0.2 },
+  subtotal: { fontSize: 11, fontWeight: '700' },
 });
 
 // ── 금액 입력 → 쉼표 포맷 헬퍼 ──────────────
@@ -333,7 +442,7 @@ const AddAssetModal: React.FC<AddAssetModalProps> = ({
           <View style={modalStyles.sheetHeader}>
             <Text style={modalStyles.sheetTitle}>자산 추가</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <X color="#C49A6C" size={22} strokeWidth={2} />
+              <SvgX color="#C49A6C" size={22} strokeWidth={2} />
             </TouchableOpacity>
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bounces={false}>
@@ -557,7 +666,7 @@ const EditAssetModal: React.FC<EditAssetModalProps> = ({
                 </Text>
               </View>
               <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <X color="#C49A6C" size={22} strokeWidth={2} />
+                <SvgX color="#C49A6C" size={22} strokeWidth={2} />
               </TouchableOpacity>
             </View>
 
@@ -937,7 +1046,7 @@ function formatDateStr(dateStr: string | null): string {
 }
 
 // ── 목표 모달 ────────────────────────────────
-// 목표 생성/수정: 제목, 목표 금액, 마감일, 목적 입력
+// 목표 생성/수정: Step 1(이름) → Step 2(금액) → Step 3(기간+메모) → Step 4(완료)
 
 interface GoalModalProps {
   visible: boolean;
@@ -947,29 +1056,54 @@ interface GoalModalProps {
   onSaved: () => void;
 }
 
+const GOAL_QUICK_CHIPS = [
+  { label: '10만', value: 100_000 },
+  { label: '50만', value: 500_000 },
+  { label: '100만', value: 1_000_000 },
+  { label: '500만', value: 5_000_000 },
+  { label: '1천만', value: 10_000_000 },
+  { label: '1억', value: 100_000_000 },
+];
+
 const GoalModal: React.FC<GoalModalProps> = ({ visible, familyId, existing, onClose, onSaved }) => {
+  const [step, setStep]             = useState<1 | 2 | 3>(1);
+  const [isDone, setIsDone]         = useState(false);
   const [title, setTitle]           = useState('');
   const [amountText, setAmountText] = useState('');
   const [startDate, setStartDate]   = useState('');
   const [endDate, setEndDate]       = useState('');
   const [memo, setMemo]             = useState('');
   const [saving, setSaving]         = useState(false);
-  // 인라인 캘린더 — 'start' | 'end' | null (중첩 Modal 방지)
   const [activePicker, setActivePicker] = useState<'start' | 'end' | null>(null);
   const [tempDate, setTempDate]         = useState<Date>(new Date());
 
+  const doneScale = useRef(new Animated.Value(0)).current;
+  const doneFade  = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
     if (visible) {
+      setStep(1);
+      setIsDone(false);
       setTitle(existing?.title ?? '');
       setAmountText(existing ? existing.target_amount.toLocaleString('ko-KR') : '');
-      setStartDate(existing?.start_date?.split('T')[0] ?? '');
-      setEndDate(existing?.end_date?.split('T')[0] ?? '');
+      setStartDate(existing?.start_date?.split('T')?.[0] ?? '');
+      setEndDate(existing?.end_date?.split('T')?.[0] ?? '');
       setMemo(existing?.memo ?? '');
       setActivePicker(null);
+      doneScale.setValue(0);
+      doneFade.setValue(0);
     }
   }, [visible, existing]);
 
-  // 로컬 날짜 문자열 (UTC 변환으로 인한 하루 밀림 방지)
+  useEffect(() => {
+    if (isDone) {
+      Animated.sequence([
+        Animated.spring(doneScale, { toValue: 1, tension: 55, friction: 5, useNativeDriver: true }),
+        Animated.timing(doneFade, { toValue: 1, duration: 320, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [isDone]);
+
   const toDateStr = (d: Date) => {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -977,191 +1111,402 @@ const GoalModal: React.FC<GoalModalProps> = ({ visible, familyId, existing, onCl
     return `${y}-${m}-${day}`;
   };
 
-  const openPicker = (which: 'start' | 'end') => {
-    let dateStr: string;
-    if (which === 'end') {
-      // endDate가 없거나 startDate보다 이전이면 startDate로 초기화
-      // (DateTimePicker가 minimumDate를 시각적으로 표시하지만 value는 변경 안함 → 불일치 방지)
-      if (endDate && (!startDate || endDate >= startDate)) {
-        dateStr = endDate;
-      } else {
-        dateStr = startDate;
-      }
-    } else {
-      dateStr = startDate;
-    }
-    if (dateStr) {
-      const [y, mo, d] = dateStr.split('-').map(Number);
-      setTempDate(new Date(y, mo - 1, d));
-    } else {
-      setTempDate(new Date());
-    }
-    setActivePicker(which);
-  };
-
-  const confirmPicker = () => {
-    const d = toDateStr(tempDate);
-    if (activePicker === 'start') {
-      setStartDate(d);
-      if (endDate && d > endDate) setEndDate('');
-    } else {
-      setEndDate(d);
-    }
-    setActivePicker(null);
-  };
-
-  const handleSave = async () => {
-    if (!title.trim()) { Alert.alert('알림', '목표 이름을 입력해주세요.'); return; }
-    const amount = parseCommaInput(amountText);
-    if (!amount || amount <= 0) { Alert.alert('알림', '목표 금액을 올바르게 입력해주세요.'); return; }
-    if (!startDate) { Alert.alert('알림', '시작 기간을 선택해주세요.'); return; }
-    if (!endDate)   { Alert.alert('알림', '종료 기간을 선택해주세요.'); return; }
-    if (endDate < startDate) { Alert.alert('알림', '종료 기간은 시작 기간 이후여야 해요.'); return; }
-
-    setSaving(true);
-    try {
-      if (existing) {
-        const { error } = await supabase.from('goals').update({
-          title: title.trim(), target_amount: amount,
-          start_date: startDate, end_date: endDate,
-          memo: memo.trim() || null,
-        }).eq('id', existing.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from('goals').insert({
-          family_id: familyId, title: title.trim(), target_amount: amount,
-          start_date: startDate, end_date: endDate,
-          memo: memo.trim() || null,
-        });
-        if (error) throw error;
-      }
-      onSaved();
-      onClose();
-    } catch (e: any) {
-      const msg = e?.message ?? e?.details ?? JSON.stringify(e);
-      Alert.alert('오류', `저장에 실패했습니다.\n\n${msg}`);
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const parsedAmount = parseCommaInput(amountText);
-  // 로컬 기준 Date 생성 (UTC 파싱으로 인한 날짜 밀림 방지)
   const endMinDate = startDate ? (() => {
     const [y, m, d] = startDate.split('-').map(Number);
     return new Date(y, m - 1, d);
   })() : undefined;
   const calWidth = Dimensions.get('window').width - 48;
 
+  const goStep2 = () => {
+    if (!title.trim()) { Alert.alert('알림', '목표 이름을 입력해주세요.'); return; }
+    Keyboard.dismiss();
+    setStep(2);
+  };
+
+  const goStep3 = () => {
+    if (!parsedAmount || parsedAmount <= 0) { Alert.alert('알림', '목표 금액을 입력해주세요.'); return; }
+    Keyboard.dismiss();
+    setStep(3);
+  };
+
+  const handleSave = async () => {
+    if (!startDate) { Alert.alert('알림', '시작일을 선택해주세요.'); return; }
+    if (!endDate)   { Alert.alert('알림', '종료일을 선택해주세요.'); return; }
+    if (endDate < startDate) { Alert.alert('알림', '종료일은 시작일 이후여야 해요.'); return; }
+
+    setSaving(true);
+    try {
+      if (existing) {
+        const { error } = await supabase.from('goals').update({
+          title: title.trim(), target_amount: parsedAmount,
+          start_date: startDate, end_date: endDate,
+          memo: memo.trim() || null,
+        }).eq('id', existing.id);
+        if (error) throw error;
+        onSaved();
+        onClose();
+      } else {
+        const { error } = await supabase.from('goals').insert({
+          family_id: familyId, title: title.trim(), target_amount: parsedAmount,
+          start_date: startDate, end_date: endDate,
+          memo: memo.trim() || null,
+        });
+        if (error) throw error;
+        setIsDone(true);
+      }
+    } catch (e: any) {
+      const msg = e?.message ?? e?.details ?? JSON.stringify(e);
+      Alert.alert('오류', `저장에 실패했습니다.\n\n${msg}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleBack = () => {
+    if (activePicker) { setActivePicker(null); return; }
+    if (step > 1) { setStep(s => (s - 1) as 1 | 2 | 3); return; }
+    onClose();
+  };
+
   return (
-    <Modal visible={visible} transparent animationType="slide">
-      <KeyboardAvoidingView
-        style={modalStyles.kavContainer}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={modalStyles.overlayTap} />
-        </TouchableWithoutFeedback>
-        <View style={modalStyles.sheet}>
-          {/* 헤더 */}
-          <View style={modalStyles.sheetHeader}>
-            <Text style={modalStyles.sheetTitle}>{existing ? '목표 수정' : '목표 설정'}</Text>
-            <TouchableOpacity onPress={() => { setActivePicker(null); onClose(); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <X color="#C49A6C" size={22} strokeWidth={2} />
-            </TouchableOpacity>
-          </View>
-
-          {/* 인라인 캘린더 — activePicker 선택 시 */}
-          {activePicker !== null ? (
-            <View>
-              <Text style={modalStyles.label}>
-                {activePicker === 'start' ? '시작일 선택' : '종료일 선택'}
-              </Text>
-              <DateTimePicker
-                value={tempDate}
-                mode="date"
-                display="inline"
-                onChange={(_, d) => { if (d) setTempDate(d); }}
-                locale="ko-KR"
-                accentColor="#8B5E3C"
-                minimumDate={activePicker === 'end' ? endMinDate : undefined}
-                style={{ width: calWidth, alignSelf: 'center' }}
-              />
-              <View style={dpStyles.actions}>
-                <TouchableOpacity style={dpStyles.cancelBtn} onPress={() => setActivePicker(null)}>
-                  <Text style={dpStyles.cancelText}>취소</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={dpStyles.confirmBtn} onPress={confirmPicker}>
-                  <Text style={dpStyles.confirmText}>확인</Text>
-                </TouchableOpacity>
+    <Modal visible={visible} transparent={false} animationType="slide">
+      <SafeAreaView style={gmStyles.safe}>
+        {/* ── 완료 화면 ── */}
+        {isDone ? (
+          <View style={gmStyles.doneWrap}>
+            <Animated.View style={[gmStyles.doneCircle, { transform: [{ scale: doneScale }] }]}>
+              <Text style={{ fontSize: 44 }}>🎯</Text>
+            </Animated.View>
+            <Animated.View style={{ opacity: doneFade, alignItems: 'center', width: '100%' }}>
+              <Text style={gmStyles.doneTitle}>목표 설정 완료!</Text>
+              <Text style={gmStyles.doneSub}>"{title}" 목표가 등록됐어요</Text>
+              <View style={gmStyles.doneCard}>
+                <View style={gmStyles.doneRow}>
+                  <Text style={gmStyles.doneLabel}>목표 금액</Text>
+                  <Text style={gmStyles.doneVal}>{formatAmount(parsedAmount)}</Text>
+                </View>
+                <View style={gmStyles.doneDivider} />
+                <View style={gmStyles.doneRow}>
+                  <Text style={gmStyles.doneLabel}>기간</Text>
+                  <Text style={gmStyles.doneVal}>{formatDateStr(startDate)} ~ {formatDateStr(endDate)}</Text>
+                </View>
+                {memo ? (
+                  <>
+                    <View style={gmStyles.doneDivider} />
+                    <View style={gmStyles.doneRow}>
+                      <Text style={gmStyles.doneLabel}>목적</Text>
+                      <Text style={gmStyles.doneVal}>{memo}</Text>
+                    </View>
+                  </>
+                ) : null}
               </View>
-            </View>
-          ) : (
-            /* 일반 폼 필드 */
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bounces={false}>
-              <Text style={modalStyles.label}>목표 이름</Text>
-              <TextInput
-                style={modalStyles.input}
-                placeholder="예: 내 집 마련, 유럽 여행"
-                placeholderTextColor="#C49A6C"
-                value={title}
-                onChangeText={setTitle}
-                autoCorrect={false}
-              />
-
-              <View style={modalStyles.labelRow}>
-                <Text style={modalStyles.labelInRow}>목표 금액 (원)</Text>
-                {parsedAmount > 0 && <Text style={modalStyles.amountInline}>{formatAmount(parsedAmount)}</Text>}
-              </View>
-              <TextInput
-                style={modalStyles.input}
-                placeholder="예: 100,000,000"
-                placeholderTextColor="#C49A6C"
-                value={amountText}
-                onChangeText={text => setAmountText(toCommaInput(text))}
-                keyboardType="numeric"
-              />
-
-              <Text style={modalStyles.label}>목표 기간</Text>
-              <View style={goalStyles.dateRow}>
-                <TouchableOpacity style={goalStyles.datePicker} onPress={() => openPicker('start')}>
-                  <Text style={startDate ? goalStyles.datePickerText : goalStyles.datePickerPlaceholder}>
-                    {startDate ? formatDateStr(startDate) : '시작일 선택'}
-                  </Text>
-                </TouchableOpacity>
-                <Text style={goalStyles.dateSeparator}>~</Text>
-                <TouchableOpacity style={goalStyles.datePicker} onPress={() => openPicker('end')}>
-                  <Text style={endDate ? goalStyles.datePickerText : goalStyles.datePickerPlaceholder}>
-                    {endDate ? formatDateStr(endDate) : '종료일 선택'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              <Text style={modalStyles.label}>목적 (선택)</Text>
-              <TextInput
-                style={modalStyles.input}
-                placeholder="예: 신혼집 보증금, 비상금"
-                placeholderTextColor="#C49A6C"
-                value={memo}
-                onChangeText={setMemo}
-                autoCorrect={false}
-              />
-
-              <TouchableOpacity
-                style={[modalStyles.saveBtn, saving && { opacity: 0.5 }]}
-                onPress={handleSave}
-                disabled={saving}
-              >
-                <Text style={modalStyles.saveBtnText}>{saving ? '저장 중...' : '저장'}</Text>
+              <TouchableOpacity style={gmStyles.doneBtn} onPress={onSaved}>
+                <Text style={gmStyles.doneBtnText}>확인</Text>
               </TouchableOpacity>
-            </ScrollView>
-          )}
-        </View>
-      </KeyboardAvoidingView>
+            </Animated.View>
+          </View>
+        ) : (
+          <>
+            {/* ── 헤더 ── */}
+            <View style={gmStyles.header}>
+              <TouchableOpacity onPress={handleBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                {step > 1 && !activePicker
+                  ? <SvgChevronLeft />
+                  : <SvgX color="#C49A6C" size={22} strokeWidth={2} />}
+              </TouchableOpacity>
+              <Text style={gmStyles.headerTitle}>
+                {existing
+                  ? '목표 수정'
+                  : step === 1 ? '목표 이름' : step === 2 ? '목표 금액' : '기간 설정'}
+              </Text>
+              <View style={{ width: 32 }} />
+            </View>
+
+            {/* ── 진행바 ── */}
+            <View style={gmStyles.progressBar}>
+              {[1, 2, 3].map(s => (
+                <View key={s} style={[gmStyles.progressSeg, s <= step && gmStyles.progressSegActive]} />
+              ))}
+            </View>
+
+            {/* ── 날짜 피커 오버레이 ── */}
+            {activePicker !== null ? (
+              <ScrollView contentContainerStyle={gmStyles.content}>
+                <Text style={gmStyles.label}>
+                  {activePicker === 'start' ? '시작일 선택' : '종료일 선택'}
+                </Text>
+                <DateTimePicker
+                  value={tempDate}
+                  mode="date"
+                  display="inline"
+                  onChange={(_, d) => { if (d) setTempDate(d); }}
+                  locale="ko-KR"
+                  accentColor="#8B5E3C"
+                  minimumDate={activePicker === 'end' ? endMinDate : undefined}
+                  style={{ width: calWidth, alignSelf: 'center' }}
+                />
+                <View style={dpStyles.actions}>
+                  <TouchableOpacity style={dpStyles.cancelBtn} onPress={() => setActivePicker(null)}>
+                    <Text style={dpStyles.cancelText}>취소</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={dpStyles.confirmBtn} onPress={() => {
+                    const d = toDateStr(tempDate);
+                    if (activePicker === 'start') {
+                      setStartDate(d);
+                      if (endDate && d > endDate) setEndDate('');
+                    } else {
+                      setEndDate(d);
+                    }
+                    setActivePicker(null);
+                  }}>
+                    <Text style={dpStyles.confirmText}>확인</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+
+            ) : step === 1 ? (
+              /* ── Step 1: 목표 이름 ── */
+              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <ScrollView contentContainerStyle={gmStyles.content} keyboardShouldPersistTaps="handled">
+                  <Text style={gmStyles.label}>어떤 목표인가요?</Text>
+                  <TextInput
+                    style={gmStyles.input}
+                    placeholder="예: 내 집 마련, 유럽 여행"
+                    placeholderTextColor="#C49A6C"
+                    value={title}
+                    onChangeText={setTitle}
+                    autoCorrect={false}
+                    autoFocus
+                    returnKeyType="done"
+                    onSubmitEditing={goStep2}
+                  />
+                </ScrollView>
+              </TouchableWithoutFeedback>
+
+            ) : step === 2 ? (
+              /* ── Step 2: 목표 금액 ── */
+              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <ScrollView contentContainerStyle={gmStyles.content} keyboardShouldPersistTaps="handled">
+                  <View style={gmStyles.amountDisplay}>
+                    <Text style={[gmStyles.amountText, parsedAmount > 0 && gmStyles.amountActive]}>
+                      {parsedAmount > 0 ? formatAmount(parsedAmount) : '목표 금액은?'}
+                    </Text>
+                  </View>
+                  <TextInput
+                    style={gmStyles.input}
+                    placeholder="직접 입력 (예: 100,000,000)"
+                    placeholderTextColor="#C49A6C"
+                    value={amountText}
+                    onChangeText={text => setAmountText(toCommaInput(text))}
+                    keyboardType="numeric"
+                    selectTextOnFocus
+                    autoFocus
+                  />
+                  <View style={gmStyles.chipGrid}>
+                    {GOAL_QUICK_CHIPS.map(chip => (
+                      <TouchableOpacity
+                        key={chip.label}
+                        style={gmStyles.chip}
+                        onPress={() => {
+                          const cur = parseCommaInput(amountText);
+                          setAmountText((cur + chip.value).toLocaleString('ko-KR'));
+                        }}
+                      >
+                        <Text style={gmStyles.chipText}>+{chip.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </TouchableWithoutFeedback>
+
+            ) : (
+              /* ── Step 3: 기간 + 목적 ── */
+              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <ScrollView contentContainerStyle={gmStyles.content} keyboardShouldPersistTaps="handled">
+                  {/* 요약 카드 */}
+                  <View style={gmStyles.summaryCard}>
+                    <Text style={gmStyles.summaryTitle}>{title}</Text>
+                    <Text style={gmStyles.summaryAmount}>{formatAmount(parsedAmount)}</Text>
+                  </View>
+
+                  <Text style={gmStyles.label}>목표 기간</Text>
+                  <View style={goalStyles.dateRow}>
+                    <TouchableOpacity
+                      style={goalStyles.datePicker}
+                      onPress={() => {
+                        setTempDate(startDate ? (() => { const [y,m,d] = startDate.split('-').map(Number); return new Date(y,m-1,d); })() : new Date());
+                        setActivePicker('start');
+                      }}
+                    >
+                      <Text style={startDate ? goalStyles.datePickerText : goalStyles.datePickerPlaceholder}>
+                        {startDate ? formatDateStr(startDate) : '시작일'}
+                      </Text>
+                    </TouchableOpacity>
+                    <Text style={goalStyles.dateSeparator}>~</Text>
+                    <TouchableOpacity
+                      style={goalStyles.datePicker}
+                      onPress={() => {
+                        const base = endDate || startDate;
+                        setTempDate(base ? (() => { const [y,m,d] = base.split('-').map(Number); return new Date(y,m-1,d); })() : new Date());
+                        setActivePicker('end');
+                      }}
+                    >
+                      <Text style={endDate ? goalStyles.datePickerText : goalStyles.datePickerPlaceholder}>
+                        {endDate ? formatDateStr(endDate) : '종료일'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text style={[gmStyles.label, { marginTop: 20 }]}>목적 (선택)</Text>
+                  <TextInput
+                    style={gmStyles.input}
+                    placeholder="예: 신혼집 보증금, 비상금"
+                    placeholderTextColor="#C49A6C"
+                    value={memo}
+                    onChangeText={setMemo}
+                    autoCorrect={false}
+                  />
+                </ScrollView>
+              </TouchableWithoutFeedback>
+            )}
+
+            {/* ── 하단 CTA ── */}
+            {activePicker === null && (
+              <View style={gmStyles.footer}>
+                <TouchableOpacity
+                  style={[gmStyles.cta, saving && { opacity: 0.5 }]}
+                  onPress={step === 1 ? goStep2 : step === 2 ? goStep3 : handleSave}
+                  disabled={saving}
+                >
+                  {saving
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text style={gmStyles.ctaText}>
+                        {step < 3 ? '다음' : (existing ? '수정하기' : '저장하기')}
+                      </Text>
+                  }
+                </TouchableOpacity>
+              </View>
+            )}
+          </>
+        )}
+      </SafeAreaView>
     </Modal>
   );
 };
+
+// ── GoalModal 스타일 ───────────────────────────
+const gmStyles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: '#FFFFFF' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+  headerTitle: { fontSize: 16, fontWeight: '700', color: '#5C3D1E' },
+  progressBar: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 24,
+    paddingBottom: 8,
+  },
+  progressSeg: { flex: 1, height: 4, borderRadius: 2, backgroundColor: '#EDD9C0' },
+  progressSegActive: { backgroundColor: '#8B5E3C' },
+  content: { paddingHorizontal: 20, paddingBottom: 120, paddingTop: 8 },
+  label: { fontSize: 13, fontWeight: '700', color: '#8B5E3C', marginBottom: 12 },
+  input: {
+    backgroundColor: '#FFF8F0',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: Platform.OS === 'ios' ? 14 : 12,
+    fontSize: 16,
+    color: '#5C3D1E',
+    borderWidth: 1,
+    borderColor: '#DEC8A8',
+    fontWeight: '600',
+  },
+  amountDisplay: { alignItems: 'center', marginBottom: 24, marginTop: 16 },
+  amountText: { fontSize: 34, fontWeight: '800', color: '#C5B09A', letterSpacing: -1 },
+  amountActive: { color: '#5C3D1E' },
+  chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 },
+  chip: {
+    backgroundColor: '#FFF8F0',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderColor: '#DEC8A8',
+  },
+  chipText: { fontSize: 13, fontWeight: '600', color: '#8B5E3C' },
+  summaryCard: {
+    backgroundColor: '#FFF8F0',
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#DEC8A8',
+    marginBottom: 24,
+    alignItems: 'center',
+    gap: 6,
+  },
+  summaryTitle: { fontSize: 16, fontWeight: '800', color: '#5C3D1E' },
+  summaryAmount: { fontSize: 26, fontWeight: '800', color: '#8B5E3C', letterSpacing: -0.5 },
+  footer: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F0E8DC',
+  },
+  cta: {
+    backgroundColor: '#8B5E3C',
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  ctaText: { fontSize: 16, fontWeight: '800', color: '#FFFFFF' },
+  // 완료 화면
+  doneWrap: { flex: 1, alignItems: 'center', paddingHorizontal: 24, paddingTop: 80 },
+  doneCircle: {
+    width: 110, height: 110, borderRadius: 55,
+    backgroundColor: '#EDD9C0',
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: 24,
+    shadowColor: '#8B5E3C',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  doneTitle: { fontSize: 26, fontWeight: '800', color: '#5C3D1E', marginBottom: 6 },
+  doneSub: { fontSize: 14, color: '#A87850', fontWeight: '500', marginBottom: 36 },
+  doneCard: {
+    width: '100%',
+    backgroundColor: '#FFF8F0',
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#DEC8A8',
+    marginBottom: 28,
+  },
+  doneRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
+  doneLabel: { fontSize: 13, color: '#C49A6C', fontWeight: '600' },
+  doneVal: { fontSize: 14, fontWeight: '700', color: '#5C3D1E' },
+  doneDivider: { height: 1, backgroundColor: '#DEC8A8', marginVertical: 4 },
+  doneBtn: {
+    width: '100%',
+    backgroundColor: '#8B5E3C',
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  doneBtnText: { fontSize: 16, fontWeight: '800', color: '#FFFFFF' },
+});
 
 // ── 목표 항목 모달 ─────────────────────────────
 // 항목 추가/수정: 자산 선택 + 기여 금액 입력
@@ -1199,7 +1544,7 @@ const GoalItemModal: React.FC<GoalItemModalProps> = ({
       setAmountText(existing ? existing.amount.toLocaleString('ko-KR') : '');
       const today = new Date();
       const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-      setSavedDate(existing?.saved_date?.split('T')[0] ?? todayStr);
+      setSavedDate(existing?.saved_date?.split('T')?.[0] ?? todayStr);
       setMemo(existing?.memo ?? '');
       setShowDatePicker(false);
     }
@@ -1277,7 +1622,7 @@ const GoalItemModal: React.FC<GoalItemModalProps> = ({
           <View style={modalStyles.sheetHeader}>
             <Text style={modalStyles.sheetTitle}>{existing ? '항목 수정' : '항목 추가'}</Text>
             <TouchableOpacity onPress={() => { setShowDatePicker(false); onClose(); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <X color="#C49A6C" size={22} strokeWidth={2} />
+              <SvgX color="#C49A6C" size={22} strokeWidth={2} />
             </TouchableOpacity>
           </View>
 
@@ -1413,9 +1758,11 @@ interface GoalCardProps {
 }
 
 const GoalCard: React.FC<GoalCardProps> = ({ goal, goalItems, assets, otherGoalsTotal, onGoalChange }) => {
+  const navigation = useNavigation<FinanceNavProp>();
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [showItemModal, setShowItemModal] = useState(false);
   const [editingItem, setEditingItem]     = useState<GoalItemData | null>(null);
+  const cardSwipeRef = React.useRef<Swipeable>(null);
 
   const accumulated  = goalItems.reduce((s, i) => s + i.amount, 0);
 
@@ -1481,74 +1828,116 @@ const GoalCard: React.FC<GoalCardProps> = ({ goal, goalItems, assets, otherGoals
     ]);
   };
 
+  const renderCardDelete = () => (
+    <View style={goalStyles.cardSwipeActions}>
+      <TouchableOpacity
+        style={goalStyles.cardSwipeDelete}
+        onPress={() => { cardSwipeRef.current?.close(); handleDeleteGoal(); }}
+      >
+        <Text style={goalStyles.swipeDeleteText}>삭제</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
+    <Swipeable ref={cardSwipeRef} renderRightActions={renderCardDelete} overshootRight={false}>
     <View style={goalStyles.goalCard}>
-      {/* 목표 헤더 */}
+      {/* ── 헤더: 아이콘 + 제목 + 수정 ── */}
       <View style={goalStyles.goalCardHeader}>
-        <View style={{ flex: 1 }}>
+        <View style={goalStyles.goalIconBox}>
+          <Text style={goalStyles.goalIconEmoji}>🎯</Text>
+        </View>
+        <View style={{ flex: 1, gap: 2 }}>
           <Text style={goalStyles.goalTitle}>{goal.title}</Text>
-          {goal.memo ? <Text style={goalStyles.goalMemo}>{goal.memo}</Text> : null}
-          {(goal.start_date || goal.end_date) && (
-            <Text style={goalStyles.goalDeadline}>
-              {formatDateStr(goal.start_date)} ~ {formatDateStr(goal.end_date)}
+          {(goal.memo || goal.start_date) ? (
+            <Text style={goalStyles.goalMeta}>
+              {goal.memo ? goal.memo : ''}
+              {goal.memo && goal.start_date ? '  ·  ' : ''}
+              {(goal.start_date || goal.end_date)
+                ? `${formatDateStr(goal.start_date)} ~ ${formatDateStr(goal.end_date)}`
+                : ''}
             </Text>
-          )}
+          ) : null}
         </View>
         <TouchableOpacity onPress={() => setShowGoalModal(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Pencil color="#C49A6C" size={16} strokeWidth={1.8} />
+          <SvgPencil color="#C49A6C" size={16} strokeWidth={1.8} />
         </TouchableOpacity>
       </View>
 
-      {/* 금액 & 진행률 */}
-      <View style={goalStyles.progressRow}>
-        <Text style={goalStyles.accumulated}>{formatAmount(accumulated)}</Text>
-        <Text style={goalStyles.targetLabel}>/ {formatAmount(goal.target_amount)}</Text>
-        <Text style={goalStyles.progressPct}>{progressPct}%</Text>
+      {/* ── 금액 & 진행률 ── */}
+      <View style={goalStyles.progressAmtRow}>
+        <View>
+          <Text style={goalStyles.accumulatedLabel}>현재 모은 금액</Text>
+          <Text style={goalStyles.accumulated}>{formatAmount(accumulated)}</Text>
+        </View>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={goalStyles.accumulatedLabel}>목표</Text>
+          <Text style={goalStyles.targetLabel}>{formatAmount(goal.target_amount)}</Text>
+        </View>
       </View>
       <View style={goalStyles.progressBarBg}>
         <View style={[goalStyles.progressBarFill, { width: `${progressPct}%` }]} />
       </View>
+      <Text style={goalStyles.progressPct}>{progressPct}% 달성</Text>
 
-      {/* 항목 목록 */}
-      {goalItems.map(item => (
-        <View key={item.id} style={goalStyles.itemRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={goalStyles.itemName}>{item.name}</Text>
-            <Text style={goalStyles.itemMemo}>
-              {item.saved_date ? formatDateStr(item.saved_date) : ''}
-              {item.saved_date && item.memo ? '  ·  ' : ''}
-              {item.memo ?? ''}
-            </Text>
-          </View>
-          <Text style={goalStyles.itemAmount}>{formatAmount(item.amount)}</Text>
-          <TouchableOpacity
-            onPress={() => { setEditingItem(item); setShowItemModal(true); }}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      {/* ── 항목 목록 ── */}
+      {goalItems.length > 0 && (
+        <View style={goalStyles.itemsDivider} />
+      )}
+      {goalItems.map(item => {
+        const itemSwipeRef = React.createRef<Swipeable>();
+        return (
+          <Swipeable
+            key={item.id}
+            ref={itemSwipeRef}
+            renderRightActions={() => (
+              <View style={goalStyles.itemSwipeActions}>
+                <TouchableOpacity
+                  style={goalStyles.itemSwipeDelete}
+                  onPress={() => { itemSwipeRef.current?.close(); handleDeleteItem(item); }}
+                >
+                  <Text style={goalStyles.swipeDeleteText}>삭제</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            overshootRight={false}
           >
-            <Pencil color="#D4B896" size={14} strokeWidth={1.8} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => handleDeleteItem(item)}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Trash2 color="#D95F4B" size={14} strokeWidth={1.8} />
-          </TouchableOpacity>
-        </View>
-      ))}
+            <View style={goalStyles.itemRow}>
+              <View style={goalStyles.itemIconBox}>
+                <Text style={goalStyles.itemIconEmoji}>💰</Text>
+              </View>
+              <View style={{ flex: 1, gap: 1 }}>
+                <Text style={goalStyles.itemName}>{item.name}</Text>
+                <Text style={goalStyles.itemMemo}>
+                  {item.saved_date ? formatDateStr(item.saved_date) : ''}
+                  {item.saved_date && item.memo ? '  ·  ' : ''}
+                  {item.memo ?? ''}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                <Text style={goalStyles.itemAmount}>{formatAmount(item.amount)}</Text>
+                <TouchableOpacity
+                  style={goalStyles.itemEditBtn}
+                  onPress={() => navigation.navigate('GoalItemAdd', { goalId: goal.id, familyId: goal.family_id, itemId: item.id })}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <Text style={goalStyles.itemEditBtnText}>수정</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Swipeable>
+        );
+      })}
 
-      {/* 항목 추가 + 목표 삭제 */}
-      <View style={goalStyles.goalFooter}>
-        <TouchableOpacity
-          style={goalStyles.addItemBtn}
-          onPress={() => { setEditingItem(null); setShowItemModal(true); }}
-        >
-          <Plus color="#8B5E3C" size={14} strokeWidth={2.5} />
-          <Text style={goalStyles.addItemBtnText}>항목 추가</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={handleDeleteGoal}>
-          <Text style={goalStyles.deleteGoalText}>목표 삭제</Text>
-        </TouchableOpacity>
-      </View>
+      {/* ── 항목 추가 버튼 ── */}
+      <TouchableOpacity
+        style={goalStyles.addItemBtn}
+        onPress={() => navigation.navigate('GoalItemAdd', { goalId: goal.id, familyId: goal.family_id })}
+        activeOpacity={0.75}
+      >
+        <SvgPlus color="#8B5E3C" size={14} strokeWidth={2.5} />
+        <Text style={goalStyles.addItemBtnText}>항목 추가</Text>
+      </TouchableOpacity>
 
       <GoalModal
         visible={showGoalModal}
@@ -1567,6 +1956,7 @@ const GoalCard: React.FC<GoalCardProps> = ({ goal, goalItems, assets, otherGoals
         onSaved={() => { setShowItemModal(false); setEditingItem(null); onGoalChange(); }}
       />
     </View>
+    </Swipeable>
   );
 };
 
@@ -1581,9 +1971,8 @@ interface GoalSectionProps {
 }
 
 const GoalSection: React.FC<GoalSectionProps> = ({ goals, goalItemsMap, assets, familyId, onGoalChange }) => {
-  const [showGoalModal, setShowGoalModal] = useState(false);
+  const navigation = useNavigation<FinanceNavProp>();
 
-  // 전체 목표 항목 합산 (다른 목표 계산용)
   const totalAllGoals = Object.values(goalItemsMap)
     .flat()
     .reduce((s, i) => s + i.amount, 0);
@@ -1593,12 +1982,15 @@ const GoalSection: React.FC<GoalSectionProps> = ({ goals, goalItemsMap, assets, 
       {/* 섹션 헤더 */}
       <View style={goalStyles.sectionHeader}>
         <View style={goalStyles.sectionTitleRow}>
-          <Target color="#8B5E3C" size={16} strokeWidth={1.8} />
+          <SvgTarget color="#8B5E3C" size={16} strokeWidth={1.8} />
           <Text style={goalStyles.sectionTitle}>목표 ({goals.length}/2)</Text>
         </View>
         {goals.length < 2 && (
-          <TouchableOpacity onPress={() => setShowGoalModal(true)} style={goalStyles.addGoalBtn}>
-            <Plus color="#8B5E3C" size={14} strokeWidth={2.5} />
+          <TouchableOpacity
+            onPress={() => navigation.navigate('GoalAdd', { familyId })}
+            style={goalStyles.addGoalBtn}
+          >
+            <SvgPlus color="#8B5E3C" size={14} strokeWidth={2.5} />
             <Text style={goalStyles.addGoalBtnText}>목표 추가</Text>
           </TouchableOpacity>
         )}
@@ -1616,26 +2008,17 @@ const GoalSection: React.FC<GoalSectionProps> = ({ goals, goalItemsMap, assets, 
       {goals.map(g => {
         const thisGoalTotal = (goalItemsMap[g.id] ?? []).reduce((s, i) => s + i.amount, 0);
         return (
-        <View key={g.id} style={{ marginBottom: 12 }}>
-          <GoalCard
-            goal={g}
-            goalItems={goalItemsMap[g.id] ?? []}
-            assets={assets}
-            otherGoalsTotal={totalAllGoals - thisGoalTotal}
-            onGoalChange={onGoalChange}
-          />
-        </View>
+          <View key={g.id} style={{ marginBottom: 12 }}>
+            <GoalCard
+              goal={g}
+              goalItems={goalItemsMap[g.id] ?? []}
+              assets={assets}
+              otherGoalsTotal={totalAllGoals - thisGoalTotal}
+              onGoalChange={onGoalChange}
+            />
+          </View>
         );
       })}
-
-      {/* 목표 추가 모달 */}
-      <GoalModal
-        visible={showGoalModal}
-        familyId={familyId}
-        existing={null}
-        onClose={() => setShowGoalModal(false)}
-        onSaved={() => { setShowGoalModal(false); onGoalChange(); }}
-      />
     </View>
   );
 };
@@ -1666,76 +2049,130 @@ const goalStyles = StyleSheet.create({
   goalCard: {
     backgroundColor: '#FFF8F0',
     borderRadius: 16,
-    padding: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#DEC8A855',
     shadowColor: '#8B5E3C',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  goalCardHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 14 },
-  goalTitle: { fontSize: 16, fontWeight: '800', color: '#5C3D1E', marginBottom: 2 },
-  goalMemo: { fontSize: 12, color: '#A87850', fontWeight: '500', marginBottom: 2 },
-  goalDeadline: { fontSize: 12, color: '#C49A6C', fontWeight: '500' },
-  progressRow: {
+  // 카드 헤더
+  goalCardHeader: {
     flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 4,
-    marginBottom: 8,
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 14,
   },
+  goalIconBox: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: '#EDD9C0',
+    justifyContent: 'center', alignItems: 'center',
+    flexShrink: 0,
+  },
+  goalIconEmoji: { fontSize: 16 },
+  goalTitle: { fontSize: 14, fontWeight: '700', color: '#5C3D1E' },
+  goalMeta: { fontSize: 11, color: '#A87850', fontWeight: '500' },
+  // 진행률
+  progressAmtRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginBottom: 10,
+  },
+  accumulatedLabel: { fontSize: 10, color: '#C49A6C', fontWeight: '600', marginBottom: 2 },
   accumulated: { fontSize: 18, fontWeight: '800', color: '#5C3D1E' },
-  targetLabel: { fontSize: 13, color: '#C49A6C', fontWeight: '500', flex: 1 },
-  progressPct: { fontSize: 13, fontWeight: '700', color: '#8B5E3C' },
+  targetLabel: { fontSize: 14, fontWeight: '700', color: '#A87850' },
   progressBarBg: {
     height: 8,
     backgroundColor: '#EDD9C0',
     borderRadius: 4,
-    marginBottom: 16,
     overflow: 'hidden',
+    marginBottom: 4,
   },
   progressBarFill: {
     height: 8,
     backgroundColor: '#8B5E3C',
     borderRadius: 4,
   },
+  progressPct: { fontSize: 11, fontWeight: '700', color: '#8B5E3C', marginBottom: 12 },
+  // 항목 구분선
+  itemsDivider: { height: 1, backgroundColor: '#EDD9C0', marginBottom: 4 },
+  // 항목 행 (자산 행처럼)
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#EDD9C0',
+    gap: 10,
+    backgroundColor: '#FFF8F0',
+    paddingVertical: 10,
   },
-  itemName: { fontSize: 14, fontWeight: '600', color: '#5C3D1E' },
-  itemMemo: { fontSize: 11, color: '#C49A6C', marginTop: 1 },
-  itemAmount: { fontSize: 14, fontWeight: '700', color: '#5C3D1E' },
-  goalFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 12,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#EDD9C0',
+  itemIconBox: {
+    width: 32, height: 32, borderRadius: 9,
+    backgroundColor: '#EDD9C020',
+    justifyContent: 'center', alignItems: 'center',
+    flexShrink: 0,
   },
+  itemIconEmoji: { fontSize: 14 },
+  itemName: { fontSize: 13, fontWeight: '700', color: '#5C3D1E' },
+  itemMemo: { fontSize: 11, color: '#C49A6C' },
+  itemAmount: { fontSize: 13, fontWeight: '700', color: '#5C3D1E' },
+  itemEditBtn: {
+    backgroundColor: '#EDD9C0',
+    borderRadius: 7,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  itemEditBtnText: { fontSize: 10, fontWeight: '700', color: '#8B5E3C' },
+  // 항목 추가 버튼
   addItemBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
+    gap: 5,
     backgroundColor: '#FDF6EC',
     borderWidth: 1,
     borderColor: '#DEC8A8',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    borderRadius: 12,
+    paddingVertical: 10,
+    marginTop: 8,
   },
-  addItemBtnText: { fontSize: 13, fontWeight: '600', color: '#8B5E3C' },
+  addItemBtnText: { fontSize: 13, fontWeight: '700', color: '#8B5E3C' },
   deleteGoalText: { fontSize: 12, color: '#D95F4B', fontWeight: '500' },
+  cardSwipeActions: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingLeft: 6,
+    marginBottom: 12,
+  },
+  cardSwipeDelete: {
+    backgroundColor: '#DC2626',
+    borderRadius: 16,
+    paddingHorizontal: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  itemSwipeActions: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingLeft: 6,
+  },
+  itemSwipeDelete: {
+    backgroundColor: '#DC2626',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  swipeDeleteText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
   emptyCard: {
     backgroundColor: '#FFF8F0',
     borderRadius: 16,
     padding: 24,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#DEC8A855',
   },
   emptyText: { fontSize: 14, fontWeight: '700', color: '#8B5E3C', marginBottom: 6 },
   emptySubText: { fontSize: 12, color: '#C49A6C', textAlign: 'center', lineHeight: 18 },
@@ -1775,12 +2212,12 @@ const FinanceScreen: React.FC = () => {
   const navigation = useNavigation<FinanceNavProp>();
   const isFocused = useIsFocused();
 
+  const [activeTab, setActiveTab] = useState<'assets' | 'goals'>('assets');
   const [assets, setAssets] = useState<Asset[]>([]);
   const [familyId, setFamilyId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [familyMembers, setFamilyMembers] = useState<FamilyMemberBasic[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAddModal, setShowAddModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
 
   // 목표 상태 (최대 2개)
@@ -1897,77 +2334,136 @@ const FinanceScreen: React.FC = () => {
     );
   }
 
+  const getNicknameMap = () => Object.fromEntries(familyMembers.map(m => [m.id, m.nickname]));
+
+  // 자산 행 탭 → 변경 내역 화면
+  const handlePressAsset = (asset: Asset) => {
+    const ownerNickname = asset.user_id ? (getNicknameMap()[asset.user_id] ?? undefined) : undefined;
+    navigation.navigate('AssetHistory', {
+      assetId: asset.id,
+      assetName: asset.name,
+      category: asset.category,
+      currentAmount: asset.amount,
+      ownerNickname,
+    });
+  };
+
+  // 수정 버튼 → AssetUpdate 풀스크린
+  const handleEditAsset = (asset: Asset) => {
+    const ownerNickname = asset.user_id ? (getNicknameMap()[asset.user_id] ?? undefined) : undefined;
+    navigation.navigate('AssetUpdate', {
+      assetId: asset.id,
+      assetName: asset.name,
+      assetAmount: asset.amount,
+      category: asset.category,
+      ownerNickname,
+    });
+  };
+
+  // 스와이프 삭제 → Alert로 방법 선택
+  const handleDeleteAsset = (asset: Asset) => {
+    Alert.alert(
+      '자산 삭제',
+      `${asset.name}을(를) 삭제할까요?`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '내역 남기고 삭제',
+          onPress: () => handleDelete(asset, true),
+        },
+        {
+          text: '내역도 함께 삭제',
+          style: 'destructive',
+          onPress: () => handleDelete(asset, false),
+        },
+      ],
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* 헤더 */}
       <View style={styles.header}>
+        <Text style={styles.subLabel}>우리 집 자산</Text>
         <Text style={styles.title}>자산</Text>
+      </View>
+
+      {/* 자산 | 목표 세그먼트 토글 */}
+      <View style={styles.segmentWrap}>
+        <TouchableOpacity
+          style={[styles.segBtn, activeTab === 'assets' && styles.segBtnActive]}
+          onPress={() => setActiveTab('assets')}
+        >
+          <Text style={[styles.segText, activeTab === 'assets' && styles.segTextActive]}>자산</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.segBtn, activeTab === 'goals' && styles.segBtnActive]}
+          onPress={() => setActiveTab('goals')}
+        >
+          <Text style={[styles.segText, activeTab === 'goals' && styles.segTextActive]}>목표</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* 총 자산 카드 */}
-        <TotalCard
-          total={totalAmount}
-          assetCount={assets.length}
-          onHistoryPress={() => navigation.navigate('AssetHistory')}
-        />
+        {activeTab === 'assets' ? (
+          <>
+            {/* 총 자산 카드 */}
+            <TotalCard
+              total={totalAmount}
+              assetCount={assets.length}
+              onPress={() => navigation.navigate('AllAssetHistory')}
+            />
 
-        {/* 자산이 없을 때 안내 */}
-        {assets.length === 0 && (
-          <Text style={styles.emptyText}>
-            + 버튼을 눌러 자산을 추가해 보세요 💰
-          </Text>
-        )}
+            {/* 자산이 없을 때 안내 */}
+            {assets.length === 0 && (
+              <Text style={styles.emptyText}>
+                + 버튼을 눌러 자산을 추가해 보세요 💰
+              </Text>
+            )}
 
-        {/* 카테고리별 자산 목록 */}
-        {CATEGORIES.map(cat => (
-          <CategorySection
-            key={cat}
-            category={cat}
-            assets={grouped[cat]}
-            currentUserId={currentUserId}
-            familyMembers={familyMembers}
-            onPressAsset={asset => setEditingAsset(asset)}
-          />
-        ))}
-
-        {/* 목표 섹션 */}
-        {familyId && (
-          <GoalSection
-            goals={goals}
-            goalItemsMap={goalItemsMap}
-            assets={assets}
-            familyId={familyId}
-            onGoalChange={loadAssets}
-          />
+            {/* 카테고리별 자산 목록 */}
+            {CATEGORIES.map(cat => (
+              <CategorySection
+                key={cat}
+                category={cat}
+                assets={grouped[cat]}
+                currentUserId={currentUserId}
+                familyMembers={familyMembers}
+                onPressAsset={handlePressAsset}
+                onEditAsset={handleEditAsset}
+                onDeleteAsset={handleDeleteAsset}
+              />
+            ))}
+          </>
+        ) : (
+          /* 목표 섹션 */
+          familyId ? (
+            <GoalSection
+              goals={goals}
+              goalItemsMap={goalItemsMap}
+              assets={assets}
+              familyId={familyId}
+              onGoalChange={loadAssets}
+            />
+          ) : null
         )}
       </ScrollView>
 
-      {/* 자산 추가 FAB */}
-      <TouchableOpacity
-        style={styles.addFab}
-        onPress={() => setShowAddModal(true)}
-        activeOpacity={0.85}
-      >
-        <Plus color="#FFFFFF" size={26} strokeWidth={2.5} />
-      </TouchableOpacity>
-
-      {/* 추가 모달 */}
-      {familyId && (
-        <AddAssetModal
-          visible={showAddModal}
-          familyId={familyId}
-          currentUserId={currentUserId}
-          familyMembers={familyMembers}
-          onClose={() => setShowAddModal(false)}
-          onSaved={loadAssets}
-        />
+      {/* 자산 추가 FAB (자산 탭에서만) */}
+      {activeTab === 'assets' && (
+        <TouchableOpacity
+          style={styles.addFab}
+          onPress={() => navigation.navigate('AssetAdd')}
+          activeOpacity={0.85}
+        >
+          <SvgPlus color="#FFFFFF" size={26} strokeWidth={2.5} />
+        </TouchableOpacity>
       )}
 
-      {/* 수정 모달 */}
+      {/* 수정 모달 (더 이상 AssetRow에서 열리지 않으나 직접 삭제용으로 유지 가능) */}
       <EditAssetModal
         visible={!!editingAsset}
         asset={editingAsset}
@@ -1987,15 +2483,42 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     paddingTop: 8,
-    paddingBottom: 16,
+    paddingBottom: 10,
   },
+  subLabel: { fontSize: 12, fontWeight: '600', color: '#A87850', marginBottom: 2, letterSpacing: 0.2 },
   title: { fontSize: 26, fontWeight: '800', color: '#5C3D1E' },
-  content: { paddingHorizontal: 20, paddingBottom: 100, paddingTop: 4 },
+  // 세그먼트 토글
+  segmentWrap: {
+    flexDirection: 'row',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    backgroundColor: '#EDD9C0',
+    borderRadius: 12,
+    padding: 3,
+    gap: 2,
+  },
+  segBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  segBtnActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#8B5E3C',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  segText: { fontSize: 14, fontWeight: '600', color: '#A87850' },
+  segTextActive: { color: '#5C3D1E', fontWeight: '800' },
+  content: { paddingHorizontal: 16, paddingBottom: 100, paddingTop: 4 },
   emptyText: {
     textAlign: 'center',
     color: '#C49A6C',
-    fontSize: 15,
-    marginTop: 20,
+    fontSize: 14,
+    marginTop: 16,
     marginBottom: 16,
   },
   addFab: {
@@ -2003,15 +2526,15 @@ const styles = StyleSheet.create({
     bottom: 24,
     right: 24,
     backgroundColor: '#8B5E3C',
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#6B4226',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowRadius: 12,
     elevation: 6,
   },
 });

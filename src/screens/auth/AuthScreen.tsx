@@ -19,12 +19,62 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import Svg, { Path, Circle, Rect, Ellipse } from 'react-native-svg';
 
 import { supabase } from '../../lib/supabase';
 import { RootStackParamList } from '../../navigation';
 
+// ── 디자인 토큰 ────────────────────────────────
+
+const C = {
+  brown:    '#8B5E3C',
+  warmOak:  '#A87850',
+  lightOak: '#C49A6C',
+  deep:     '#6B4226',
+  ivory:    '#FFF8F0',
+  cream:    '#FDF6EC',
+  edge:     '#DEC8A8',
+  dark:     '#5C3D1E',
+  mid:      '#A87850',
+  danger:   '#D95F4B',
+} as const;
+
+// ── 도토리 마크 SVG ────────────────────────────
+
+const AcornMark = ({ size = 52 }: { size?: number }) => (
+  <Svg width={size} height={size} viewBox="0 0 52 60" fill="none">
+    {/* 몸통 */}
+    <Path d="M12 30 Q11 52 26 52 Q41 52 40 30 Z" fill={C.brown} />
+    {/* 뚜껑 */}
+    <Rect x="8" y="18" width="36" height="16" rx="7" fill={C.deep} />
+    {/* 뚜껑 질감 */}
+    <Circle cx="17" cy="26" r="1.5" fill="rgba(255,255,255,0.22)" />
+    <Circle cx="26" cy="26" r="1.5" fill="rgba(255,255,255,0.22)" />
+    <Circle cx="35" cy="26" r="1.5" fill="rgba(255,255,255,0.22)" />
+    {/* 줄기 */}
+    <Path d="M26 18 Q29 11 33 7" stroke={C.deep} strokeWidth="2.5" strokeLinecap="round" />
+  </Svg>
+);
+
+// ── 봉투 SVG (이메일 인증 대기용) ──────────────
+
+const EnvelopeSvg = () => (
+  <Svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+    <Rect x="8" y="20" width="64" height="44" rx="6" fill={C.edge} />
+    <Rect x="8" y="20" width="64" height="44" rx="6" stroke={C.brown} strokeWidth="2" />
+    <Path d="M8 26 L40 48 L72 26" stroke={C.brown} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <Circle cx="58" cy="22" r="11" fill={C.danger} />
+    <Path d="M58 16.5 L58 23" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" />
+    <Circle cx="58" cy="27" r="1.8" fill="#fff" />
+  </Svg>
+);
+
+// ── 타입 ───────────────────────────────────────
+
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 type AuthTab = 'login' | 'signup';
+
+// ── 메인 컴포넌트 ──────────────────────────────
 
 const AuthScreen: React.FC = () => {
   const navigation = useNavigation<NavProp>();
@@ -36,6 +86,7 @@ const AuthScreen: React.FC = () => {
   const [nickname, setNickname] = useState('');
   const [loading, setLoading] = useState(false);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [focused, setFocused] = useState<string | null>(null);
   const pendingPassword = useRef('');
 
   // 다른 기기에서 인증한 경우 자동 감지 (3초마다 세션 확인)
@@ -43,7 +94,7 @@ const AuthScreen: React.FC = () => {
     if (!pendingEmail) return;
     const interval = setInterval(async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) clearInterval(interval); // onAuthStateChange가 자동으로 화면 전환
+      if (session) clearInterval(interval);
     }, 3000);
     return () => clearInterval(interval);
   }, [pendingEmail]);
@@ -54,6 +105,7 @@ const AuthScreen: React.FC = () => {
     setPassword('');
     setPasswordConfirm('');
     setNickname('');
+    setFocused(null);
   };
 
   // ── 로그인 ──────────────────────────────────
@@ -79,7 +131,6 @@ const AuthScreen: React.FC = () => {
         Alert.alert('오류', error.message);
       }
     }
-    // 성공 시 onAuthStateChange가 자동으로 화면 전환
   };
 
   // ── 회원가입 ─────────────────────────────────
@@ -104,7 +155,6 @@ const AuthScreen: React.FC = () => {
 
     setLoading(true);
 
-    // 1. Auth 계정 생성
     const { data, error } = await supabase.auth.signUp({
       email: email.trim().toLowerCase(),
       password,
@@ -123,7 +173,6 @@ const AuthScreen: React.FC = () => {
       return;
     }
 
-    // 이메일 인증 ON 상태에서 중복 이메일 → identities: []
     if (data.user?.identities?.length === 0) {
       setLoading(false);
       Alert.alert('알림', '이미 가입된 이메일이에요. 로그인해주세요.');
@@ -136,7 +185,6 @@ const AuthScreen: React.FC = () => {
       return;
     }
 
-    // 2. 닉네임 프로필 즉시 저장 (이메일 인증 전에도 저장 가능)
     await supabase
       .from('user_profiles')
       .insert({ id: data.user.id, nickname: nickname.trim(), role: 'owner', family_id: null });
@@ -144,11 +192,8 @@ const AuthScreen: React.FC = () => {
     setLoading(false);
 
     if (!data.session) {
-      // 이메일 인증 필요 → 안내 화면
       pendingPassword.current = password;
       setPendingEmail(email.trim().toLowerCase());
-    } else {
-      // 이메일 인증 OFF → onAuthStateChange가 자동 전환
     }
   };
 
@@ -165,32 +210,33 @@ const AuthScreen: React.FC = () => {
       if (error) {
         Alert.alert('아직 인증 전이에요', '메일함에서 링크를 클릭한 후 다시 눌러주세요.');
       }
-      // 성공 시 onAuthStateChange가 자동으로 화면 전환
     };
 
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.pendingBox}>
-          <Text style={styles.pendingEmoji}>📬</Text>
+          <EnvelopeSvg />
           <Text style={styles.pendingTitle}>이메일을 확인해주세요</Text>
           <Text style={styles.pendingDesc}>
-            <Text style={{ fontWeight: '700' }}>{pendingEmail}</Text>
+            <Text style={{ fontWeight: '700', color: C.dark }}>{pendingEmail}</Text>
             {'\n'}로 인증 메일을 보냈어요.{'\n\n'}
-            1. 메일함에서 인증 링크를 클릭하세요{'\n'}
-            2. 앱으로 돌아와 아래 버튼을 눌러주세요
+            <Text style={{ color: C.lightOak }}>
+              1. 메일함에서 인증 링크를 클릭하세요{'\n'}
+              2. 앱으로 돌아와 아래 버튼을 눌러주세요
+            </Text>
           </Text>
           <TouchableOpacity
-            style={[styles.verifiedBtn, loading && { opacity: 0.5 }]}
+            style={[styles.submitBtn, loading && { opacity: 0.5 }]}
             onPress={handleCheckVerified}
             disabled={loading}
           >
             {loading
               ? <ActivityIndicator color="#FFFFFF" />
-              : <Text style={styles.verifiedBtnText}>인증 완료했어요</Text>
+              : <Text style={styles.submitText}>인증 완료했어요</Text>
             }
           </TouchableOpacity>
-          <TouchableOpacity style={styles.pendingBackBtn} onPress={() => setPendingEmail(null)}>
-            <Text style={styles.pendingBackText}>로그인으로 돌아가기</Text>
+          <TouchableOpacity style={styles.secondaryBtn} onPress={() => setPendingEmail(null)}>
+            <Text style={styles.secondaryText}>로그인으로 돌아가기</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -199,17 +245,24 @@ const AuthScreen: React.FC = () => {
 
   // ── 로그인 / 회원가입 폼 ────────────────────
 
+  const inputStyle = (field: string) => [
+    styles.input,
+    focused === field && styles.inputFocused,
+  ];
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
 
+          {/* 로고 */}
           <View style={styles.logoArea}>
-            <Text style={styles.logoEmoji}>🌰</Text>
+            <AcornMark size={52} />
             <Text style={styles.appName}>도토리</Text>
             <Text style={styles.appDesc}>가족이 함께 쓰는 홈 매니저</Text>
           </View>
 
+          {/* 탭 */}
           <View style={styles.tabRow}>
             <TouchableOpacity
               style={[styles.tabBtn, tab === 'login' && styles.tabBtnActive]}
@@ -225,57 +278,77 @@ const AuthScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
 
+          {/* 폼 카드 */}
           <View style={styles.card}>
 
-            <Text style={styles.label}>이메일</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="example@email.com"
-              placeholderTextColor="#C49A6C"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="next"
-            />
+            <View style={styles.fieldWrap}>
+              <Text style={styles.label}>이메일</Text>
+              <TextInput
+                style={inputStyle('email')}
+                placeholder="example@email.com"
+                placeholderTextColor={C.edge}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="next"
+                onFocus={() => setFocused('email')}
+                onBlur={() => setFocused(null)}
+              />
+            </View>
 
-            <Text style={[styles.label, { marginTop: 16 }]}>비밀번호</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="6자 이상"
-              placeholderTextColor="#C49A6C"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              returnKeyType="next"
-            />
+            <View style={styles.fieldWrap}>
+              <Text style={styles.label}>비밀번호</Text>
+              <TextInput
+                style={inputStyle('password')}
+                placeholder="6자 이상"
+                placeholderTextColor={C.edge}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                returnKeyType="next"
+                onFocus={() => setFocused('password')}
+                onBlur={() => setFocused(null)}
+              />
+            </View>
 
             {tab === 'signup' && (
               <>
-                <Text style={[styles.label, { marginTop: 16 }]}>비밀번호 확인</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="비밀번호를 다시 입력하세요"
-                  placeholderTextColor="#C49A6C"
-                  value={passwordConfirm}
-                  onChangeText={setPasswordConfirm}
-                  secureTextEntry
-                  returnKeyType="next"
-                />
+                <View style={styles.fieldWrap}>
+                  <Text style={styles.label}>비밀번호 확인</Text>
+                  <TextInput
+                    style={inputStyle('passwordConfirm')}
+                    placeholder="비밀번호를 다시 입력하세요"
+                    placeholderTextColor={C.edge}
+                    value={passwordConfirm}
+                    onChangeText={setPasswordConfirm}
+                    secureTextEntry
+                    returnKeyType="next"
+                    onFocus={() => setFocused('passwordConfirm')}
+                    onBlur={() => setFocused(null)}
+                  />
+                </View>
 
-                <Text style={[styles.label, { marginTop: 16 }]}>닉네임</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="예: 도토리, 아내, 남편 (10자 이내)"
-                  placeholderTextColor="#C49A6C"
-                  value={nickname}
-                  onChangeText={setNickname}
-                  autoCorrect={false}
-                  maxLength={10}
-                  returnKeyType="done"
-                  onSubmitEditing={handleSignup}
-                />
+                <View style={styles.fieldWrap}>
+                  <View style={styles.labelRow}>
+                    <Text style={styles.label}>닉네임</Text>
+                    <Text style={styles.labelHint}>{nickname.length} / 10자</Text>
+                  </View>
+                  <TextInput
+                    style={inputStyle('nickname')}
+                    placeholder="예: 도토리, 아내, 남편"
+                    placeholderTextColor={C.edge}
+                    value={nickname}
+                    onChangeText={setNickname}
+                    autoCorrect={false}
+                    maxLength={10}
+                    returnKeyType="done"
+                    onSubmitEditing={handleSignup}
+                    onFocus={() => setFocused('nickname')}
+                    onBlur={() => setFocused(null)}
+                  />
+                </View>
               </>
             )}
 
@@ -292,10 +365,10 @@ const AuthScreen: React.FC = () => {
 
             {tab === 'login' && (
               <TouchableOpacity
-                style={styles.forgotBtn}
+                style={styles.secondaryBtn}
                 onPress={() => navigation.navigate('ForgotPassword')}
               >
-                <Text style={styles.forgotText}>비밀번호를 잊으셨나요?</Text>
+                <Text style={styles.secondaryText}>비밀번호를 잊으셨나요?</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -307,14 +380,15 @@ const AuthScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#FDF6EC' },
-  content: { padding: 24, paddingTop: 40, paddingBottom: 60 },
+  safeArea: { flex: 1, backgroundColor: C.cream },
+  content: { paddingHorizontal: 24, paddingTop: 36, paddingBottom: 60 },
 
-  logoArea: { alignItems: 'center', marginBottom: 40 },
-  logoEmoji: { fontSize: 56, marginBottom: 8 },
-  appName: { fontSize: 32, fontWeight: '800', color: '#5C3D1E', letterSpacing: -0.5 },
-  appDesc: { fontSize: 14, color: '#8B5E3C', marginTop: 4, fontWeight: '500' },
+  // 로고
+  logoArea: { alignItems: 'center', marginBottom: 36 },
+  appName: { fontSize: 30, fontWeight: '900', color: C.dark, letterSpacing: -1, marginTop: 10 },
+  appDesc: { fontSize: 13, color: C.mid, fontWeight: '500', marginTop: 4 },
 
+  // 탭
   tabRow: {
     flexDirection: 'row',
     backgroundColor: '#EDD9C0',
@@ -323,58 +397,66 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   tabBtn: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center' },
-  tabBtnActive: { backgroundColor: '#FFFFFF' },
-  tabText: { fontSize: 15, fontWeight: '600', color: '#8B5E3C' },
-  tabTextActive: { color: '#5C3D1E' },
-
-  card: {
-    backgroundColor: '#FFF8F0',
-    borderRadius: 20,
-    padding: 24,
-    shadowColor: '#8B5E3C',
-    shadowOffset: { width: 0, height: 2 },
+  tabBtnActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  tabText: { fontSize: 14, fontWeight: '700', color: C.mid },
+  tabTextActive: { color: C.dark },
+
+  // 카드
+  card: {
+    backgroundColor: C.ivory,
+    borderRadius: 20,
+    padding: 22,
+    gap: 14,
+    shadowColor: C.brown,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
     elevation: 3,
   },
-  label: { fontSize: 13, fontWeight: '600', color: '#8B5E3C', marginBottom: 8 },
+
+  // 필드
+  fieldWrap: { gap: 0 },
+  labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 },
+  label: { fontSize: 12, fontWeight: '700', color: C.mid, marginBottom: 7 },
+  labelHint: { fontSize: 11, color: C.lightOak, fontWeight: '500' },
   input: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 13,
-    fontSize: 16,
-    color: '#5C3D1E',
+    fontSize: 15,
+    color: C.dark,
     borderWidth: 1,
-    borderColor: '#DEC8A8',
+    borderColor: C.edge,
   },
+  inputFocused: {
+    borderColor: C.brown,
+    borderWidth: 1.5,
+  },
+
+  // 버튼
   submitBtn: {
-    backgroundColor: '#8B5E3C',
+    backgroundColor: C.brown,
     borderRadius: 14,
     paddingVertical: 15,
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: 6,
   },
   submitText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-  forgotBtn: { alignItems: 'center', paddingVertical: 14 },
-  forgotText: { fontSize: 14, color: '#8B5E3C', fontWeight: '500' },
+  secondaryBtn: { alignItems: 'center', paddingVertical: 10 },
+  secondaryText: { fontSize: 13, color: C.mid, fontWeight: '600' },
 
-  pendingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  pendingEmoji: { fontSize: 56, marginBottom: 20 },
-  pendingTitle: { fontSize: 22, fontWeight: '800', color: '#5C3D1E', marginBottom: 14 },
-  pendingDesc: { fontSize: 15, color: '#8B5E3C', textAlign: 'center', lineHeight: 26, marginBottom: 40 },
-  verifiedBtn: {
-    backgroundColor: '#8B5E3C',
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    alignItems: 'center',
-    marginBottom: 12,
-    width: '100%',
-  },
-  verifiedBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-  pendingBackBtn: { paddingVertical: 12, paddingHorizontal: 24 },
-  pendingBackText: { fontSize: 15, color: '#8B5E3C', fontWeight: '600' },
+  // 이메일 인증 대기
+  pendingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 0 },
+  pendingTitle: { fontSize: 22, fontWeight: '900', color: C.dark, marginTop: 28, marginBottom: 14, textAlign: 'center' },
+  pendingDesc: { fontSize: 14, color: C.mid, textAlign: 'center', lineHeight: 26, marginBottom: 36 },
 });
 
 export default AuthScreen;

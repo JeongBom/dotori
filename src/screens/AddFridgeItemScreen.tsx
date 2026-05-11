@@ -1,15 +1,9 @@
-// 냉장고 음식 추가 화면
-// - food_database 자동완성 검색
-// - 냉장/냉동 선택에 따른 권장 보관기간 안내
-// - 넣은 날짜 / 유통기한 입력
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
-  FlatList,
   StyleSheet,
   Alert,
   ScrollView,
@@ -18,11 +12,12 @@ import {
   Modal,
   Keyboard,
   Dimensions,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ChevronLeft, Search, X, ChevronDown } from 'lucide-react-native';
+import { ChevronLeft, Search, X, ChevronDown, Check, Star } from 'lucide-react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
@@ -47,6 +42,12 @@ function addDays(dateStr: string, days: number): string {
   return d.toISOString().split('T')[0];
 }
 
+function addMonths(dateStr: string, months: number): string {
+  const d = new Date(dateStr);
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().split('T')[0];
+}
+
 function formatDisplayDate(dateStr: string): string {
   const [y, m, d] = dateStr.split('-');
   return `${y}년 ${parseInt(m)}월 ${parseInt(d)}일`;
@@ -54,18 +55,9 @@ function formatDisplayDate(dateStr: string): string {
 
 function isValidDate(s: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
-  const d = new Date(s);
-  return !isNaN(d.getTime());
+  return !isNaN(new Date(s).getTime());
 }
 
-// 월 단위 날짜 더하기
-function addMonths(dateStr: string, months: number): string {
-  const d = new Date(dateStr);
-  d.setMonth(d.getMonth() + months);
-  return d.toISOString().split('T')[0];
-}
-
-// 자동완성 항목 타입
 interface SuggestionItem {
   name: string;
   category: FridgeCategory;
@@ -73,10 +65,9 @@ interface SuggestionItem {
 
 // ── 날짜 선택 모달 ────────────────────────────
 
-// iOS: 모달 안에 달력 표시 / Android: 네이티브 달력 바로 표시
 interface DatePickerModalProps {
   visible: boolean;
-  value: string;          // YYYY-MM-DD
+  value: string;
   onConfirm: (date: string) => void;
   onCancel: () => void;
   title: string;
@@ -105,7 +96,6 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({ visible, value, onCon
 
   if (!visible) return null;
 
-  // Android: 네이티브 picker를 직접 띄움
   if (Platform.OS === 'android') {
     return (
       <DateTimePicker
@@ -118,10 +108,8 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({ visible, value, onCon
     );
   }
 
-  // iOS: 모달 안에 달력 표시
   const screenWidth = Dimensions.get('window').width;
-  const MODAL_H_PADDING = 16; // 양쪽 패딩
-  const calendarWidth = screenWidth - MODAL_H_PADDING * 2;
+  const calendarWidth = screenWidth - 32;
 
   return (
     <Modal visible={visible} transparent animationType="fade">
@@ -165,9 +153,32 @@ const dpStyles = StyleSheet.create({
 
 // ── 메인 화면 ─────────────────────────────────
 
+const TOTAL_STEPS = 3;
+const MAX_FAVORITES = 10;
+type FavoriteFood = { name: string; storage_type: StorageType };
+const favKey = (fid: string) => `fridge_favorites_${fid}`;
+
 const AddFridgeItemScreen: React.FC = () => {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
+
+  const itemId = route.params?.itemId ?? null;
+  const isEditing = !!itemId;
+
+  const [step, setStep] = useState(1);
+  const [done, setDone] = useState(false);
+  const doneOpacity = useRef(new Animated.Value(0)).current;
+  const doneScale = useRef(new Animated.Value(0.85)).current;
+  const nameInputRef = useRef<TextInput>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isEditing) {
+        const t = setTimeout(() => nameInputRef.current?.focus(), 600);
+        return () => clearTimeout(t);
+      }
+    }, [isEditing])
+  );
 
   // 음식 데이터베이스
   const [foodDb, setFoodDb] = useState<FoodEntry[]>([]);
@@ -175,38 +186,67 @@ const AddFridgeItemScreen: React.FC = () => {
 
   // 폼 상태
   const [name, setName] = useState('');
-  const [category, setCategory] = useState<string>('기타');
   const [storageType, setStorageType] = useState<StorageType>('냉장');
-  const [storedDate, setStoredDate] = useState(todayStr());
   const [quantity, setQuantity] = useState(1);
+  const [storedDate, setStoredDate] = useState(todayStr());
   const [expiryDate, setExpiryDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [familyId, setFamilyId] = useState<string | null>(route.params?.familyId ?? null);
-  const itemId = route.params?.itemId ?? null;
-  const isEditing = !!itemId;
 
-  // 날짜 모달 상태
+  // 날짜 모달
   const [showStoredPicker, setShowStoredPicker] = useState(false);
   const [showExpiryPicker, setShowExpiryPicker] = useState(false);
 
-  // 개수 직접 입력 상태
+  // 개수 직접 입력
   const [editingQty, setEditingQty] = useState(false);
   const [qtyInput, setQtyInput] = useState('');
 
-  // familyId가 없으면 조회하거나 자동 생성
+  // 즐겨찾기
+  const [favorites, setFavorites] = useState<FavoriteFood[]>([]);
+
   useEffect(() => {
     if (familyId) return;
     getOrCreateFamilyId().then(id => { if (id) setFamilyId(id); });
   }, [familyId]);
 
-  // 수정 모드: 기존 아이템 데이터 로드
+  useEffect(() => {
+    if (!familyId) return;
+    AsyncStorage.getItem(favKey(familyId)).then(json => {
+      if (json) setFavorites(JSON.parse(json));
+    });
+  }, [familyId]);
+
+  const isFav = favorites.some(f => f.name === name.trim());
+
+  const toggleFavorite = useCallback(async () => {
+    if (!name.trim() || !familyId) return;
+    let next: FavoriteFood[];
+    if (isFav) {
+      next = favorites.filter(f => f.name !== name.trim());
+    } else {
+      if (favorites.length >= MAX_FAVORITES) {
+        Alert.alert('즐겨찾기 꽉참', `최대 ${MAX_FAVORITES}개까지 저장할 수 있어요.\n기존 항목을 먼저 제거해주세요.`);
+        return;
+      }
+      next = [...favorites, { name: name.trim(), storage_type: storageType }];
+    }
+    setFavorites(next);
+    await AsyncStorage.setItem(favKey(familyId), JSON.stringify(next));
+  }, [name, storageType, favorites, isFav, familyId]);
+
+  const removeFavorite = useCallback(async (favName: string) => {
+    if (!familyId) return;
+    const next = favorites.filter(f => f.name !== favName);
+    setFavorites(next);
+    await AsyncStorage.setItem(favKey(familyId), JSON.stringify(next));
+  }, [favorites, familyId]);
+
   useEffect(() => {
     if (!itemId) return;
     (async () => {
       const { data } = await supabase.from('fridge_items').select('*').eq('id', itemId).single();
       if (!data) return;
       setName(data.name);
-      setCategory(data.category);
       setStorageType(data.storage_type);
       setQuantity(data.quantity ?? 1);
       setStoredDate(data.stored_date);
@@ -215,7 +255,6 @@ const AddFridgeItemScreen: React.FC = () => {
     })();
   }, [itemId]);
 
-  // food_database 로드
   useEffect(() => {
     (async () => {
       const { data } = await supabase.from('food_database').select('*').order('name');
@@ -223,7 +262,6 @@ const AddFridgeItemScreen: React.FC = () => {
     })();
   }, []);
 
-  // 자동완성 필터
   const onNameChange = useCallback((text: string) => {
     setName(text);
     if (text.length < 1) { setSuggestions([]); return; }
@@ -234,25 +272,26 @@ const AddFridgeItemScreen: React.FC = () => {
     setSuggestions(matches);
   }, [foodDb]);
 
-  // 자동완성 항목 선택
   const onSelectFood = (food: SuggestionItem) => {
     setName(food.name);
-    setCategory(food.category);
     setSuggestions([]);
     Keyboard.dismiss();
   };
 
-  // 넣은 날짜 변경 (유통기한 자동 설정 없음 — 힌트만 업데이트)
-  const onStoredDateChange = (date: string) => {
-    setStoredDate(date);
+  const goNext = () => {
+    if (step === 1 && !name.trim()) {
+      Alert.alert('알림', '음식 이름을 입력해주세요.');
+      return;
+    }
+    if (step < TOTAL_STEPS) setStep(s => s + 1);
+    else handleSave();
   };
 
-  const onStorageTypeChange = (type: StorageType) => setStorageType(type);
-
-  // 저장 (추가 / 수정 공용)
   const handleSave = async () => {
-    if (!name.trim()) { Alert.alert('알림', '음식 이름을 입력해주세요.'); return; }
-    if (expiryDate && !isValidDate(expiryDate)) { Alert.alert('알림', '유통기한 날짜를 확인해주세요.'); return; }
+    if (expiryDate && !isValidDate(expiryDate)) {
+      Alert.alert('알림', '유통기한 날짜를 확인해주세요.');
+      return;
+    }
 
     const fid = familyId ?? await getOrCreateFamilyId();
     if (!fid) { Alert.alert('오류', '가족 정보를 생성할 수 없습니다.'); return; }
@@ -262,7 +301,6 @@ const AddFridgeItemScreen: React.FC = () => {
     try {
       const payload = {
         name: name.trim(),
-        category,
         storage_type: storageType,
         quantity,
         stored_date: storedDate,
@@ -270,11 +308,8 @@ const AddFridgeItemScreen: React.FC = () => {
       };
 
       if (isEditing && itemId) {
-        // ── 수정 ──
         const { error } = await supabase.from('fridge_items').update(payload).eq('id', itemId);
         if (error) throw error;
-
-        // 알림 재스케줄
         await cancelExpiryNotification(itemId);
         if (expiryDate) {
           const granted = await requestNotificationPermissions();
@@ -283,15 +318,14 @@ const AddFridgeItemScreen: React.FC = () => {
             await scheduleExpiryNotification(itemId, name.trim(), expiryDate, notifyDays);
           }
         }
+        navigation.goBack();
       } else {
-        // ── 신규 추가 ──
         const { data, error } = await supabase.from('fridge_items').insert({
           family_id: fid,
           ...payload,
           is_consumed: false,
           consumed_at: null,
         }).select().single();
-
         if (error) throw error;
 
         if (data && expiryDate) {
@@ -302,9 +336,12 @@ const AddFridgeItemScreen: React.FC = () => {
           }
         }
 
+        setDone(true);
+        Animated.parallel([
+          Animated.spring(doneScale, { toValue: 1, useNativeDriver: true }),
+          Animated.timing(doneOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+        ]).start();
       }
-
-      navigation.goBack();
     } catch (e) {
       Alert.alert('오류', '저장에 실패했습니다. 다시 시도해주세요.');
       console.error(e);
@@ -313,84 +350,169 @@ const AddFridgeItemScreen: React.FC = () => {
     }
   };
 
-  // ── 렌더 ────────────────────────────────────
+  // ── 완료 화면 ────────────────────────────────
 
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      {/* 헤더 */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <ChevronLeft color="#5C3D1E" size={24} strokeWidth={2} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{isEditing ? '음식 수정' : '음식 추가'}</Text>
-        <View style={styles.headerRight} />
-      </View>
+  if (done) {
+    return (
+      <SafeAreaView style={s.safeArea}>
+        <Animated.View style={[s.doneWrap, { opacity: doneOpacity, transform: [{ scale: doneScale }] }]}>
+          <View style={s.doneCircle}>
+            <Check color="#FFFFFF" size={36} strokeWidth={2.5} />
+          </View>
+          <Text style={s.doneTitle}>{name}</Text>
+          <Text style={s.doneSub}>
+            {storageType === '냉장' ? '냉장고에 추가되었어요' :
+             storageType === '냉동' ? '냉동실에 추가되었어요' :
+             '실온 보관함에 추가되었어요'}
+          </Text>
+          <TouchableOpacity style={s.doneBtn} onPress={() => navigation.goBack()}>
+            <Text style={s.doneBtnText}>확인</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </SafeAreaView>
+    );
+  }
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+  // ── 진행 바 ──────────────────────────────────
 
-          {/* 음식 이름 + 자동완성 */}
-          <Text style={styles.label}>음식 이름</Text>
-          <View style={styles.autocompleteWrapper}>
-            <View style={styles.inputRow}>
-              <Search color="#C49A6C" size={18} strokeWidth={1.8} style={{ marginRight: 8 }} />
-              <TextInput
-                style={styles.input}
-                placeholder="음식 이름을 입력하세요"
-                placeholderTextColor="#C49A6C"
-                value={name}
-                onChangeText={onNameChange}
-                autoCorrect={false}
-              />
-              {name.length > 0 && (
-                <TouchableOpacity onPress={() => { setName(''); setSuggestions([]); }}>
-                  <X color="#C49A6C" size={18} strokeWidth={2} />
-                </TouchableOpacity>
+  const Progress = () => (
+    <View style={s.progressRow}>
+      {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
+        <View
+          key={i}
+          style={[s.progressSeg, i + 1 <= step ? s.progressSegActive : s.progressSegInactive]}
+        />
+      ))}
+    </View>
+  );
+
+  // ── 스텝별 콘텐츠 ─────────────────────────────
+
+  const renderStep = () => {
+    if (step === 1) {
+      return (
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <ScrollView contentContainerStyle={s.stepContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <Text style={s.stepQuestion}>어떤 음식인가요?</Text>
+
+            {/* 즐겨찾기 */}
+            {favorites.length > 0 && (
+              <View style={s.favSection}>
+                <View style={s.favHeader}>
+                  <Star color="#F5A623" size={13} fill="#F5A623" strokeWidth={0} />
+                  <Text style={s.favLabel}>즐겨찾기</Text>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.favRow}>
+                  {favorites.map(fav => (
+                    <TouchableOpacity
+                      key={fav.name}
+                      style={s.favChip}
+                      onPress={() => {
+                        setName(fav.name);
+                        setStorageType(fav.storage_type);
+                        setSuggestions([]);
+                        setStep(2);
+                      }}
+                      onLongPress={() => Alert.alert(
+                        '즐겨찾기 삭제',
+                        `"${fav.name}"을(를) 즐겨찾기에서 제거할까요?`,
+                        [
+                          { text: '취소', style: 'cancel' },
+                          { text: '제거', style: 'destructive', onPress: () => removeFavorite(fav.name) },
+                        ]
+                      )}
+                    >
+                      <Text style={s.favChipText}>{fav.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            <View style={s.autocompleteWrap}>
+              <View style={s.inputRow}>
+                <Search color="#C49A6C" size={18} strokeWidth={1.8} style={{ marginRight: 8 }} />
+                <TextInput
+                  ref={nameInputRef}
+                  style={s.input}
+                  placeholder="음식 이름을 입력하세요"
+                  placeholderTextColor="#C49A6C"
+                  value={name}
+                  onChangeText={onNameChange}
+                  autoCorrect={false}
+                  keyboardAppearance="light"
+                />
+                {name.length > 0 && (
+                  <TouchableOpacity onPress={() => { setName(''); setSuggestions([]); }}>
+                    <X color="#C49A6C" size={18} strokeWidth={2} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {suggestions.length > 0 && (
+                <View style={s.dropdown}>
+                  {suggestions.map((food, idx) => (
+                    <TouchableOpacity
+                      key={`${food.name}-${idx}`}
+                      style={s.dropdownItem}
+                      onPress={() => onSelectFood(food)}
+                    >
+                      <Text style={s.dropdownName}>{food.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               )}
             </View>
 
-            {/* 자동완성 드롭다운 */}
-            {suggestions.length > 0 && (
-              <View style={styles.dropdown}>
-                {suggestions.map((food, idx) => (
-                  <TouchableOpacity
-                    key={`${food.name}-${idx}`}
-                    style={styles.dropdownItem}
-                    onPress={() => onSelectFood(food)}
-                  >
-                    <Text style={styles.dropdownName}>{food.name}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+            {/* 즐겨찾기 토글 버튼 */}
+            {name.trim().length > 0 && (
+              <TouchableOpacity style={s.starRow} onPress={toggleFavorite} activeOpacity={0.7}>
+                <Star
+                  color={isFav ? '#F5A623' : '#C49A6C'}
+                  size={16}
+                  fill={isFav ? '#F5A623' : 'none'}
+                  strokeWidth={2}
+                />
+                <Text style={[s.starText, isFav && s.starTextActive]}>
+                  {isFav ? '즐겨찾기 해제' : `즐겨찾기 추가 (${favorites.length}/${MAX_FAVORITES})`}
+                </Text>
+              </TouchableOpacity>
             )}
-          </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      );
+    }
 
-          {/* 보관 방법 */}
-          <Text style={[styles.label, { marginTop: 20 }]}>보관 방법</Text>
-          <View style={styles.toggleRow}>
+    if (step === 2) {
+      return (
+        <ScrollView contentContainerStyle={s.stepContent} showsVerticalScrollIndicator={false}>
+          <Text style={s.stepQuestion}>어떻게 보관하나요?</Text>
+
+          <Text style={s.label}>보관 방법</Text>
+          <View style={s.toggleRow}>
             {(['냉장', '냉동', '실온'] as StorageType[]).map(t => (
               <TouchableOpacity
                 key={t}
-                style={[styles.toggleBtn, storageType === t && styles.toggleBtnActive]}
-                onPress={() => onStorageTypeChange(t)}
+                style={[s.toggleBtn, storageType === t && s.toggleBtnActive]}
+                onPress={() => setStorageType(t)}
               >
-                <Text style={[styles.toggleText, storageType === t && styles.toggleTextActive]}>{t}</Text>
+                <Text style={[s.toggleText, storageType === t && s.toggleTextActive]}>{t}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          {/* 개수 */}
-          <Text style={[styles.label, { marginTop: 20 }]}>개수</Text>
-          <View style={styles.qtyRow}>
-            <TouchableOpacity style={styles.qtyBtn} onPress={() => setQuantity(q => Math.max(1, q - 1))}>
-              <Text style={styles.qtyBtnText}>−</Text>
+          <Text style={[s.label, { marginTop: 28 }]}>개수</Text>
+          <View style={s.qtyRow}>
+            <TouchableOpacity style={s.qtyBtn} onPress={() => setQuantity(q => Math.max(1, q - 1))}>
+              <Text style={s.qtyBtnText}>−</Text>
             </TouchableOpacity>
             {editingQty ? (
               <TextInput
-                style={styles.qtyInput}
+                style={s.qtyInput}
                 value={qtyInput}
                 onChangeText={text => setQtyInput(text.replace(/[^0-9]/g, ''))}
                 keyboardType="number-pad"
+                keyboardAppearance="light"
                 autoFocus
                 returnKeyType="done"
                 onBlur={() => {
@@ -407,70 +529,99 @@ const AddFridgeItemScreen: React.FC = () => {
               />
             ) : (
               <TouchableOpacity onPress={() => { setQtyInput(String(quantity)); setEditingQty(true); }}>
-                <Text style={styles.qtyNum}>{quantity}</Text>
+                <Text style={s.qtyNum}>{quantity}</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={styles.qtyBtn} onPress={() => setQuantity(q => q + 1)}>
-              <Text style={styles.qtyBtnText}>+</Text>
+            <TouchableOpacity style={s.qtyBtn} onPress={() => setQuantity(q => q + 1)}>
+              <Text style={s.qtyBtnText}>+</Text>
             </TouchableOpacity>
           </View>
-
-          {/* 넣은 날짜 */}
-          <Text style={[styles.label, { marginTop: 20 }]}>넣은 날짜</Text>
-          <TouchableOpacity style={styles.dateRow} onPress={() => setShowStoredPicker(true)}>
-            <Text style={styles.dateText}>{formatDisplayDate(storedDate)}</Text>
-            <ChevronDown color="#8B5E3C" size={18} strokeWidth={2} />
-          </TouchableOpacity>
-
-          {/* 유통기한 */}
-          <Text style={[styles.label, { marginTop: 16 }]}>유통기한</Text>
-          <TouchableOpacity style={styles.dateRow} onPress={() => setShowExpiryPicker(true)}>
-            <Text style={[styles.dateText, !expiryDate && styles.datePlaceholder]}>
-              {expiryDate ? formatDisplayDate(expiryDate) : '날짜를 선택하세요 (선택사항)'}
-            </Text>
-            <ChevronDown color="#8B5E3C" size={18} strokeWidth={2} />
-          </TouchableOpacity>
-
-          {/* 빠른 날짜 버튼 — 누를 때마다 해당 기간이 누적됨 */}
-          <View style={styles.quickDateRow}>
-            {[
-              { label: '1주',  onPress: () => setExpiryDate(d => { const base = d || storedDate; const next = addDays(base, 7);    return next < storedDate ? storedDate : next; }) },
-              { label: '2주',  onPress: () => setExpiryDate(d => { const base = d || storedDate; const next = addDays(base, 14);   return next < storedDate ? storedDate : next; }) },
-              { label: '1달',  onPress: () => setExpiryDate(d => { const base = d || storedDate; const next = addMonths(base, 1);  return next < storedDate ? storedDate : next; }) },
-            ].map(({ label, onPress }) => (
-              <TouchableOpacity key={label} style={styles.quickDateBtn} onPress={onPress}>
-                <Text style={styles.quickDateText}>+{label}</Text>
-              </TouchableOpacity>
-            ))}
-            {expiryDate ? (
-              <TouchableOpacity style={styles.quickDateBtnClear} onPress={() => setExpiryDate('')}>
-                <Text style={styles.quickDateClearText}>초기화</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-
         </ScrollView>
+      );
+    }
 
-        {/* 하단 저장 버튼 */}
-        <View style={styles.bottomBar}>
-          <TouchableOpacity
-            style={[styles.saveBottomBtn, saving && { opacity: 0.5 }]}
-            onPress={handleSave}
-            disabled={saving}
-          >
-            <Text style={styles.saveBottomBtnText}>
-              {saving ? '저장 중...' : (isEditing ? '수정 완료' : '저장')}
-            </Text>
-          </TouchableOpacity>
+    // step 3
+    return (
+      <ScrollView contentContainerStyle={s.stepContent} showsVerticalScrollIndicator={false}>
+        <Text style={s.stepQuestion}>언제 넣었나요?</Text>
+
+        <Text style={s.label}>넣은 날짜</Text>
+        <TouchableOpacity style={s.dateRow} onPress={() => setShowStoredPicker(true)}>
+          <Text style={s.dateText}>{formatDisplayDate(storedDate)}</Text>
+          <ChevronDown color="#8B5E3C" size={18} strokeWidth={2} />
+        </TouchableOpacity>
+
+        <Text style={[s.label, { marginTop: 24 }]}>유통기한 <Text style={s.labelOptional}>(선택)</Text></Text>
+        <TouchableOpacity style={s.dateRow} onPress={() => setShowExpiryPicker(true)}>
+          <Text style={[s.dateText, !expiryDate && s.datePlaceholder]}>
+            {expiryDate ? formatDisplayDate(expiryDate) : '날짜를 선택하세요'}
+          </Text>
+          <ChevronDown color="#8B5E3C" size={18} strokeWidth={2} />
+        </TouchableOpacity>
+
+        <View style={s.quickDateRow}>
+          {[
+            { label: '+1주',  fn: () => setExpiryDate(d => { const base = d || storedDate; return addDays(base, 7); }) },
+            { label: '+2주',  fn: () => setExpiryDate(d => { const base = d || storedDate; return addDays(base, 14); }) },
+            { label: '+1달',  fn: () => setExpiryDate(d => { const base = d || storedDate; return addMonths(base, 1); }) },
+          ].map(({ label, fn }) => (
+            <TouchableOpacity key={label} style={s.quickBtn} onPress={fn}>
+              <Text style={s.quickBtnText}>{label}</Text>
+            </TouchableOpacity>
+          ))}
+          {expiryDate ? (
+            <TouchableOpacity style={s.quickBtnClear} onPress={() => setExpiryDate('')}>
+              <Text style={s.quickBtnClearText}>초기화</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
-      </KeyboardAvoidingView>
+      </ScrollView>
+    );
+  };
 
-      {/* 날짜 선택 모달들 */}
+  const ctaLabel = () => {
+    if (saving) return '저장 중...';
+    if (step < TOTAL_STEPS) return '다음';
+    return isEditing ? '수정 완료' : '저장';
+  };
+
+  return (
+    <SafeAreaView style={s.safeArea}>
+      {/* 헤더 */}
+      <View style={s.header}>
+        <TouchableOpacity
+          onPress={() => { if (step > 1) setStep(s => s - 1); else navigation.goBack(); }}
+          style={s.backBtn}
+        >
+          <ChevronLeft color="#5C3D1E" size={24} strokeWidth={2} />
+        </TouchableOpacity>
+        <Text style={s.headerTitle}>{isEditing ? '음식 수정' : '음식 추가'}</Text>
+        <View style={s.headerRight} />
+      </View>
+
+      <Progress />
+
+      <View style={{ flex: 1 }}>
+        {renderStep()}
+      </View>
+
+      {/* 하단 CTA */}
+      <View style={s.bottomBar}>
+        <TouchableOpacity
+          style={[s.ctaBtn, saving && { opacity: 0.5 }]}
+          onPress={goNext}
+          disabled={saving}
+          activeOpacity={0.85}
+        >
+          <Text style={s.ctaBtnText}>{ctaLabel()}</Text>
+        </TouchableOpacity>
+      </View>
+
       <DatePickerModal
         visible={showStoredPicker}
         value={storedDate}
         title="넣은 날짜 선택"
-        onConfirm={d => { onStoredDateChange(d); setShowStoredPicker(false); }}
+        onConfirm={d => { setStoredDate(d); setShowStoredPicker(false); }}
         onCancel={() => setShowStoredPicker(false)}
       />
       <DatePickerModal
@@ -485,111 +636,134 @@ const AddFridgeItemScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#FDF6EC' },
+const s = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
 
-  // 헤더
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: '#DEC8A8',
   },
   backBtn: { width: 40, alignItems: 'flex-start' },
   headerTitle: { fontSize: 17, fontWeight: '700', color: '#5C3D1E' },
-  headerRight: { width: 40 }, // 헤더 좌우 균형용 빈 뷰
+  headerRight: { width: 40 },
 
-  // 하단 저장 버튼
-  bottomBar: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    paddingBottom: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#EDD9C0',
-    backgroundColor: '#FDF6EC',
-  },
-  saveBottomBtn: {
-    backgroundColor: '#8B5E3C',
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  saveBottomBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  progressRow: { flexDirection: 'row', paddingHorizontal: 20, gap: 6, marginBottom: 4 },
+  progressSeg: { flex: 1, height: 4, borderRadius: 2 },
+  progressSegActive: { backgroundColor: '#8B5E3C' },
+  progressSegInactive: { backgroundColor: '#EDD9C0' },
 
-  // 콘텐츠
-  content: { padding: 20, paddingBottom: 16 },
-  label: { fontSize: 13, fontWeight: '600', color: '#8B5E3C', marginBottom: 8 },
+  stepContent: { padding: 24, paddingBottom: 32 },
+  stepQuestion: { fontSize: 22, fontWeight: '800', color: '#5C3D1E', marginBottom: 32, lineHeight: 30 },
 
-  // 자동완성
-  autocompleteWrapper: { position: 'relative', zIndex: 10 },
+  label: { fontSize: 13, fontWeight: '600', color: '#8B5E3C', marginBottom: 10 },
+  labelOptional: { fontSize: 12, fontWeight: '400', color: '#C49A6C' },
+
+  autocompleteWrap: { position: 'relative', zIndex: 10 },
   inputRow: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#FFF8F0', borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 12,
+    backgroundColor: '#FFF8F0', borderRadius: 14,
+    paddingHorizontal: 14, paddingVertical: 14,
     borderWidth: 1, borderColor: '#DEC8A8',
   },
-  input: { flex: 1, fontSize: 16, color: '#5C3D1E', padding: 0 },
+  input: { flex: 1, fontSize: 17, color: '#5C3D1E', padding: 0 },
   dropdown: {
     position: 'absolute', top: '100%', left: 0, right: 0,
-    backgroundColor: '#FFF8F0', borderRadius: 12, marginTop: 4,
+    backgroundColor: '#FFF8F0', borderRadius: 14, marginTop: 4,
     borderWidth: 1, borderColor: '#DEC8A8',
     shadowColor: '#8B5E3C', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12, shadowRadius: 8, elevation: 5,
     overflow: 'hidden',
   },
   dropdownItem: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 14, paddingVertical: 12,
+    paddingHorizontal: 14, paddingVertical: 13,
     borderBottomWidth: 1, borderBottomColor: '#EDD9C0',
   },
   dropdownName: { fontSize: 15, color: '#5C3D1E', fontWeight: '500' },
 
-  // 냉장/냉동 토글
   toggleRow: { flexDirection: 'row', gap: 12 },
   toggleBtn: {
-    flex: 1, paddingVertical: 12, borderRadius: 12,
-    backgroundColor: '#FFF8F0', borderWidth: 1, borderColor: '#DEC8A8',
-    alignItems: 'center',
+    flex: 1, paddingVertical: 14, borderRadius: 14,
+    backgroundColor: '#FFF8F0', borderWidth: 1, borderColor: '#DEC8A8', alignItems: 'center',
   },
   toggleBtnActive: { backgroundColor: '#8B5E3C', borderColor: '#8B5E3C' },
   toggleText: { fontSize: 15, fontWeight: '600', color: '#8B5E3C' },
   toggleTextActive: { color: '#FFFFFF' },
 
-  // 날짜
+  qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 20 },
+  qtyBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: '#EDD9C0', alignItems: 'center', justifyContent: 'center',
+  },
+  qtyBtnText: { fontSize: 22, fontWeight: '700', color: '#5C3D1E', lineHeight: 26 },
+  qtyNum: { fontSize: 28, fontWeight: '800', color: '#5C3D1E', minWidth: 40, textAlign: 'center' },
+  qtyInput: {
+    fontSize: 28, fontWeight: '800', color: '#5C3D1E',
+    minWidth: 60, textAlign: 'center',
+    borderBottomWidth: 2, borderBottomColor: '#8B5E3C', padding: 0,
+  },
+
   dateRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#FFF8F0', borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 14,
+    backgroundColor: '#FFF8F0', borderRadius: 14,
+    paddingHorizontal: 16, paddingVertical: 16,
     borderWidth: 1, borderColor: '#DEC8A8',
   },
   dateText: { fontSize: 16, color: '#5C3D1E', fontWeight: '500' },
   datePlaceholder: { color: '#C49A6C' },
-  // 개수 스테퍼
-  qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  qtyBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: '#EDD9C0', alignItems: 'center', justifyContent: 'center',
-  },
-  qtyBtnText: { fontSize: 20, fontWeight: '700', color: '#5C3D1E', lineHeight: 24 },
-  qtyNum: { fontSize: 22, fontWeight: '800', color: '#5C3D1E', minWidth: 32, textAlign: 'center' },
-  qtyInput: {
-    fontSize: 22, fontWeight: '800', color: '#5C3D1E',
-    minWidth: 52, textAlign: 'center',
-    borderBottomWidth: 2, borderBottomColor: '#8B5E3C',
-    padding: 0,
-  },
 
-  // 빠른 날짜 버튼
-  quickDateRow: { flexDirection: 'row', gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' },
-  quickDateBtn: {
+  quickDateRow: { flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' },
+  quickBtn: {
     paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
     backgroundColor: '#EDD9C0', borderWidth: 1, borderColor: '#D4B896',
   },
-  quickDateText: { fontSize: 13, fontWeight: '700', color: '#5C3D1E' },
-  quickDateBtnClear: {
+  quickBtnText: { fontSize: 13, fontWeight: '700', color: '#5C3D1E' },
+  quickBtnClear: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
     backgroundColor: '#FFF8F0', borderWidth: 1, borderColor: '#DEC8A8',
   },
-  quickDateClearText: { fontSize: 12, color: '#C49A6C' },
+  quickBtnClearText: { fontSize: 12, color: '#C49A6C' },
+
+  bottomBar: {
+    paddingHorizontal: 24, paddingVertical: 16,
+    backgroundColor: '#FFFFFF',
+  },
+  ctaBtn: {
+    backgroundColor: '#8B5E3C', borderRadius: 16,
+    paddingVertical: 18, alignItems: 'center',
+  },
+  ctaBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
+
+  // 즐겨찾기
+  favSection: { marginBottom: 20 },
+  favHeader: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10 },
+  favLabel: { fontSize: 12, fontWeight: '700', color: '#A87850' },
+  favRow: { gap: 8, paddingRight: 4 },
+  favChip: {
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20,
+    backgroundColor: '#FFF8F0', borderWidth: 1.5, borderColor: '#F5A623',
+  },
+  favChipText: { fontSize: 13, fontWeight: '600', color: '#5C3D1E' },
+  starRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: 14, paddingVertical: 4,
+  },
+  starText: { fontSize: 13, color: '#C49A6C', fontWeight: '500' },
+  starTextActive: { color: '#F5A623' },
+
+  // 완료 화면
+  doneWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  doneCircle: {
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: '#8B5E3C', alignItems: 'center', justifyContent: 'center',
+    marginBottom: 24,
+  },
+  doneTitle: { fontSize: 24, fontWeight: '800', color: '#5C3D1E', marginBottom: 10 },
+  doneSub: { fontSize: 15, color: '#A87850', textAlign: 'center', lineHeight: 22, marginBottom: 48 },
+  doneBtn: {
+    backgroundColor: '#8B5E3C', borderRadius: 16,
+    paddingVertical: 16, paddingHorizontal: 48,
+  },
+  doneBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
 });
 
 export default AddFridgeItemScreen;

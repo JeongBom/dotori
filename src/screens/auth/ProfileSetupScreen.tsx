@@ -18,8 +18,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
+import Svg, { Path, Circle, Rect } from 'react-native-svg';
+
 import { supabase } from '../../lib/supabase';
 import { RootStackParamList } from '../../navigation';
+
+const AcornMark = ({ size = 48 }: { size?: number }) => (
+  <Svg width={size} height={size} viewBox="0 0 52 60" fill="none">
+    <Path d="M12 30 Q11 52 26 52 Q41 52 40 30 Z" fill="#8B5E3C" />
+    <Rect x="8" y="18" width="36" height="16" rx="7" fill="#6B4226" />
+    <Circle cx="17" cy="26" r="1.5" fill="rgba(255,255,255,0.22)" />
+    <Circle cx="26" cy="26" r="1.5" fill="rgba(255,255,255,0.22)" />
+    <Circle cx="35" cy="26" r="1.5" fill="rgba(255,255,255,0.22)" />
+    <Path d="M26 18 Q29 11 33 7" stroke="#6B4226" strokeWidth="2.5" strokeLinecap="round" />
+  </Svg>
+);
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'ProfileSetup'>;
 type RouteType = RouteProp<RootStackParamList, 'ProfileSetup'>;
@@ -92,6 +105,16 @@ const ProfileSetupScreen: React.FC = () => {
           />
           <Text style={styles.inputHint}>{nickname.length} / 10자</Text>
 
+          {/* 도토리 아바타 미리보기 */}
+          <View style={styles.avatarWrap}>
+            <View style={styles.avatarCircle}>
+              <AcornMark size={48} />
+            </View>
+            {nickname.trim() ? (
+              <Text style={styles.avatarName}>{nickname.trim()}</Text>
+            ) : null}
+          </View>
+
           <TouchableOpacity
             style={[styles.nextBtn, saving && { opacity: 0.5 }]}
             onPress={handleNext}
@@ -129,6 +152,15 @@ const styles = StyleSheet.create({
     borderColor: '#DEC8A8',
   },
   inputHint: { fontSize: 12, color: '#D4B896', textAlign: 'right', marginTop: 4 },
+
+  avatarWrap: { alignItems: 'center', marginTop: 28, marginBottom: 8 },
+  avatarCircle: {
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: '#FDF6EC',
+    borderWidth: 2, borderColor: '#DEC8A8',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  avatarName: { marginTop: 10, fontSize: 14, fontWeight: '700', color: '#8B5E3C' },
 
   nextBtn: {
     backgroundColor: '#8B5E3C',

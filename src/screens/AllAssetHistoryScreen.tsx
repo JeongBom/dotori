@@ -1,6 +1,5 @@
-// 자산별 변경 내역 화면
-// - 특정 자산의 변경 기록을 최신순으로 표시
-// - 각 항목 삭제 가능
+// 전체 자산 변경 내역 화면
+// 모든 자산의 변경 기록을 최신순으로 표시 + 소유자 표시 + 스와이프 수정/삭제
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -20,16 +19,14 @@ import {
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Svg, { Path } from 'react-native-svg';
 
-import { supabase } from '../lib/supabase';
-import { AssetHistory } from '../types';
+import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { RootStackParamList } from '../navigation';
 
-type NavProp = NativeStackNavigationProp<RootStackParamList>;
-type RouteType = RouteProp<RootStackParamList, 'AssetHistory'>;
+type NavProp = NativeStackNavigationProp<RootStackParamList, 'AllAssetHistory'>;
 
 const CAT_CONFIG: Record<string, { color: string; emoji: string }> = {
   '예금':   { color: '#4A9EC9', emoji: '🏦' },
@@ -39,7 +36,6 @@ const CAT_CONFIG: Record<string, { color: string; emoji: string }> = {
   '기타':   { color: '#9EA8B0', emoji: '📦' },
 };
 
-// ── 금액 포맷 ────────────────────────────────
 function formatAmount(n: number): string {
   if (n === 0) return '0원';
   const eok = Math.floor(n / 100_000_000);
@@ -50,6 +46,10 @@ function formatAmount(n: number): string {
   if (man > 0) parts.push(`${man.toLocaleString()}만`);
   if (won > 0 && eok === 0) parts.push(`${won.toLocaleString()}`);
   return parts.join(' ') + '원';
+}
+
+function formatDiff(n: number): string {
+  return n.toLocaleString('ko-KR');
 }
 
 function makeSparklinePath(amounts: number[]): string {
@@ -66,35 +66,25 @@ function makeSparklinePath(amounts: number[]): string {
   return 'M' + pts.join(' L');
 }
 
-function formatDiff(n: number): string {
-  return n.toLocaleString('ko-KR');
-}
+// 시간순으로 전체 자산 합계 타임라인 계산
+function buildTotalTimeline(histories: FlatHistory[]): { total: number; timestamp: string }[] {
+  const sorted = [...histories].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+  const assetAmounts: Record<string, number> = {};
+  const seenAssets = new Set<string>();
+  const points: { total: number; timestamp: string }[] = [];
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const hours = d.getHours();
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  const ampm = hours < 12 ? '오전' : '오후';
-  const h = hours % 12 || 12;
-  return `${year}.${month}.${day} ${ampm} ${h}:${minutes}`;
-}
-
-// ── SVG 아이콘 ─────────────────────────────────
-const SvgChevronLeft = () => (
-  <Svg width={24} height={24} viewBox="0 0 24 24" fill="none"
-    stroke="#5C3D1E" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-    <Path d="M15 18l-6-6 6-6" />
-  </Svg>
-);
-
-// ── 내역 행 ───────────────────────────────────
-interface HistoryRowProps {
-  item: AssetHistory;
-  onDelete: (item: AssetHistory) => void;
-  onEdit: (item: AssetHistory) => void;
+  for (const h of sorted) {
+    if (!seenAssets.has(h.assetId)) {
+      assetAmounts[h.assetId] = h.previous_amount;
+      seenAssets.add(h.assetId);
+    }
+    assetAmounts[h.assetId] = h.new_amount;
+    const total = Object.values(assetAmounts).reduce((s, v) => s + v, 0);
+    points.push({ total, timestamp: h.created_at });
+  }
+  return points;
 }
 
 function formatDateShort(iso: string): string {
@@ -106,31 +96,56 @@ function formatDateShort(iso: string): string {
   return `${month}월 ${day}일 · ${hh}:${mm}`;
 }
 
-const HistoryRow: React.FC<HistoryRowProps> = ({ item, onDelete, onEdit }) => {
+const SvgChevronLeft = () => (
+  <Svg width={24} height={24} viewBox="0 0 24 24" fill="none"
+    stroke="#5C3D1E" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M15 18l-6-6 6-6" />
+  </Svg>
+);
+
+interface FlatHistory {
+  id: string;
+  assetId: string;
+  assetName: string;
+  category: string;
+  ownerNickname?: string;
+  previous_amount: number;
+  new_amount: number;
+  memo: string | null;
+  created_at: string;
+}
+
+// ── 내역 행 ───────────────────────────────────
+interface RowProps {
+  item: FlatHistory;
+  onDelete: (item: FlatHistory) => void;
+  onEdit: (item: FlatHistory) => void;
+}
+
+const HistoryRow: React.FC<RowProps> = ({ item, onDelete, onEdit }) => {
   const swipeRef = useRef<Swipeable>(null);
+  const cfg = CAT_CONFIG[item.category] ?? CAT_CONFIG['기타'];
   const diff = item.new_amount - item.previous_amount;
   const isIncrease = diff >= 0;
   const isFirst = item.previous_amount === 0 && item.memo === '최초 등록';
   const label = item.memo && item.memo !== '최초 등록' ? item.memo : isFirst ? '자산 최초 등록' : '금액 변경';
 
-  const renderRightActions = (_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
-    return (
-      <View style={row.swipeActions}>
-        <TouchableOpacity
-          style={row.swipeEdit}
-          onPress={() => { swipeRef.current?.close(); onEdit(item); }}
-        >
-          <Text style={row.swipeEditText}>수정</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={row.swipeDelete}
-          onPress={() => { swipeRef.current?.close(); onDelete(item); }}
-        >
-          <Text style={row.swipeDeleteText}>삭제</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  };
+  const renderRightActions = () => (
+    <View style={row.swipeActions}>
+      <TouchableOpacity
+        style={row.swipeEdit}
+        onPress={() => { swipeRef.current?.close(); onEdit(item); }}
+      >
+        <Text style={row.swipeEditText}>수정</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={row.swipeDelete}
+        onPress={() => { swipeRef.current?.close(); onDelete(item); }}
+      >
+        <Text style={row.swipeDeleteText}>삭제</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
     <Swipeable ref={swipeRef} renderRightActions={renderRightActions} friction={2} rightThreshold={40}>
@@ -142,13 +157,24 @@ const HistoryRow: React.FC<HistoryRowProps> = ({ item, onDelete, onEdit }) => {
           </Text>
         </View>
 
-        {/* 변경 이유 + 날짜 */}
+        {/* 가운데: 이름+소유자 + 날짜 */}
         <View style={row.middle}>
-          <Text style={row.label} numberOfLines={1}>{label}</Text>
-          <Text style={row.date}>{formatDateShort(item.created_at)}</Text>
+          <View style={row.nameRow}>
+            <Text style={row.label} numberOfLines={1}>{label}</Text>
+          </View>
+          <View style={row.subRow}>
+            <Text style={[row.catDot, { color: cfg.color }]}>{cfg.emoji}</Text>
+            <Text style={row.assetName} numberOfLines={1}>{item.assetName}</Text>
+            {item.ownerNickname && (
+              <View style={row.ownerBadge}>
+                <Text style={row.ownerText}>{item.ownerNickname}</Text>
+              </View>
+            )}
+            <Text style={row.date}>· {formatDateShort(item.created_at)}</Text>
+          </View>
         </View>
 
-        {/* 변동금액 + 잔액 */}
+        {/* 오른쪽: 변동금액 + 잔액 */}
         <View style={row.right}>
           <Text style={[row.diff, isFirst ? row.neutral : isIncrease ? row.up : row.down]}>
             {isFirst ? `+${formatDiff(item.new_amount)}` : `${isIncrease ? '+' : '−'}${formatDiff(Math.abs(diff))}`}
@@ -188,8 +214,18 @@ const row = StyleSheet.create({
   down:     { color: '#78504E' },
   neutral:  { color: '#786E50' },
   middle: { flex: 1, gap: 4 },
+  nameRow: { flexDirection: 'row', alignItems: 'center' },
   label: { fontSize: 15, fontWeight: '700', color: '#111827' },
-  date:  { fontSize: 11, color: '#9CA3AF', fontWeight: '500' },
+  subRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'nowrap' },
+  catDot: { fontSize: 11 },
+  assetName: { fontSize: 11, color: '#9CA3AF', fontWeight: '500' },
+  ownerBadge: {
+    backgroundColor: '#EDD9C0',
+    paddingHorizontal: 5, paddingVertical: 1,
+    borderRadius: 5,
+  },
+  ownerText: { fontSize: 10, color: '#8B5E3C', fontWeight: '700' },
+  date: { fontSize: 11, color: '#9CA3AF', fontWeight: '500' },
   right: { alignItems: 'flex-end', gap: 3, flexShrink: 0 },
   diff:    { fontSize: 15, fontWeight: '800' },
   balance: { fontSize: 11, color: '#9CA3AF', fontWeight: '500' },
@@ -200,67 +236,89 @@ const row = StyleSheet.create({
   },
   swipeDelete: {
     width: 76, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: '#DC2626', borderRadius: 14,
+    backgroundColor: '#78504E', borderRadius: 14,
   },
   swipeEditText:   { color: '#fff', fontSize: 13, fontWeight: '700' },
   swipeDeleteText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 });
 
 // ── 메인 화면 ─────────────────────────────────
-const AssetHistoryScreen: React.FC = () => {
+const AllAssetHistoryScreen: React.FC = () => {
   const navigation = useNavigation<NavProp>();
-  const route = useRoute<RouteType>();
-  const { assetId, assetName, category, currentAmount, ownerNickname } = route.params;
-
-  const [histories, setHistories] = useState<AssetHistory[]>([]);
+  const [histories, setHistories] = useState<FlatHistory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [displayAmount, setDisplayAmount] = useState(currentAmount);
-  const [sparklinePath, setSparklinePath] = useState('');
-  const [monthChange, setMonthChange] = useState<number | null>(null);
-  const [editingItem, setEditingItem] = useState<AssetHistory | null>(null);
+  const [editingItem, setEditingItem] = useState<FlatHistory | null>(null);
   const [editAmountText, setEditAmountText] = useState('');
   const [editMemoText, setEditMemoText] = useState('');
+  const [sparklinePath, setSparklinePath] = useState('');
+  const [totalAmount, setTotalAmount] = useState(0);
+  const [monthChange, setMonthChange] = useState<number | null>(null);
 
   useEffect(() => {
-    if (histories.length === 0) { setSparklinePath(''); setMonthChange(null); return; }
-    const sorted = [...histories].sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-    );
-    const amounts = [sorted[0].previous_amount, ...sorted.map(h => h.new_amount)];
-    setSparklinePath(makeSparklinePath(amounts));
+    if (histories.length === 0) { setSparklinePath(''); setTotalAmount(0); setMonthChange(null); return; }
+    const timeline = buildTotalTimeline(histories);
+    setSparklinePath(makeSparklinePath(timeline.map(p => p.total)));
+    setTotalAmount(timeline[timeline.length - 1].total);
 
     const monthAgoMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const before = sorted.filter(h => new Date(h.created_at).getTime() <= monthAgoMs);
-    const refAmount = before.length > 0 ? before[before.length - 1].new_amount : sorted[0].previous_amount;
-    const current = sorted[sorted.length - 1].new_amount;
-    if (refAmount > 0) {
-      setMonthChange(((current - refAmount) / refAmount) * 100);
-    } else {
-      setMonthChange(null);
-    }
+    const before = timeline.filter(p => new Date(p.timestamp).getTime() <= monthAgoMs);
+    const refTotal = before.length > 0 ? before[before.length - 1].total : timeline[0].total;
+    const current = timeline[timeline.length - 1].total;
+    if (refTotal > 0) setMonthChange(((current - refTotal) / refTotal) * 100);
+    else setMonthChange(null);
   }, [histories]);
-
-  const catCfg = CAT_CONFIG[category] ?? CAT_CONFIG['기타'];
 
   const load = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('asset_histories')
-        .select('*')
-        .eq('asset_id', assetId)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      setHistories((data ?? []) as AssetHistory[]);
+      const familyId = await getOrCreateFamilyId();
+      if (!familyId) { setLoading(false); return; }
+
+      const [assetsRes, profilesRes] = await Promise.all([
+        supabase
+          .from('assets')
+          .select('id, name, category, user_id, asset_histories(id, created_at, new_amount, previous_amount, memo)')
+          .eq('family_id', familyId)
+          .eq('is_active', true),
+        supabase
+          .from('user_profiles')
+          .select('id, nickname')
+          .eq('family_id', familyId),
+      ]);
+
+      const nicknameMap: Record<string, string> = {};
+      for (const p of (profilesRes.data ?? []) as any[]) {
+        nicknameMap[p.id] = p.nickname;
+      }
+
+      const flat: FlatHistory[] = [];
+      for (const asset of (assetsRes.data ?? []) as any[]) {
+        for (const h of (asset.asset_histories ?? [])) {
+          flat.push({
+            id: h.id,
+            assetId: asset.id,
+            assetName: asset.name,
+            category: asset.category,
+            ownerNickname: asset.user_id ? nicknameMap[asset.user_id] : undefined,
+            previous_amount: h.previous_amount,
+            new_amount: h.new_amount,
+            memo: h.memo ?? null,
+            created_at: h.created_at,
+          });
+        }
+      }
+
+      flat.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setHistories(flat);
     } catch (e) {
-      console.error('AssetHistoryScreen load error:', e);
+      console.error('AllAssetHistoryScreen load error:', e);
     } finally {
       setLoading(false);
     }
-  }, [assetId]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const handleEdit = useCallback((item: AssetHistory) => {
+  const handleEdit = useCallback((item: FlatHistory) => {
     setEditingItem(item);
     setEditAmountText(item.new_amount.toLocaleString('ko-KR'));
     setEditMemoText(item.memo && item.memo !== '최초 등록' ? item.memo : '');
@@ -271,65 +329,52 @@ const AssetHistoryScreen: React.FC = () => {
     const newAmount = parseInt(editAmountText.replace(/,/g, ''), 10) || 0;
     const newMemo = editMemoText.trim() || null;
 
-    const updates: Partial<AssetHistory> = { new_amount: newAmount, memo: newMemo };
     const { error } = await supabase
       .from('asset_histories')
-      .update(updates)
+      .update({ new_amount: newAmount, memo: newMemo })
       .eq('id', editingItem.id);
 
     if (error) { Alert.alert('오류', '수정에 실패했습니다.'); return; }
 
-    // 자산 현재 금액도 이 내역이 최신이면 업데이트
-    const isLatest = histories[0]?.id === editingItem.id;
-    if (isLatest) {
-      await supabase.from('assets').update({ amount: newAmount }).eq('id', assetId);
-      setDisplayAmount(newAmount);
+    // 해당 자산의 가장 최신 내역이면 asset amount도 업데이트
+    const assetLatest = histories.find(h => h.assetId === editingItem.assetId);
+    if (assetLatest?.id === editingItem.id) {
+      await supabase.from('assets').update({ amount: newAmount }).eq('id', editingItem.assetId);
     }
 
     setHistories(prev => prev.map(h =>
       h.id === editingItem.id ? { ...h, new_amount: newAmount, memo: newMemo } : h
     ));
     setEditingItem(null);
-  }, [editingItem, editAmountText, editMemoText, histories, assetId]);
+  }, [editingItem, editAmountText, editMemoText, histories]);
 
-  const handleDelete = useCallback((item: AssetHistory) => {
+  const handleDelete = useCallback((item: FlatHistory) => {
     const isFirst = item.previous_amount === 0 && item.memo === '최초 등록';
     const revertMsg = isFirst
       ? `이 내역을 삭제하면 자산 금액이 0원으로 초기화돼요.`
-      : `이 내역을 삭제하면 자산 금액이\n${formatAmount(item.new_amount)} → ${formatAmount(item.previous_amount)}\n으로 되돌아가요.`;
+      : `이 내역을 삭제하면 [${item.assetName}] 금액이\n${formatAmount(item.new_amount)} → ${formatAmount(item.previous_amount)}\n으로 되돌아가요.`;
 
-    Alert.alert(
-      '내역 삭제',
-      revertMsg,
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '삭제 및 금액 되돌리기',
-          style: 'destructive',
-          onPress: async () => {
-            const { error: updateError } = await supabase
-              .from('assets')
-              .update({ amount: item.previous_amount })
-              .eq('id', assetId);
-            if (updateError) {
-              Alert.alert('오류', '자산 금액 변경에 실패했습니다.');
-              return;
-            }
-            const { error: deleteError } = await supabase
-              .from('asset_histories')
-              .delete()
-              .eq('id', item.id);
-            if (!deleteError) {
-              setHistories(prev => prev.filter(h => h.id !== item.id));
-              setDisplayAmount(item.previous_amount);
-            } else {
-              Alert.alert('오류', '내역 삭제에 실패했습니다.');
-            }
-          },
+    Alert.alert('내역 삭제', revertMsg, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제 및 금액 되돌리기',
+        style: 'destructive',
+        onPress: async () => {
+          const { error: updateErr } = await supabase
+            .from('assets').update({ amount: item.previous_amount }).eq('id', item.assetId);
+          if (updateErr) { Alert.alert('오류', '자산 금액 변경에 실패했습니다.'); return; }
+
+          const { error: deleteErr } = await supabase
+            .from('asset_histories').delete().eq('id', item.id);
+          if (!deleteErr) {
+            setHistories(prev => prev.filter(h => h.id !== item.id));
+          } else {
+            Alert.alert('오류', '내역 삭제에 실패했습니다.');
+          }
         },
-      ],
-    );
-  }, [assetId]);
+      },
+    ]);
+  }, []);
 
   return (
     <SafeAreaView style={st.safe}>
@@ -376,58 +421,8 @@ const AssetHistoryScreen: React.FC = () => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn}>
           <SvgChevronLeft />
         </TouchableOpacity>
-        <Text style={st.headerTitle}>변경 내역</Text>
+        <Text style={st.headerTitle}>전체 자산 내역</Text>
         <View style={st.backBtn} />
-      </View>
-
-      {/* 자산 정보 카드 */}
-      <View style={[st.assetCard, { backgroundColor: catCfg.color }]}>
-        {/* 상단: 아이콘 + 이름 + 업데이트 버튼 */}
-        <View style={st.cardTop}>
-          <View style={[st.iconBox, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-            <Text style={st.iconEmoji}>{catCfg.emoji}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <View style={st.nameRow}>
-              <Text style={st.assetName}>{assetName}</Text>
-              {ownerNickname && (
-                <View style={st.badge}><Text style={st.badgeText}>{ownerNickname}</Text></View>
-              )}
-            </View>
-            <Text style={st.catLabel}>{category}</Text>
-          </View>
-          <TouchableOpacity
-            style={st.updateBtn}
-            onPress={() => navigation.navigate('AssetUpdate', {
-              assetId, assetName, assetAmount: displayAmount, category, ownerNickname,
-            })}
-            activeOpacity={0.85}
-          >
-            <Text style={st.updateBtnText}>업데이트</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* 금액 */}
-        <Text style={st.amtBig}>{formatAmount(displayAmount)}</Text>
-        {monthChange !== null && (
-          <Text style={st.monthChange}>
-            지난 달 대비 {monthChange >= 0 ? '+' : ''}{monthChange.toFixed(0)}%
-          </Text>
-        )}
-
-        {/* 스파크라인 */}
-        {sparklinePath !== '' && (
-          <Svg width="100%" height={44} viewBox="0 0 300 44" preserveAspectRatio="none" style={{ marginTop: 10 }}>
-            <Path
-              d={sparklinePath}
-              stroke="rgba(255,255,255,0.85)"
-              strokeWidth={2}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </Svg>
-        )}
       </View>
 
       {loading ? (
@@ -442,9 +437,34 @@ const AssetHistoryScreen: React.FC = () => {
         <FlatList
           data={histories}
           keyExtractor={item => item.id}
-          renderItem={({ item }) => <HistoryRow item={item} onDelete={handleDelete} onEdit={handleEdit} />}
+          renderItem={({ item }) => (
+            <HistoryRow item={item} onDelete={handleDelete} onEdit={handleEdit} />
+          )}
           contentContainerStyle={st.list}
           showsVerticalScrollIndicator={false}
+          ListHeaderComponent={
+            <View style={st.summaryCard}>
+              <Text style={st.summaryLabel}>전체 자산 합계</Text>
+              <Text style={st.summaryAmount}>{formatAmount(totalAmount)}</Text>
+              {monthChange !== null && (
+                <Text style={st.monthChange}>
+                  지난 달 대비 {monthChange >= 0 ? '+' : ''}{monthChange.toFixed(0)}%
+                </Text>
+              )}
+              {sparklinePath !== '' && (
+                <Svg width="100%" height={44} viewBox="0 0 300 44" preserveAspectRatio="none" style={{ marginTop: 10 }}>
+                  <Path
+                    d={sparklinePath}
+                    stroke="rgba(255,255,255,0.85)"
+                    strokeWidth={2}
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </Svg>
+              )}
+            </View>
+          }
         />
       )}
     </SafeAreaView>
@@ -464,11 +484,13 @@ const st = StyleSheet.create({
   },
   backBtn: { width: 40, alignItems: 'flex-start' },
   headerTitle: { flex: 1, fontSize: 17, fontWeight: '700', color: '#5C3D1E', textAlign: 'center' },
-
-  assetCard: {
-    margin: 16,
+  list: { padding: 16, paddingBottom: 40 },
+  emptyText: { fontSize: 15, color: '#C49A6C' },
+  summaryCard: {
+    backgroundColor: '#8B5E3C',
     borderRadius: 20,
     padding: 18,
+    marginBottom: 16,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -476,27 +498,9 @@ const st = StyleSheet.create({
     shadowRadius: 14,
     elevation: 5,
   },
-  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
-  iconBox: { width: 40, height: 40, borderRadius: 11, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
-  iconEmoji: { fontSize: 20 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
-  assetName: { fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.95)' },
-  badge: { backgroundColor: 'rgba(255,255,255,0.25)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
-  badgeText: { fontSize: 10, fontWeight: '700', color: '#fff' },
-  catLabel: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: '500' },
-  amtBig: { fontSize: 28, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
+  summaryLabel: { fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: '600', marginBottom: 4 },
+  summaryAmount: { fontSize: 28, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
   monthChange: { fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: '600', marginTop: 4 },
-  updateBtn: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    flexShrink: 0,
-  },
-  updateBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
-
-  list: { paddingHorizontal: 16, paddingBottom: 40 },
-  emptyText: { fontSize: 15, color: '#C49A6C' },
 });
 
 const modal = StyleSheet.create({
@@ -531,4 +535,4 @@ const modal = StyleSheet.create({
   saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });
 
-export default AssetHistoryScreen;
+export default AllAssetHistoryScreen;

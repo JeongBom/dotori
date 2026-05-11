@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<title>도토리 — 자산 업데이트 플로우</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css"/>
+<style>
+  html,body{margin:0;padding:0;background:#f0eee9;}
+  body{font-family: "Pretendard", -apple-system, "Apple SD Gothic Neo", system-ui, sans-serif;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="screens/shared.jsx"></script>
+<script type="text/babel" src="screens/s1-main.jsx"></script>
+<script type="text/babel" src="screens/s2-select.jsx"></script>
+<script type="text/babel" src="screens/s3-amount.jsx"></script>
+<script type="text/babel" src="screens/s4-confirm.jsx"></script>
+<script type="text/babel" src="screens/s5-done.jsx"></script>
+<script type="text/babel" src="screens/s6-history.jsx"></script>
+<script type="text/babel" src="screens/s7-fridge.jsx"></script>
+<script type="text/babel" src="screens/s8-supplies.jsx"></script>
+<script type="text/babel" src="screens/s9-chores.jsx"></script>
+<script type="text/babel" src="screens/s10-notes.jsx"></script>
+<script type="text/babel" src="screens/splash.jsx"></script>
+<script type="text/babel" src="screens/auth.jsx"></script>
+<script type="text/babel" src="screens/finance.jsx"></script>
+
+<script type="text/babel">
+function App() {
+  return (
+    <DesignCanvas>
+      <DCSection id="splash" title="스플래시 스크린 — 미니멀 웜 + 가족 도토리" subtitle="3가지 미묘한 변주 + 실제 등장 애니메이션">
+        <DCArtboard id="splash-a1" label="A1 · 가족 클러스터" width={380} height={780}>
+          <SplashA1/>
+        </DCArtboard>
+        <DCArtboard id="splash-a2" label="A2 · 중심 부모 + 궤도 애니메이션" width={380} height={830}>
+          <SplashA2WithReplay/>
+        </DCArtboard>
+        <DCArtboard id="splash-a3" label="A3 · 지평선 위 네 식구 + sway" width={380} height={830}>
+          <SplashA3WithReplay/>
+        </DCArtboard>
+        <DCArtboard id="splash-live" label="A1 · 등장 애니메이션" width={380} height={830}>
+          <SplashA1WithReplay/>
+        </DCArtboard>
+      </DCSection>
+      <DCSection id="auth" title="인증 플로우" subtitle="로그인 · 회원가입 · 이메일인증 · 닉네임설정 · 가족설정 · 초대코드">
+        <DCArtboard id="auth-login" label="01 · 로그인" width={380} height={780}>
+          <ScreenLogin/>
+        </DCArtboard>
+        <DCArtboard id="auth-signup" label="02 · 회원가입" width={380} height={780}>
+          <ScreenSignup/>
+        </DCArtboard>
+        <DCArtboard id="auth-pending" label="03 · 이메일 인증 대기" width={380} height={780}>
+          <ScreenEmailPending/>
+        </DCArtboard>
+        <DCArtboard id="auth-profile" label="04 · 닉네임 설정" width={380} height={780}>
+          <ScreenProfileSetup/>
+        </DCArtboard>
+        <DCArtboard id="auth-family-create" label="05 · 가족 만들기" width={380} height={780}>
+          <ScreenFamilyCreate/>
+        </DCArtboard>
+        <DCArtboard id="auth-family-join" label="06 · 코드로 참여" width={380} height={780}>
+          <ScreenFamilyJoin/>
+        </DCArtboard>
+        <DCArtboard id="auth-invite" label="07 · 초대 코드 표시" width={380} height={780}>
+          <ScreenInviteCode/>
+        </DCArtboard>
+      </DCSection>
+      <DCSection id="finance" title="자산 화면" subtitle="메인 · 자산추가(모달) · 자산수정(모달) · 히스토리">
+        <DCArtboard id="fin-main" label="01 · 자산 메인" width={380} height={780}>
+          <FinanceMain/>
+        </DCArtboard>
+        <DCArtboard id="fin-add" label="02 · 자산 추가 (바텀시트)" width={380} height={780}>
+          <FinanceAddModal/>
+        </DCArtboard>
+        <DCArtboard id="fin-edit" label="03 · 자산 수정 (추가/감소 토글)" width={380} height={780}>
+          <FinanceEditModal/>
+        </DCArtboard>
+        <DCArtboard id="fin-history" label="04 · 변경 히스토리" width={380} height={780}>
+          <FinanceHistory/>
+        </DCArtboard>
+        <DCArtboard id="fin-goals" label="05 · 목표 목록 (2/2)" width={380} height={780}>
+          <FinanceGoals/>
+        </DCArtboard>
+        <DCArtboard id="fin-goal-add" label="06 · 목표 추가 (바텀시트)" width={380} height={780}>
+          <GoalAddModal/>
+        </DCArtboard>
+        <DCArtboard id="fin-goal-item" label="07 · 항목 추가 (자산 연결)" width={380} height={780}>
+          <GoalItemAddModal/>
+        </DCArtboard>
+        <DCArtboard id="fin-goal-done" label="08 · 목표 달성 + 빈 상태" width={380} height={780}>
+          <GoalAchievedAndEmpty/>
+        </DCArtboard>
+      </DCSection>
+      <DCSection id="main" title="메인 + 5개 기능 화면" subtitle="탭바 재구성 · 음식/생필품/자산/일정/메모 — 홈과 설정은 상단 헤더로 이동">
+        <DCArtboard id="main" label="01 · 메인 (홈)" width={380} height={780}>
+          <Screen1Main/>
+        </DCArtboard>
+        <DCArtboard id="fridge" label="02 · 음식" width={380} height={780}>
+          <ScreenFridge/>
+        </DCArtboard>
+        <DCArtboard id="supplies" label="03 · 생필품" width={380} height={780}>
+          <ScreenSupplies/>
+        </DCArtboard>
+        <DCArtboard id="chores" label="04 · 일정" width={380} height={780}>
+          <ScreenChores/>
+        </DCArtboard>
+        <DCArtboard id="notes" label="05 · 메모" width={380} height={780}>
+          <ScreenNotes/>
+        </DCArtboard>
+      </DCSection>
+      <DCSection id="flow" title="자산 업데이트 플로우" subtitle="자산 선택 → 금액입력 → 확인 → 완료 → 내역">
+        <DCArtboard id="s2" label="자산선택" width={380} height={780}>
+          <Screen2Select/>
+        </DCArtboard>
+        <DCArtboard id="s3" label="금액입력" width={380} height={780}>
+          <Screen3Amount/>
+        </DCArtboard>
+        <DCArtboard id="s4" label="확인" width={380} height={780}>
+          <Screen4Confirm/>
+        </DCArtboard>
+        <DCArtboard id="s5" label="완료" width={380} height={780}>
+          <Screen5Done/>
+        </DCArtboard>
+        <DCArtboard id="s6" label="자산 내역" width={380} height={780}>
+          <Screen6History/>
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

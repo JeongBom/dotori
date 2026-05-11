@@ -25,37 +25,17 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 // 1순위: user_profiles.family_id (인증 도입 후)
 // 2순위: families 테이블 첫 번째 row (인증 없는 구버전 호환)
 export async function getOrCreateFamilyId(): Promise<string | null> {
-  // 로그인된 유저가 있으면 프로필에서 family_id 조회
   const { data: { user } } = await supabase.auth.getUser();
-  if (user) {
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('family_id')
-      .eq('id', user.id)
-      .single();
-    if (profile?.family_id) return profile.family_id;
-  }
 
-  // 인증 없는 환경: 기존 방식 (개발/테스트용)
-  const { data: existing } = await supabase
-    .from('families')
-    .select('id')
-    .limit(1)
+  if (!user) return null;
+
+  // 로그인 유저: 프로필에서 family_id 반환, 없으면 null (온보딩 미완료)
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('family_id')
+    .eq('id', user.id)
     .single();
-
-  if (existing) return existing.id;
-
-  const { data: created, error } = await supabase
-    .from('families')
-    .insert({ name: '우리 가족' })
-    .select('id')
-    .single();
-
-  if (error) {
-    console.error('Failed to create family:', error);
-    return null;
-  }
-  return created.id;
+  return profile?.family_id ?? null;
 }
 
 // 현재 유저 프로필 조회

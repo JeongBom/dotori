@@ -1,485 +1,654 @@
-// 홈 대시보드 화면
-// 4가지 기능(냉장고, 가계부, 루틴, 생필품)의 요약 정보를 한눈에 보여줌
-
+// 홈 대시보드 — 새 디자인 (도토리 v2)
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  ActivityIndicator,
-  RefreshControl,
-  TouchableOpacity,
-  Modal,
-  Pressable,
+  View, Text, ScrollView, StyleSheet, ActivityIndicator,
+  RefreshControl, TouchableOpacity, Modal, Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import {
-  Refrigerator,
-  Wallet,
-  Calendar,
-  ShoppingCart,
-  CircleUser,
-  TriangleAlert,
-  Users,
-  Settings,
-  Sprout,
-} from 'lucide-react-native';
+import { Settings, Users, CircleUser, TriangleAlert } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Svg, { Path, Circle, Rect } from 'react-native-svg';
 
-import SummaryCard from '../components/SummaryCard';
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
-import { Chore, DashboardSummary } from '../types';
+import { Chore } from '../types';
 import { RootTabParamList, RootStackParamList } from '../navigation';
-import {
-  generateOccurrences,
-  thisWeekRange as choreWeekRange,
-  thisMonthStart as choreMonthStart,
-  thisMonthEnd as choreMonthEnd,
-  todayStr as choreToday,
-} from '../lib/choreUtils';
-import { STORAGE_KEY_FAMILY_NAME, STORAGE_KEY_NICKNAME, STORAGE_KEY_NOTIFY_DAYS, STORAGE_KEY_ENABLED_FEATURES, ALL_FEATURES } from './SettingsScreen';
+import { generateOccurrences } from '../lib/choreUtils';
+import { STORAGE_KEY_FAMILY_NAME, STORAGE_KEY_NICKNAME, STORAGE_KEY_NOTIFY_DAYS } from './SettingsScreen';
 
-type DashboardNavigationProp = CompositeNavigationProp<
+// ── 디자인 토큰 ───────────────────────────────
+const C = {
+  brown:    '#8B5E3C',
+  warmOak:  '#A87850',
+  lightOak: '#C49A6C',
+  ivory:    '#FFF8F0',
+  cream:    '#FDF6EC',
+  edge:     '#DEC8A8',
+  dark:     '#5C3D1E',
+  deep:     '#6B4226',
+  danger:   '#D95F4B',
+  warn:     '#E09B4B',
+  purple:   '#9478C9',
+};
+
+type DashboardNav = CompositeNavigationProp<
   BottomTabNavigationProp<RootTabParamList, 'Home'>,
   NativeStackNavigationProp<RootStackParamList>
 >;
 
-// ============================================================
-// 헬퍼
-// ============================================================
-
-function today(): string {
-  return new Date().toISOString().split('T')[0];
+// ── 날짜/시간 헬퍼 ────────────────────────────
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return '방금 전';
+  if (min < 60) return `${min}분 전`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}시간 전`;
+  const day = Math.floor(hr / 24);
+  if (day === 1) return '어제';
+  return `${day}일 전`;
 }
 
-function daysLater(n: number): string {
+function localDate(offset = 0): string {
   const d = new Date();
-  d.setDate(d.getDate() + n);
-  return d.toISOString().split('T')[0];
+  d.setDate(d.getDate() + offset);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
-function firstDayOfMonth(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
-}
-
-function lastDayOfMonth(): string {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0];
-}
-
-function thisWeekRange(): [string, string] {
-  const d = new Date();
-  const day = d.getDay();
-  const diffToMonday = day === 0 ? -6 : 1 - day;
-  const monday = new Date(d);
-  monday.setDate(d.getDate() + diffToMonday);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  return [monday.toISOString().split('T')[0], sunday.toISOString().split('T')[0]];
-}
-
-// 3자리 + 만원 단위 포맷 (FinanceScreen과 동일)
-function formatKRW(amount: number): string {
-  return amount.toLocaleString('ko-KR') + '원';
-}
 
 function formatAmount(n: number): string {
   if (n === 0) return '0원';
   const eok = Math.floor(n / 100_000_000);
   const man = Math.floor((n % 100_000_000) / 10_000);
-  const won = n % 10_000;
   const parts: string[] = [];
   if (eok > 0) parts.push(`${eok}억`);
   if (man > 0) parts.push(`${man.toLocaleString()}만`);
-  if (won > 0 && eok === 0) parts.push(`${won.toLocaleString()}`);
   return parts.join(' ') + '원';
 }
 
-// ============================================================
-// Supabase 데이터 패치
-// ============================================================
+// ── 데이터 타입 ───────────────────────────────
+interface Member { id: string; nickname: string }
+interface UrgentItem { name: string; type: 'expired' | 'expiring' | 'lowstock' | 'chore'; dday?: string }
+interface StockItem { name: string; qty: number; min_qty: number }
+interface NoteItem { id: string; title: string }
+interface ActivityItem {
+  id: string;
+  type: 'food' | 'chore' | 'supply' | 'note' | 'asset';
+  action: string;
+  name: string;
+  timestamp: string;
+  emoji: string;
+}
 
-async function fetchDashboardSummary(
-  familyId: string,
-  notifyDaysBefore: number,  // user_settings 기반 임박 기준일
-): Promise<DashboardSummary> {
-  const [fridgeRes, expiringSoonRes, expiredRes, expenseRes, incomeRes, choresRes, lowStockRes, assetsRes] =
-    await Promise.all([
-      supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false),
-      supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false).gte('expiry_date', today()).lte('expiry_date', daysLater(notifyDaysBefore)),
-      supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false).lt('expiry_date', today()),
-      supabase.from('transactions').select('amount').eq('family_id', familyId).eq('type', 'expense').gte('transaction_date', firstDayOfMonth()),
-      supabase.from('transactions').select('amount').eq('family_id', familyId).eq('type', 'income').gte('transaction_date', firstDayOfMonth()),
-      supabase.from('chores').select('*').eq('family_id', familyId).eq('is_active', true),
-      supabase.from('supplies').select('quantity, low_stock_threshold').eq('family_id', familyId).eq('is_active', true),
-      supabase.from('assets').select('amount').eq('family_id', familyId).eq('is_active', true),
-    ]);
+const ASSET_EMOJI: Record<string, string> = {
+  '예금': '🏦', '적금': '💵', '주식': '📈', '부동산': '🏠', '기타': '📦',
+};
 
-  // generateOccurrences로 ChoresScreen과 동일한 로직 사용
-  const choreList = (choresRes.data ?? []) as Chore[];
-  const tStr = choreToday();
-  const [weekStart, weekEnd] = choreWeekRange();
-  const monthStart = choreMonthStart();
-  const monthEnd = choreMonthEnd();
+interface DashboardData {
+  // 자산
+  totalAssets: number;
+  // 음식
+  fridgeTotal: number;
+  fridgeExpiring: number;
+  fridgeExpired: number;
+  // 일정
+  todayChores: { title: string; assignee: string | null }[];
+  todayDone: number;
+  todayTotal: number;
+  // 생필품
+  stockItems: StockItem[];
+  lowStockCount: number;
+  // 메모
+  recentNotes: NoteItem[];
+  // 긴급 알림
+  urgentItems: UrgentItem[];
+  // 구성원
+  members: Member[];
+  // 최근 활동
+  activities: ActivityItem[];
+}
 
-  const todayOccs   = generateOccurrences(choreList, tStr, tStr);
-  const weekOccs    = generateOccurrences(choreList, weekStart, weekEnd);
-  const monthOccs   = generateOccurrences(choreList, monthStart, monthEnd);
+// ── 데이터 패치 ───────────────────────────────
+async function fetchDashboard(familyId: string, notifyDays: number): Promise<DashboardData> {
+  const today = localDate();
+  const sooner = localDate(notifyDays);
 
-  const todayTitles   = todayOccs.filter(o => !o.isDone).map(o => o.chore.title);
-  const weekTitles    = weekOccs.filter(o => !o.isDone).map(o => o.chore.title);
-  const monthTitles   = monthOccs.filter(o => !o.isDone).map(o => o.chore.title);
-  const overdueTitles = todayOccs.filter(o => o.isOverdue).map(o => o.chore.title);
+  const [
+    assetsRes,
+    fridgeTotalRes, fridgeExpiringRes, fridgeExpiredRes, fridgeExpItemsRes,
+    choresRes, suppliesRes, notesRes, membersRes,
+    recentFridgeRes, assetHistRes,
+  ] = await Promise.all([
+    supabase.from('assets').select('amount').eq('family_id', familyId).eq('is_active', true),
+    supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false),
+    supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false).gte('expiry_date', today).lte('expiry_date', sooner),
+    supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false).lt('expiry_date', today),
+    supabase.from('fridge_items').select('food_name, expiry_date').eq('family_id', familyId).eq('is_consumed', false).lte('expiry_date', sooner).order('expiry_date').limit(5),
+    supabase.from('chores').select('*, assignee:user_profiles(id, nickname)').eq('family_id', familyId).eq('is_active', true),
+    supabase.from('supplies').select('id, name, quantity, low_stock_threshold, created_at').eq('family_id', familyId).eq('is_active', true).limit(6),
+    supabase.from('notes').select('id, title, updated_at').eq('family_id', familyId).order('updated_at', { ascending: false }).limit(4),
+    supabase.from('user_profiles').select('id, nickname').eq('family_id', familyId).limit(4),
+    supabase.from('fridge_items').select('id, food_name, created_at').eq('family_id', familyId).eq('is_consumed', false).order('created_at', { ascending: false }).limit(4),
+    supabase.from('assets').select('id, name, category, asset_histories(id, created_at, new_amount, previous_amount, memo)').eq('family_id', familyId).eq('is_active', true),
+  ]);
 
-  const pendingCount = todayTitles.length;
-  const overdueCount = overdueTitles.length;
+  const totalAssets = (assetsRes.data ?? []).reduce((s, a) => s + a.amount, 0);
 
-  const totalExpense = (expenseRes.data ?? []).reduce((sum, t) => sum + t.amount, 0);
-  const totalIncome = (incomeRes.data ?? []).reduce((sum, t) => sum + t.amount, 0);
-  const lowStockCount = (lowStockRes.data ?? []).filter(s => s.quantity <= s.low_stock_threshold).length;
-  const totalAssets = (assetsRes.data ?? []).reduce((sum, a) => sum + a.amount, 0);
-  const assetCount = (assetsRes.data ?? []).length;
+  // 일정 오늘 발생
+  const choreList = ((choresRes.data ?? []) as Chore[]).filter(c => c.created_at);
+  const todayOccs = generateOccurrences(choreList, today, today);
+  const todayChores = todayOccs.map(o => ({
+    title: o.chore.title,
+    assignee: (o.chore as any).assignee?.nickname ?? null,
+  }));
+  const todayDone = todayOccs.filter(o => o.isDone).length;
+
+  // 생필품
+  const stockItems: StockItem[] = (suppliesRes.data ?? []).map(s => ({
+    name: s.name,
+    qty: s.quantity,
+    min_qty: s.low_stock_threshold ?? 1,
+  }));
+  const lowStockCount = stockItems.filter(s => s.qty <= s.min_qty).length;
+
+  // 메모
+  const recentNotes: NoteItem[] = (notesRes.data ?? []).map(n => ({
+    id: n.id,
+    title: n.title ?? '(제목 없음)',
+  }));
+
+  // 구성원
+  const members: Member[] = (membersRes.data ?? []).map(m => ({
+    id: m.id,
+    nickname: m.nickname ?? '?',
+  }));
+
+  // 긴급 항목
+  const urgentItems: UrgentItem[] = [];
+  for (const item of (fridgeExpItemsRes.data ?? [])) {
+    const diff = Math.ceil((new Date(item.expiry_date).getTime() - new Date(today).getTime()) / 86400000);
+    if (diff < 0) urgentItems.push({ name: item.food_name, type: 'expired', dday: `D+${Math.abs(diff)}` });
+    else urgentItems.push({ name: item.food_name, type: 'expiring', dday: diff === 0 ? 'D-day' : `D-${diff}` });
+  }
+  for (const s of stockItems.filter(s => s.qty <= s.min_qty).slice(0, 3)) {
+    urgentItems.push({ name: s.name, type: 'lowstock' });
+  }
+  for (const o of todayOccs.filter(o => !o.isDone).slice(0, 2)) {
+    urgentItems.push({ name: o.chore.title, type: 'chore' });
+  }
+
+  // ── 최근 활동 피드 생성 ─────────────────────
+  const allActivities: ActivityItem[] = [];
+
+  // 음식 (최근 추가)
+  for (const f of (recentFridgeRes.data ?? []) as any[]) {
+    allActivities.push({ id: f.id, type: 'food', action: '추가됨', name: f.food_name, timestamp: f.created_at, emoji: '🥬' });
+  }
+
+  // 일정 (최근 추가, choreList에서)
+  const sortedChores = [...choreList]
+    .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())
+    .slice(0, 4);
+  for (const c of sortedChores) {
+    allActivities.push({ id: c.id, type: 'chore', action: '추가됨', name: c.title, timestamp: c.created_at!, emoji: '📅' });
+  }
+
+  // 생필품 (최근 추가)
+  const sortedSupplies = [...(suppliesRes.data ?? [] as any[])]
+    .filter((s: any) => s.created_at)
+    .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 4);
+  for (const s of sortedSupplies) {
+    allActivities.push({ id: s.id ?? s.name, type: 'supply', action: '추가됨', name: s.name, timestamp: s.created_at, emoji: '🧴' });
+  }
+
+  // 메모 (최근 작성/수정)
+  for (const n of (notesRes.data ?? [] as any[])) {
+    if (n.updated_at) {
+      allActivities.push({ id: n.id, type: 'note', action: '작성/수정됨', name: n.title ?? '(제목 없음)', timestamp: n.updated_at, emoji: '📝' });
+    }
+  }
+
+  // 자산 (최근 변경 내역)
+  for (const asset of (assetHistRes.data ?? [] as any[])) {
+    const emoji = ASSET_EMOJI[asset.category as string] ?? '📦';
+    const histories = [...(asset.asset_histories ?? [])]
+      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 2);
+    for (const h of histories as any[]) {
+      const diff = h.new_amount - h.previous_amount;
+      const isFirst = h.previous_amount === 0 && h.memo === '최초 등록';
+      const action = isFirst ? '자산 등록' : diff > 0 ? `+${formatAmount(Math.abs(diff))}` : `−${formatAmount(Math.abs(diff))}`;
+      allActivities.push({ id: h.id, type: 'asset', action, name: asset.name, timestamp: h.created_at, emoji });
+    }
+  }
+
+  const activities = allActivities
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, 8);
 
   return {
-    fridge: { totalItems: fridgeRes.count ?? 0, expiringCount: expiringSoonRes.count ?? 0, expiredCount: expiredRes.count ?? 0 },
-    finance: { thisMonthExpense: totalExpense, thisMonthIncome: totalIncome, totalAssets, assetCount },
-    chores: { pendingCount, overdueCount, todayTitles, overdueTitles, weekTitles, monthTitles },
-    supplies: { lowStockCount },
+    totalAssets,
+    fridgeTotal: fridgeTotalRes.count ?? 0,
+    fridgeExpiring: fridgeExpiringRes.count ?? 0,
+    fridgeExpired: fridgeExpiredRes.count ?? 0,
+    todayChores, todayDone, todayTotal: todayOccs.length,
+    stockItems, lowStockCount,
+    recentNotes, urgentItems, members, activities,
   };
 }
 
-// ============================================================
-// 컴포넌트
-// ============================================================
+// ── 서브 컴포넌트들 ───────────────────────────
+
+// 도토리 로고 (SVG)
+function AcornMark({ size = 26, color = C.brown }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 28 28" fill="none">
+      <Path d="M5 11c0-1 1-2 2-2h14c1 0 2 1 2 2 0 1-1 2-2 2H7c-1 0-2-1-2-2z" fill={color} />
+      <Path d="M7 13h14c0 5-3 11-7 11s-7-6-7-11z" fill={color} fillOpacity={0.55} />
+      <Path d="M14 4v5" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+// 긴급 알림 pill
+function FocusPill({ item }: { item: UrgentItem }) {
+  const isExpired  = item.type === 'expired';
+  const isLow      = item.type === 'lowstock';
+  const isDanger   = isExpired || isLow;
+  const isChore    = item.type === 'chore';
+  const bg    = isDanger ? '#FDECEA' : isChore ? '#F3E7D2' : '#FCF2E0';
+  const fg    = isDanger ? C.danger  : isChore ? C.deep    : '#B67628';
+  const dotBg = isDanger ? C.danger  : isChore ? C.brown   : C.warn;
+
+  return (
+    <View style={[pillStyles.wrap, { backgroundColor: bg }]}>
+      <View style={[pillStyles.dot, { backgroundColor: dotBg }]}>
+        <Text style={pillStyles.dotIcon}>{isDanger ? '!' : isChore ? '✓' : '~'}</Text>
+      </View>
+      <View>
+        <Text style={[pillStyles.name, { color: fg }]} numberOfLines={1}>{item.name}</Text>
+        <Text style={[pillStyles.sub, { color: fg }]}>
+          {isExpired ? '기한 초과' : isLow ? '재고 부족' : isChore ? '오늘' : item.dday}
+        </Text>
+      </View>
+    </View>
+  );
+}
+const pillStyles = StyleSheet.create({
+  wrap:    { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 5, paddingRight: 10, paddingVertical: 5, borderRadius: 20, marginRight: 8 },
+  dot:     { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  dotIcon: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  name:    { fontSize: 11, fontWeight: '700', lineHeight: 14 },
+  sub:     { fontSize: 9, fontWeight: '500', opacity: 0.75 },
+});
+
+// 미니 위젯 (음식, 생필품 등)
+function MiniWidget({
+  accentColor, title, icon, children,
+}: {
+  accentColor: string;
+  title: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={widgetStyles.card}>
+      <View style={[widgetStyles.header, { backgroundColor: accentColor }]}>
+        {icon}
+        <Text style={widgetStyles.headerTitle}>{title}</Text>
+      </View>
+      <View style={widgetStyles.body}>{children}</View>
+    </View>
+  );
+}
+const widgetStyles = StyleSheet.create({
+  card:        { backgroundColor: C.ivory, borderRadius: 14, overflow: 'hidden', flex: 1, shadowColor: C.brown, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  header:      { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 11, paddingVertical: 7 },
+  headerTitle: { fontSize: 11, fontWeight: '700', color: '#fff', flex: 1 },
+  body:        { padding: 10, minHeight: 68 },
+});
+
+// 재고 바
+function StockBar({ item }: { item: StockItem }) {
+  const maxLevel = Math.max(item.min_qty * 3, 1);
+  const level = Math.min(item.qty / maxLevel, 1);
+  const critical = item.qty <= item.min_qty;
+  return (
+    <View style={{ marginBottom: 5 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
+        <Text style={{ fontSize: 10, color: C.dark, fontWeight: '500' }} numberOfLines={1}>{item.name}</Text>
+        <Text style={{ fontSize: 10, fontWeight: '700', color: critical ? C.danger : C.warmOak }}>
+          {item.qty === 0 ? '0' : `${item.qty}`}
+        </Text>
+      </View>
+      <View style={{ height: 3, backgroundColor: C.edge + '88', borderRadius: 2 }}>
+        <View style={{ width: `${Math.max(level * 100, 4)}%`, height: 3, backgroundColor: critical ? C.danger : C.warn, borderRadius: 2 }} />
+      </View>
+    </View>
+  );
+}
+
+// 스파크라인 SVG
+function Sparkline() {
+  return (
+    <Svg width="100%" height={28} viewBox="0 0 300 28" preserveAspectRatio="none">
+      <Path
+        d="M0,20 L30,18 L60,22 L90,16 L120,17 L150,12 L180,14 L210,8 L240,10 L270,6 L300,4"
+        stroke="rgba(255,255,255,0.9)" strokeWidth={2} fill="none" strokeLinecap="round"
+      />
+      <Path
+        d="M0,20 L30,18 L60,22 L90,16 L120,17 L150,12 L180,14 L210,8 L240,10 L270,6 L300,4 L300,28 L0,28 Z"
+        fill="rgba(255,255,255,0.12)"
+      />
+    </Svg>
+  );
+}
+
+// ── 최근 활동 섹션 ────────────────────────────
+function RecentActivitySection({ items }: { items: ActivityItem[] }) {
+  return (
+    <View style={actStyles.card}>
+      <View style={actStyles.header}>
+        <AcornMark size={16} />
+        <Text style={actStyles.title}>최근 활동</Text>
+      </View>
+      {items.length === 0 ? (
+        <Text style={actStyles.empty}>최근 변경 내역이 없어요</Text>
+      ) : (
+        items.map((item, i) => (
+          <View key={`${item.type}-${item.id}-${i}`} style={[actStyles.row, i > 0 && actStyles.rowBorder]}>
+            <Text style={actStyles.emoji}>{item.emoji}</Text>
+            <Text style={actStyles.name} numberOfLines={1}>{item.name}</Text>
+            <View style={actStyles.right}>
+              <Text style={actStyles.action}>{item.action}</Text>
+              <Text style={actStyles.time}>{relativeTime(item.timestamp)}</Text>
+            </View>
+          </View>
+        ))
+      )}
+    </View>
+  );
+}
+
+const actStyles = StyleSheet.create({
+  card: { marginHorizontal: 16, marginTop: 10, backgroundColor: C.ivory, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: C.edge + '55', shadowColor: C.brown, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  title: { fontSize: 12, fontWeight: '700', color: C.dark },
+  empty: { fontSize: 12, color: C.lightOak, fontStyle: 'italic', textAlign: 'center', paddingVertical: 8 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 7 },
+  rowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.edge + '88' },
+  emoji: { fontSize: 16, width: 24, textAlign: 'center', flexShrink: 0 },
+  name: { fontSize: 12, fontWeight: '600', color: C.dark, flex: 1 },
+  right: { alignItems: 'flex-end', flexShrink: 0 },
+  action: { fontSize: 11, fontWeight: '600', color: C.warmOak },
+  time: { fontSize: 10, color: C.lightOak, marginTop: 1 },
+});
+
+// ── 메인 화면 ─────────────────────────────────
 
 const DashboardScreen: React.FC = () => {
-  const navigation = useNavigation<DashboardNavigationProp>();
+  const navigation = useNavigation<DashboardNav>();
   const isFocused = useIsFocused();
 
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [familyName, setFamilyName]   = useState<string>('우리 가족');
-  const [nickname, setNickname]       = useState<string>('');
-  const [notifyDays, setNotifyDays]   = useState<number>(3);
-  const [showAccountSheet, setShowAccountSheet] = useState(false);
-  const [enabledFeatures, setEnabledFeatures] = useState<string[]>([...ALL_FEATURES]);
-  const [choreViewMode, setChoreViewMode] = useState<'오늘' | '이번주' | '이번달'>('오늘');
-
-  const loadLocalSettings = useCallback(async () => {
-    const storedName     = await AsyncStorage.getItem(STORAGE_KEY_FAMILY_NAME);
-    const storedNickname = await AsyncStorage.getItem(STORAGE_KEY_NICKNAME);
-    const storedDays     = await AsyncStorage.getItem(STORAGE_KEY_NOTIFY_DAYS);
-    const storedFeatures = await AsyncStorage.getItem(STORAGE_KEY_ENABLED_FEATURES);
-    if (storedNickname) setNickname(storedNickname);
-    if (storedDays) setNotifyDays(parseInt(storedDays));
-    setEnabledFeatures(storedFeatures ? JSON.parse(storedFeatures) : ALL_FEATURES);
-    return storedName;
-  }, []);
+  const [familyName, setFamilyName] = useState('우리 가족');
+  const [nickname, setNickname] = useState('');
+  const [notifyDays, setNotifyDays] = useState(3);
+  const [showSheet, setShowSheet] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
       setError(null);
-      const localName = await loadLocalSettings();
-
-      // AsyncStorage에서 notify_days 읽기 (최신값 반영)
-      const storedDays = await AsyncStorage.getItem(STORAGE_KEY_NOTIFY_DAYS);
+      const [storedName, storedNick, storedDays] = await Promise.all([
+        AsyncStorage.getItem(STORAGE_KEY_FAMILY_NAME),
+        AsyncStorage.getItem(STORAGE_KEY_NICKNAME),
+        AsyncStorage.getItem(STORAGE_KEY_NOTIFY_DAYS),
+      ]);
       const days = storedDays ? parseInt(storedDays) : 3;
       setNotifyDays(days);
+      if (storedNick) setNickname(storedNick);
 
       const familyId = await getOrCreateFamilyId();
+      if (!familyId) { setLoading(false); setRefreshing(false); return; }
 
-      if (!familyId) {
-        setSummary({
-          fridge: { totalItems: 0, expiringCount: 0, expiredCount: 0 },
-          finance: { thisMonthExpense: 0, thisMonthIncome: 0, totalAssets: 0, assetCount: 0 },
-          chores: { pendingCount: 0, overdueCount: 0, todayTitles: [], overdueTitles: [], weekTitles: [], monthTitles: [] },
-          supplies: { lowStockCount: 0 },
-        });
-        if (localName) setFamilyName(localName);
-        return;
+      // 가족명 + 내 닉네임 동기화
+      const [familyRes, userRes] = await Promise.all([
+        supabase.from('families').select('name').eq('id', familyId).single(),
+        supabase.auth.getUser(),
+      ]);
+      if (familyRes.data) {
+        setFamilyName(familyRes.data.name);
+        await AsyncStorage.setItem(STORAGE_KEY_FAMILY_NAME, familyRes.data.name);
+      } else if (storedName) {
+        setFamilyName(storedName);
       }
-
-      const { data: families } = await supabase
-        .from('families').select('name').eq('id', familyId).single();
-      if (families) {
-        setFamilyName(families.name);
-        await AsyncStorage.setItem(STORAGE_KEY_FAMILY_NAME, families.name);
-      }
-
-      // 닉네임은 항상 Supabase에서 직접 읽어서 동기화 (로그인 계정 전환 대응)
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: prof } = await supabase
-          .from('user_profiles').select('nickname').eq('id', user.id).single();
+      if (userRes.data.user) {
+        const { data: prof } = await supabase.from('user_profiles').select('nickname').eq('id', userRes.data.user.id).single();
         if (prof?.nickname) {
           setNickname(prof.nickname);
           await AsyncStorage.setItem(STORAGE_KEY_NICKNAME, prof.nickname);
         }
       }
 
-      const data = await fetchDashboardSummary(familyId, days);
-      setSummary(data);
+      const result = await fetchDashboard(familyId, days);
+      setData(result);
     } catch (e) {
-      setError('데이터를 불러오지 못했어요. 인터넷 연결을 확인해주세요.');
-      console.error('Dashboard load error:', e);
+      setError('데이터를 불러오지 못했어요.');
+      console.error(e);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [loadLocalSettings]);
+  }, []);
 
-  // 화면이 포커스될 때마다(홈 탭 탭, 다른 탭→홈 복귀) 전체 데이터 새로고침
-  useEffect(() => {
-    if (isFocused) loadData();
-  }, [isFocused, loadData]);
+  useEffect(() => { if (isFocused) loadData(); }, [isFocused, loadData]);
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    loadData();
-  }, [loadData]);
+  const onRefresh = useCallback(() => { setRefreshing(true); loadData(); }, [loadData]);
 
-  const todayStr = new Date().toLocaleDateString('ko-KR', {
-    month: 'long', day: 'numeric', weekday: 'short',
-  });
+  // ── 날짜 텍스트 ──
+  const now = new Date();
+  const DOW = ['일', '월', '화', '수', '목', '금', '토'];
+  const dateLabel = `${now.getMonth() + 1}월 ${now.getDate()}일 ${DOW[now.getDay()]}요일`;
 
-  // ---- 로딩 ----
+  const urgentCount = data?.urgentItems.length ?? 0;
+
   if (loading) {
     return (
-      <SafeAreaView style={styles.centered}>
-        <ActivityIndicator size="large" color="#8B5E3C" />
-        <Text style={styles.loadingText}>불러오는 중...</Text>
+      <SafeAreaView style={s.centered}>
+        <ActivityIndicator size="large" color={C.brown} />
       </SafeAreaView>
     );
   }
 
-  // ---- 에러 ----
   if (error) {
     return (
-      <SafeAreaView style={styles.centered}>
-        <TriangleAlert color="#8B5E3C" size={48} strokeWidth={1.5} />
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={loadData}>
-          <Text style={styles.retryText}>다시 시도</Text>
+      <SafeAreaView style={s.centered}>
+        <TriangleAlert color={C.brown} size={48} strokeWidth={1.5} />
+        <Text style={s.errorText}>{error}</Text>
+        <TouchableOpacity style={s.retryBtn} onPress={loadData}>
+          <Text style={s.retryText}>다시 시도</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
   }
 
-  // ---- 정상 렌더링 ----
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={s.safe}>
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#8B5E3C" />}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.brown} />}
+        contentContainerStyle={{ paddingBottom: 24 }}
       >
-        {/* 헤더 */}
-        <View style={styles.header}>
-          {/* 앱 이름 */}
-          <View style={styles.appNameRow}>
-            <Sprout color="#8B5E3C" size={26} strokeWidth={2} />
-            <Text style={styles.appName}>도토리</Text>
-          </View>
-
-          {/* 날짜 + 계정 */}
-          <View style={styles.headerRight}>
-            <View style={styles.dateBox}>
-              <Text style={styles.dateText}>{todayStr}</Text>
+        {/* ── 헤더 ── */}
+        <View style={s.header}>
+          <View style={s.headerLeft}>
+            <AcornMark size={24} />
+            <Text style={s.appName}>도토리</Text>
+            <View style={s.familyChip}>
+              <Text style={s.familyChipText}>{familyName}</Text>
             </View>
-            {/* 가족명 + 계정 아이콘 → 탭하면 계정 시트 */}
-            <TouchableOpacity
-              style={styles.accountButton}
-              onPress={() => setShowAccountSheet(true)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.accountInfo}>
-                {nickname ? <Text style={styles.nickname}>{nickname}</Text> : null}
-                <Text style={styles.familyNameLabel}>{familyName}</Text>
-              </View>
-              <CircleUser color="#8B5E3C" size={28} strokeWidth={1.5} />
+          </View>
+          <View style={s.headerRight}>
+            <TouchableOpacity onPress={() => navigation.navigate('Settings')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Settings color={C.warmOak} size={20} strokeWidth={1.5} />
             </TouchableOpacity>
+            {/* 아바타 클러스터 */}
+            <View style={s.avatarCluster}>
+              {(data?.members ?? []).slice(0, 3).map((m, i) => (
+                <View
+                  key={m.id}
+                  style={[s.avatar, { backgroundColor: i === 1 ? C.purple : C.brown, marginLeft: i > 0 ? -10 : 0, borderWidth: i > 0 ? 2 : 0 }]}
+                >
+                  <Text style={s.avatarText}>{m.nickname.charAt(0)}</Text>
+                </View>
+              ))}
+            </View>
           </View>
         </View>
 
-        {/* 섹션 제목 */}
-        <Text style={styles.sectionTitle}>오늘의 현황</Text>
+        {/* ── 인사말 ── */}
+        <View style={s.greeting}>
+          <Text style={s.greetingDate}>{dateLabel}</Text>
+          <Text style={s.greetingMain}>
+            {nickname ? `${nickname}님, ` : ''}오늘 살펴볼 게{' '}
+            <Text style={{ color: C.brown }}>{urgentCount}개</Text> 있어요
+          </Text>
+        </View>
 
-        {/* 기능 그리드 (활성화된 기능만 표시) */}
-        <View style={styles.grid}>
-          {enabledFeatures.includes('Fridge') && (
-            <SummaryCard
-              style={styles.gridCard}
-              title="음식"
-              icon={<Refrigerator color="#FFFFFF" size={18} strokeWidth={1.8} />}
-              color="#8B5E3C"
-              onPress={() => navigation.navigate('Fridge')}
-              primaryStat={{ label: '보관 중인 식품', value: `${summary?.fridge.totalItems ?? 0}개` }}
-              secondaryStats={[
-                { label: `유통기한 임박 (D-${notifyDays})`, value: `${summary?.fridge.expiringCount ?? 0}개`, highlight: (summary?.fridge.expiringCount ?? 0) > 0 },
-                { label: '유통기한 초과', value: `${summary?.fridge.expiredCount ?? 0}개`, highlight: (summary?.fridge.expiredCount ?? 0) > 0 },
-              ]}
-            />
-          )}
-          {enabledFeatures.includes('Supplies') && (
-            <SummaryCard
-              style={styles.gridCard}
-              title="생필품"
-              icon={<ShoppingCart color="#FFFFFF" size={18} strokeWidth={1.8} />}
-              color="#6B4226"
-              onPress={() => navigation.navigate('Supplies')}
-              primaryStat={{ label: '재고 부족 항목', value: `${summary?.supplies.lowStockCount ?? 0}개`, highlight: (summary?.supplies.lowStockCount ?? 0) > 0 }}
-            />
-          )}
-          {enabledFeatures.includes('Finance') && (
-            <SummaryCard
-              style={styles.gridCard}
-              title="자산"
-              icon={<Wallet color="#FFFFFF" size={18} strokeWidth={1.8} />}
-              color="#7A4F2E"
-              onPress={() => navigation.navigate('Finance')}
-              primaryStat={{ label: '총 자산', value: formatAmount(summary?.finance.totalAssets ?? 0) }}
-              secondaryStats={[
-                { label: '이번달 지출', value: formatKRW(summary?.finance.thisMonthExpense ?? 0), highlight: (summary?.finance.thisMonthExpense ?? 0) > 0 },
-                { label: '이번달 수입', value: formatKRW(summary?.finance.thisMonthIncome ?? 0) },
-              ]}
-            />
-          )}
-          {enabledFeatures.includes('Chores') && (() => {
-            const viewTitles =
-              choreViewMode === '오늘' ? (summary?.chores.todayTitles ?? []) :
-              choreViewMode === '이번주' ? (summary?.chores.weekTitles ?? []) :
-              (summary?.chores.monthTitles ?? []);
-            const overdue = summary?.chores.overdueTitles ?? [];
-            const showOverdue = choreViewMode === '오늘';
-            const totalCount = viewTitles.length + (showOverdue ? overdue.length : 0);
+        {/* ── 긴급 알림 strip ── */}
+        {(data?.urgentItems.length ?? 0) > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={s.focusStrip}
+          >
+            {data!.urgentItems.map((item, i) => <FocusPill key={i} item={item} />)}
+          </ScrollView>
+        )}
 
-            return (
-              <View style={[styles.gridCard, choreCardStyles.card]}>
-                {/* 헤더 */}
-                <TouchableOpacity
-                  style={[choreCardStyles.header, { backgroundColor: '#A87850' }]}
-                  onPress={() => navigation.navigate('Chores')}
-                  activeOpacity={0.85}
-                >
-                  <Calendar color="#FFFFFF" size={18} strokeWidth={1.8} />
-                  <Text style={choreCardStyles.headerTitle}>일정</Text>
-                  {totalCount > 0 && (
-                    <View style={choreCardStyles.badge}>
-                      <Text style={choreCardStyles.badgeText}>{totalCount}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
+        {/* ── 자산 히어로 카드 ── */}
+        <TouchableOpacity style={s.heroCard} onPress={() => navigation.navigate('Finance')} activeOpacity={0.9}>
+          {/* 배경 도토리 워터마크 */}
+          <View style={s.heroWatermark} pointerEvents="none">
+            <AcornMark size={120} color="rgba(255,255,255,0.08)" />
+          </View>
+          <View style={s.heroTop}>
+            <Text style={s.heroLabel}>우리 집 총 자산</Text>
+            <View style={s.heroUpdateBtn}>
+              <Text style={s.heroUpdateText}>업데이트 →</Text>
+            </View>
+          </View>
+          <Text style={s.heroAmount}>{formatAmount(data?.totalAssets ?? 0)}</Text>
+          <View>
+            <Sparkline />
+          </View>
+        </TouchableOpacity>
 
-                {/* 기간 선택 탭 */}
-                <View style={choreCardStyles.modeRow}>
-                  {(['오늘', '이번주', '이번달'] as const).map(mode => (
-                    <TouchableOpacity
-                      key={mode}
-                      style={[choreCardStyles.modeBtn, choreViewMode === mode && choreCardStyles.modeBtnActive]}
-                      onPress={() => setChoreViewMode(mode)}
-                    >
-                      <Text style={[choreCardStyles.modeBtnText, choreViewMode === mode && choreCardStyles.modeBtnTextActive]}>
-                        {mode}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+        {/* ── 위젯 2x2 ── */}
+        <View style={s.widgetRow}>
+          {/* 음식 */}
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('Fridge')} activeOpacity={0.85}>
+            <MiniWidget accentColor={C.brown} title="음식" icon={<Text style={{ fontSize: 13 }}>🥬</Text>}>
+              <Text style={s.widgetBigNum}>{data?.fridgeTotal ?? 0}</Text>
+              <View style={s.widgetRow2}>
+                <Text style={s.widgetStatLabel}>임박</Text>
+                <Text style={[s.widgetStatVal, (data?.fridgeExpiring ?? 0) > 0 && { color: C.warn }]}>{data?.fridgeExpiring ?? 0}개</Text>
+              </View>
+              <View style={s.widgetRow2}>
+                <Text style={s.widgetStatLabel}>초과</Text>
+                <Text style={[s.widgetStatVal, (data?.fridgeExpired ?? 0) > 0 && { color: C.danger }]}>{data?.fridgeExpired ?? 0}개</Text>
+              </View>
+            </MiniWidget>
+          </TouchableOpacity>
 
-                {/* 내용 */}
-                <TouchableOpacity onPress={() => navigation.navigate('Chores')} activeOpacity={0.85}>
-                  <View style={choreCardStyles.body}>
-                    {totalCount === 0 ? (
-                      <Text style={choreCardStyles.empty}>{choreViewMode}에 할 일이 없어요</Text>
-                    ) : (
-                      <>
-                        {showOverdue && overdue.length > 0 && (
-                          <>
-                            <Text style={choreCardStyles.sectionLabel}>기간이 지난 일정</Text>
-                            {overdue.slice(0, 2).map((t, i) => (
-                              <View key={`od-${i}`} style={choreCardStyles.item}>
-                                <View style={[choreCardStyles.dot, { backgroundColor: '#D95F4B' }]} />
-                                <Text style={[choreCardStyles.itemText, { color: '#D95F4B' }]} numberOfLines={1}>{t}</Text>
-                              </View>
-                            ))}
-                          </>
-                        )}
-                        {viewTitles.length > 0 && (
-                          <>
-                            {showOverdue && overdue.length > 0 && (
-                              <Text style={[choreCardStyles.sectionLabel, { marginTop: 8 }]}>{choreViewMode} 할 일정</Text>
-                            )}
-                            {viewTitles.slice(0, showOverdue && overdue.length > 0 ? 2 : 4).map((t, i) => (
-                              <View key={`vt-${i}`} style={choreCardStyles.item}>
-                                <View style={choreCardStyles.dot} />
-                                <Text style={choreCardStyles.itemText} numberOfLines={1}>{t}</Text>
-                              </View>
-                            ))}
-                          </>
-                        )}
-                        {totalCount > 4 && (
-                          <Text style={choreCardStyles.more}>+ {totalCount - 4}개 더</Text>
-                        )}
-                      </>
+          {/* 일정 */}
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('Chores')} activeOpacity={0.85}>
+            <MiniWidget accentColor={C.warmOak} title="오늘 일정" icon={<Text style={{ fontSize: 13 }}>📅</Text>}>
+              {(data?.todayChores.length ?? 0) === 0 ? (
+                <Text style={s.widgetEmpty}>할 일 없음</Text>
+              ) : (
+                data!.todayChores.slice(0, 3).map((c, i) => (
+                  <View key={i} style={s.choreRow}>
+                    <View style={s.choreDot} />
+                    <Text style={s.choreTitle} numberOfLines={1}>{c.title}</Text>
+                    {c.assignee && (
+                      <View style={[s.choreAvatar, { backgroundColor: i % 2 === 1 ? C.purple : C.brown }]}>
+                        <Text style={s.choreAvatarText}>{c.assignee.charAt(0)}</Text>
+                      </View>
                     )}
                   </View>
-                </TouchableOpacity>
-              </View>
-            );
-          })()}
+                ))
+              )}
+            </MiniWidget>
+          </TouchableOpacity>
         </View>
 
-        <View style={{ height: 16 }} />
+        <View style={[s.widgetRow, { marginTop: 10 }]}>
+          {/* 생필품 */}
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('Supplies')} activeOpacity={0.85}>
+            <MiniWidget accentColor={C.deep} title="생필품" icon={<Text style={{ fontSize: 13 }}>🧴</Text>}>
+              {(data?.stockItems.length ?? 0) === 0 ? (
+                <Text style={s.widgetEmpty}>항목 없음</Text>
+              ) : (
+                data!.stockItems.slice(0, 3).map((item, i) => <StockBar key={i} item={item} />)
+              )}
+            </MiniWidget>
+          </TouchableOpacity>
+
+          {/* 메모 */}
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('Notes')} activeOpacity={0.85}>
+            <MiniWidget accentColor="#A07A5C" title="메모" icon={<Text style={{ fontSize: 13 }}>📝</Text>}>
+              {(data?.recentNotes.length ?? 0) === 0 ? (
+                <Text style={s.widgetEmpty}>메모 없음</Text>
+              ) : (
+                data!.recentNotes.map((n, i) => (
+                  <View key={n.id} style={s.noteRow}>
+                    <Text style={s.noteEmoji}>📝</Text>
+                    <Text style={s.noteTitle} numberOfLines={1}>{n.title || '(제목 없음)'}</Text>
+                  </View>
+                ))
+              )}
+            </MiniWidget>
+          </TouchableOpacity>
+        </View>
+
+        {/* ── 최근 활동 피드 ── */}
+        <RecentActivitySection items={data?.activities ?? []} />
       </ScrollView>
 
-      {/* 계정 시트 */}
-      <Modal visible={showAccountSheet} transparent animationType="slide">
-        <Pressable style={sheetStyles.overlay} onPress={() => setShowAccountSheet(false)}>
-          <Pressable style={sheetStyles.sheet} onPress={() => {}}>
-            {/* 핸들 바 */}
-            <View style={sheetStyles.handle} />
-
-            {/* 가족 */}
-            <View style={sheetStyles.row}>
-              <View style={sheetStyles.iconBox}>
-                <Users color="#8B5E3C" size={20} strokeWidth={1.8} />
-              </View>
+      {/* ── 계정 시트 ── */}
+      <Modal visible={showSheet} transparent animationType="slide">
+        <Pressable style={sheet.overlay} onPress={() => setShowSheet(false)}>
+          <Pressable style={sheet.body} onPress={() => {}}>
+            <View style={sheet.handle} />
+            <View style={sheet.row}>
+              <View style={sheet.iconBox}><Users color={C.brown} size={20} strokeWidth={1.5} /></View>
               <View>
-                <Text style={sheetStyles.rowLabel}>속한 가족</Text>
-                <Text style={sheetStyles.rowValue}>{familyName}</Text>
+                <Text style={sheet.rowLabel}>속한 가족</Text>
+                <Text style={sheet.rowVal}>{familyName}</Text>
               </View>
             </View>
-
-            {/* 닉네임 */}
-            <View style={sheetStyles.row}>
-              <View style={sheetStyles.iconBox}>
-                <CircleUser color="#8B5E3C" size={20} strokeWidth={1.8} />
-              </View>
+            <View style={sheet.row}>
+              <View style={sheet.iconBox}><CircleUser color={C.brown} size={20} strokeWidth={1.5} /></View>
               <View>
-                <Text style={sheetStyles.rowLabel}>닉네임</Text>
-                <Text style={sheetStyles.rowValue}>
-                  {nickname || '닉네임 미설정'}
-                </Text>
+                <Text style={sheet.rowLabel}>닉네임</Text>
+                <Text style={sheet.rowVal}>{nickname || '미설정'}</Text>
               </View>
             </View>
-
-            <View style={sheetStyles.divider} />
-
-            {/* 설정으로 이동 */}
-            <TouchableOpacity
-              style={sheetStyles.settingsBtn}
-              onPress={() => { setShowAccountSheet(false); navigation.navigate('Settings'); }}
-              activeOpacity={0.7}
-            >
-              <Settings color="#8B5E3C" size={18} strokeWidth={1.8} />
-              <Text style={sheetStyles.settingsBtnText}>설정</Text>
+            <View style={sheet.divider} />
+            <TouchableOpacity style={sheet.settingsBtn} onPress={() => { setShowSheet(false); navigation.navigate('Settings'); }}>
+              <Settings color={C.brown} size={18} strokeWidth={1.5} />
+              <Text style={sheet.settingsBtnText}>설정</Text>
             </TouchableOpacity>
           </Pressable>
         </Pressable>
@@ -488,308 +657,84 @@ const DashboardScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#FDF6EC',
-  },
-  scroll: { flex: 1 },
-  scrollContent: { padding: 24 },
+// ── 스타일 ────────────────────────────────────
+
+const s = StyleSheet.create({
+  safe:    { flex: 1, backgroundColor: C.cream },
+  centered:{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.cream },
+  errorText: { fontSize: 14, color: C.brown, textAlign: 'center', marginTop: 12, marginBottom: 20 },
+  retryBtn:  { backgroundColor: C.brown, paddingHorizontal: 28, paddingVertical: 12, borderRadius: 24 },
+  retryText: { color: '#fff', fontWeight: '600', fontSize: 14 },
 
   // 헤더
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 28,
-  },
-  headerRight: { alignItems: 'flex-end', gap: 8 },
+  header:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 6, paddingBottom: 4 },
+  headerLeft:  { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  appName:     { fontSize: 20, fontWeight: '800', color: C.dark, letterSpacing: -0.5 },
+  familyChip:  { backgroundColor: C.ivory, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8, borderWidth: 1, borderColor: C.edge + '66' },
+  familyChipText: { fontSize: 10, fontWeight: '600', color: C.lightOak },
+  avatarCluster: { flexDirection: 'row', alignItems: 'center' },
+  avatar:      { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderColor: '#fff' },
+  avatarText:  { color: '#fff', fontSize: 11, fontWeight: '700' },
 
-  appNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  appName: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#5C3D1E',
-    letterSpacing: -0.5,
-  },
-  dateBox: {
-    backgroundColor: '#8B5E3C',
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-  },
-  dateText: {
-    fontSize: 12,
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  accountButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#FFF8F0',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  accountInfo: {
-    alignItems: 'flex-end',
-  },
-  nickname: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#5C3D1E',
-  },
-  familyNameLabel: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: '#A87850',
-  },
+  // 인사말
+  greeting:     { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 10 },
+  greetingDate: { fontSize: 11, color: C.lightOak, fontWeight: '600' },
+  greetingMain: { fontSize: 20, fontWeight: '800', color: C.dark, marginTop: 2, letterSpacing: -0.4 },
 
-  // 알림 배너
-  alertBanner: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#EDD9C0',
-    borderWidth: 1,
-    borderColor: '#D4B896',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 24,
-  },
-  alertText: {
-    fontSize: 13,
-    color: '#5C3D1E',
-    fontWeight: '600',
-    flex: 1,
-  },
+  // 긴급 strip
+  focusStrip: { paddingHorizontal: 16, paddingBottom: 10 },
 
-  // 기능 그리드 (flex-wrap)
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  gridCard: {
-    width: '47%',
-  },
+  // 히어로 카드
+  heroCard:      { marginHorizontal: 16, marginBottom: 10, backgroundColor: C.brown, borderRadius: 18, padding: 14, overflow: 'hidden', shadowColor: C.deep, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 20, elevation: 6 },
+  heroWatermark: { position: 'absolute', right: -20, top: -10 },
+  heroTop:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  heroLabel:     { fontSize: 11, color: 'rgba(255,255,255,0.8)', fontWeight: '600' },
+  heroUpdateBtn: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  heroUpdateText:{ fontSize: 10, color: '#fff', fontWeight: '700' },
+  heroAmount:    { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.5, marginBottom: 8 },
+  heroFooter:    { flexDirection: 'row', gap: 10 },
+  heroStat:      { fontSize: 10, color: '#fff', fontWeight: '700' },
+  heroStatLabel: { color: 'rgba(255,255,255,0.65)', fontWeight: '400' },
 
-  // 섹션 제목
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#5C3D1E',
-    marginBottom: 14,
-  },
+  // 위젯
+  widgetRow:    { flexDirection: 'row', paddingHorizontal: 16, gap: 10 },
+  widgetBigNum: { fontSize: 20, fontWeight: '800', color: C.dark, lineHeight: 22, marginBottom: 4 },
+  widgetRow2:   { flexDirection: 'row', justifyContent: 'space-between' },
+  widgetStatLabel: { fontSize: 10, color: C.warmOak },
+  widgetStatVal:   { fontSize: 10, fontWeight: '700', color: C.dark },
+  widgetEmpty:  { fontSize: 11, color: C.lightOak, fontStyle: 'italic', marginTop: 4 },
 
-  // 로딩 / 에러
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#FDF6EC',
-    padding: 24,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#8B5E3C',
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#8B5E3C',
-    textAlign: 'center',
-    marginBottom: 20,
-    marginTop: 12,
-  },
-  retryButton: {
-    backgroundColor: '#8B5E3C',
-    paddingHorizontal: 28,
-    paddingVertical: 12,
-    borderRadius: 24,
-  },
-  retryText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
-  },
+  // 일정 위젯
+  choreRow:      { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  choreDot:      { width: 10, height: 10, borderRadius: 3, borderWidth: 1.5, borderColor: C.lightOak },
+  choreTitle:    { fontSize: 11, color: C.dark, fontWeight: '500', flex: 1 },
+  choreAvatar:   { width: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
+  choreAvatarText: { color: '#fff', fontSize: 8, fontWeight: '700' },
+
+  // 메모 위젯
+  noteRow:   { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  noteEmoji: { fontSize: 11 },
+  noteTitle: { fontSize: 11, color: C.dark, fontWeight: '500', flex: 1 },
+  notePinned:{ fontSize: 8 },
+
+  // 인사이트 카드
+  insightCard: { marginHorizontal: 16, marginTop: 10, backgroundColor: '#F3E7D2', borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: C.edge, borderStyle: 'dashed' },
+  insightIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: C.ivory, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  insightText: { flex: 1, fontSize: 11, color: C.dark, lineHeight: 16 },
 });
 
-// ── 계정 시트 스타일 ──────────────────────────
-
-const sheetStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: '#FFF8F0',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-    paddingTop: 12,
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#DEC8A8',
-    alignSelf: 'center',
-    marginBottom: 24,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    marginBottom: 18,
-  },
-  iconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FDF6EC',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rowLabel: {
-    fontSize: 11,
-    color: '#8B5E3C',
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  rowValue: {
-    fontSize: 17,
-    color: '#5C3D1E',
-    fontWeight: '700',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#DEC8A8',
-    marginBottom: 18,
-  },
-  settingsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 12,
-  },
-  settingsBtnText: {
-    fontSize: 15,
-    color: '#8B5E3C',
-    fontWeight: '600',
-  },
-});
-
-// ── 루틴 카드 스타일 ──────────────────────────
-
-const choreCardStyles = StyleSheet.create({
-  card: {
-    backgroundColor: '#FFF8F0',
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#8B5E3C',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 8,
-  },
-  headerTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    flex: 1,
-  },
-  badge: {
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    borderRadius: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-  },
-  badgeText: {
-    fontSize: 11,
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  body: {
-    padding: 14,
-    minHeight: 80,
-  },
-  empty: {
-    fontSize: 13,
-    color: '#C49A6C',
-    fontStyle: 'italic',
-  },
-  item: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 6,
-  },
-  dot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#8B5E3C',
-  },
-  itemText: {
-    fontSize: 13,
-    color: '#5C3D1E',
-    fontWeight: '500',
-    flex: 1,
-  },
-  more: {
-    fontSize: 11,
-    color: '#A87850',
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  sectionLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#A87850',
-    letterSpacing: 0.3,
-    marginBottom: 4,
-  },
-  modeRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EDD9C0',
-  },
-  modeBtn: {
-    flex: 1,
-    paddingVertical: 4,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  modeBtnActive: {
-    backgroundColor: '#EDD9C0',
-  },
-  modeBtnText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#A87850',
-  },
-  modeBtnTextActive: {
-    color: '#5C3D1E',
-  },
+const sheet = StyleSheet.create({
+  overlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  body:       { backgroundColor: C.ivory, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingBottom: 40, paddingTop: 12 },
+  handle:     { width: 40, height: 4, borderRadius: 2, backgroundColor: C.edge, alignSelf: 'center', marginBottom: 24 },
+  row:        { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 18 },
+  iconBox:    { width: 40, height: 40, borderRadius: 20, backgroundColor: C.cream, alignItems: 'center', justifyContent: 'center' },
+  rowLabel:   { fontSize: 11, color: C.brown, fontWeight: '600', marginBottom: 2 },
+  rowVal:     { fontSize: 17, color: C.dark, fontWeight: '700' },
+  divider:    { height: 1, backgroundColor: C.edge, marginBottom: 18 },
+  settingsBtn:{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
+  settingsBtnText: { fontSize: 15, color: C.brown, fontWeight: '600' },
 });
 
 export default DashboardScreen;

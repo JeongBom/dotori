@@ -10,13 +10,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet, Linking } from 'react-native';
-import { NavigationContainer, NavigationContainerRef, useIsFocused } from '@react-navigation/native';
+import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Home, Refrigerator, Wallet, Calendar, ShoppingCart, NotebookPen } from 'lucide-react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import Svg, { Path, Rect, Circle } from 'react-native-svg';
 import type { Session } from '@supabase/supabase-js';
-import { STORAGE_KEY_ENABLED_FEATURES, ALL_FEATURES } from '../screens/SettingsScreen';
 
 import DashboardScreen from '../screens/DashboardScreen';
 import FridgeScreen from '../screens/FridgeScreen';
@@ -29,6 +27,11 @@ import AddSupplyScreen from '../screens/AddSupplyScreen';
 import AddChoreScreen from '../screens/AddChoreScreen';
 import FamilyFoodsScreen from '../screens/FamilyFoodsScreen';
 import AssetHistoryScreen from '../screens/AssetHistoryScreen';
+import AllAssetHistoryScreen from '../screens/AllAssetHistoryScreen';
+import AssetUpdateScreen from '../screens/asset/AssetUpdateScreen';
+import AssetAddScreen from '../screens/asset/AssetAddScreen';
+import GoalAddScreen from '../screens/GoalAddScreen';
+import GoalItemAddScreen from '../screens/GoalItemAddScreen';
 import NotesScreen from '../screens/NotesScreen';
 import NoteDetailScreen from '../screens/NoteDetailScreen';
 import AuthScreen from '../screens/auth/AuthScreen';
@@ -65,7 +68,24 @@ export type RootStackParamList = {
   AddSupply: { familyId?: string; supplyId?: string };
   AddChore: { familyId?: string; choreId?: string; occurrenceDate?: string; editMode?: 'this' | 'future' | 'all' };
   FamilyFoods: undefined;
-  AssetHistory: undefined;
+  AssetHistory: {
+    assetId: string;
+    assetName: string;
+    category: string;
+    currentAmount: number;
+    ownerNickname?: string;
+  };
+  AllAssetHistory: undefined;
+  AssetAdd: undefined;
+  GoalAdd: { familyId: string };
+  GoalItemAdd: { goalId: string; familyId: string; itemId?: string };
+  AssetUpdate: {
+    assetId: string;
+    assetName: string;
+    assetAmount: number;
+    category: string;
+    ownerNickname?: string;
+  };
   NoteDetail: { noteId: string };
 };
 
@@ -76,80 +96,62 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 type IconProps = { color: string; size: number };
 
-const TAB_ICONS: Record<keyof RootTabParamList, React.FC<IconProps>> = {
-  Home:     ({ color, size }) => <Home color={color} size={size} strokeWidth={1.5} />,
-  Fridge:   ({ color, size }) => <Refrigerator color={color} size={size} strokeWidth={1.5} />,
-  Finance:  ({ color, size }) => <Wallet color={color} size={size} strokeWidth={1.5} />,
-  Chores:   ({ color, size }) => <Calendar color={color} size={size} strokeWidth={1.5} />,
-  Supplies: ({ color, size }) => <ShoppingCart color={color} size={size} strokeWidth={1.5} />,
-  Notes:    ({ color, size }) => <NotebookPen color={color} size={size} strokeWidth={1.5} />,
+function TabIcon({ name, color }: { name: string; color: string }) {
+  const s = { width: 22, height: 22, stroke: color, strokeWidth: 1.6 } as const;
+  if (name === 'home')
+    return <Svg {...s} viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round"><Path d="M3 10l9-7 9 7v10a2 2 0 0 1-2 2h-4v-7h-6v7H5a2 2 0 0 1-2-2z" stroke={color} strokeWidth={1.6} fill="none" strokeLinecap="round" strokeLinejoin="round"/></Svg>;
+  if (name === 'fridge')
+    return <Svg {...s} viewBox="0 0 24 24" fill="none"><Rect x="6" y="3" width="12" height="18" rx="2" stroke={color} strokeWidth={1.6} fill="none"/><Path d="M6 10h12M9 7v1M9 14v2" stroke={color} strokeWidth={1.6} strokeLinecap="round"/></Svg>;
+  if (name === 'basket')
+    return <Svg {...s} viewBox="0 0 24 24" fill="none"><Path d="M5 8h14l-1.5 11a2 2 0 0 1-2 1.7h-7a2 2 0 0 1-2-1.7z" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"/><Path d="M9 8V6a3 3 0 0 1 6 0v2M9 12v5M15 12v5" stroke={color} strokeWidth={1.6} strokeLinecap="round"/></Svg>;
+  if (name === 'wallet')
+    return <Svg {...s} viewBox="0 0 24 24" fill="none"><Path d="M3 7a2 2 0 0 1 2-2h14v4H5a2 2 0 0 0-2 2z" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"/><Path d="M3 7v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9H5" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"/><Circle cx="16" cy="14" r="1.3" fill={color}/></Svg>;
+  if (name === 'calendar')
+    return <Svg {...s} viewBox="0 0 24 24" fill="none"><Rect x="3" y="5" width="18" height="16" rx="2" stroke={color} strokeWidth={1.6} fill="none"/><Path d="M8 3v4M16 3v4M3 10h18" stroke={color} strokeWidth={1.6} strokeLinecap="round"/></Svg>;
+  if (name === 'note')
+    return <Svg {...s} viewBox="0 0 24 24" fill="none"><Path d="M5 4h11l4 4v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"/><Path d="M15 4v5h5M8 13h8M8 17h5" stroke={color} strokeWidth={1.6} strokeLinecap="round"/></Svg>;
+  return null;
+}
+
+const TAB_ICON_NAMES: Partial<Record<keyof RootTabParamList, string>> = {
+  Home: 'home', Fridge: 'fridge', Supplies: 'basket', Finance: 'wallet', Chores: 'calendar', Notes: 'note',
 };
 
-const TAB_LABELS: Record<keyof RootTabParamList, string> = {
-  Home: '홈', Fridge: '음식', Finance: '자산', Chores: '일정', Supplies: '생필품', Notes: '메모',
+const TAB_LABELS: Partial<Record<keyof RootTabParamList, string>> = {
+  Home: '홈', Fridge: '음식', Supplies: '생필품', Finance: '자산', Chores: '일정', Notes: '메모',
 };
 
 // ---- 하단 탭 ----
 
 function MainTabs() {
-  const isFocused = useIsFocused();
-  const [enabledFeatures, setEnabledFeatures] = useState<string[]>([...ALL_FEATURES]);
-
-  useEffect(() => {
-    const load = async () => {
-      const stored = await AsyncStorage.getItem(STORAGE_KEY_ENABLED_FEATURES);
-      setEnabledFeatures(stored ? JSON.parse(stored) : [...ALL_FEATURES]);
-    };
-    load();
-  }, [isFocused]);
-
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         tabBarIcon: ({ color }) => {
-          const Icon = TAB_ICONS[route.name as keyof RootTabParamList];
-          return <Icon color={color} size={24} />;
+          const name = TAB_ICON_NAMES[route.name as keyof RootTabParamList];
+          return name ? <TabIcon name={name} color={color} /> : null;
         },
-        tabBarLabel: TAB_LABELS[route.name as keyof RootTabParamList],
+        tabBarLabel: TAB_LABELS[route.name as keyof RootTabParamList] ?? '',
         tabBarActiveTintColor: '#8B5E3C',
         tabBarInactiveTintColor: '#C49A6C',
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopWidth: 1,
-          borderTopColor: '#EDD9C0',
-          height: 60,
-          paddingBottom: 8,
+          backgroundColor: 'rgba(255,255,255,0.97)',
+          borderTopWidth: 0.5,
+          borderTopColor: '#DEC8A8',
+          height: 84,
+          paddingBottom: 28,
+          paddingTop: 8,
         },
         tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
         headerShown: false,
       })}
     >
       <Tab.Screen name="Home" component={DashboardScreen} />
-      <Tab.Screen
-        name="Fridge"
-        component={FridgeScreen}
-        options={{ tabBarButton: enabledFeatures.includes('Fridge') ? undefined : () => null }}
-      />
-      <Tab.Screen
-        name="Supplies"
-        component={SuppliesScreen}
-        options={{ tabBarButton: enabledFeatures.includes('Supplies') ? undefined : () => null }}
-      />
-      <Tab.Screen
-        name="Finance"
-        component={FinanceScreen}
-        options={{ tabBarButton: enabledFeatures.includes('Finance') ? undefined : () => null }}
-      />
-      <Tab.Screen
-        name="Chores"
-        component={ChoresScreen}
-        options={{ tabBarButton: enabledFeatures.includes('Chores') ? undefined : () => null }}
-      />
-      <Tab.Screen
-        name="Notes"
-        component={NotesScreen}
-        options={{ tabBarButton: enabledFeatures.includes('Notes') ? undefined : () => null }}
-      />
+      <Tab.Screen name="Fridge"   component={FridgeScreen} />
+      <Tab.Screen name="Supplies" component={SuppliesScreen} />
+      <Tab.Screen name="Finance"  component={FinanceScreen} />
+      <Tab.Screen name="Chores"   component={ChoresScreen} />
+      <Tab.Screen name="Notes"    component={NotesScreen} />
     </Tab.Navigator>
   );
 }
@@ -294,11 +296,16 @@ export default function AppNavigator({ navigationRef }: AppNavigatorProps) {
           <>
             <Stack.Screen name="MainTabs" component={MainTabs} />
             <Stack.Screen name="Settings" component={SettingsScreen} options={{ presentation: 'modal' }} />
-            <Stack.Screen name="AddFridgeItem" component={AddFridgeItemScreen} options={{ presentation: 'modal' }} />
-            <Stack.Screen name="AddSupply" component={AddSupplyScreen} options={{ presentation: 'modal' }} />
-            <Stack.Screen name="AddChore" component={AddChoreScreen} options={{ presentation: 'modal' }} />
+            <Stack.Screen name="AddFridgeItem" component={AddFridgeItemScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
+            <Stack.Screen name="AddSupply" component={AddSupplyScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
+            <Stack.Screen name="AddChore" component={AddChoreScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
             <Stack.Screen name="FamilyFoods" component={FamilyFoodsScreen} options={{ presentation: 'modal' }} />
             <Stack.Screen name="AssetHistory" component={AssetHistoryScreen} />
+            <Stack.Screen name="AllAssetHistory" component={AllAssetHistoryScreen} />
+            <Stack.Screen name="AssetAdd" component={AssetAddScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
+            <Stack.Screen name="GoalAdd" component={GoalAddScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
+            <Stack.Screen name="GoalItemAdd" component={GoalItemAddScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
+            <Stack.Screen name="AssetUpdate" component={AssetUpdateScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
             <Stack.Screen name="NoteDetail" component={NoteDetailScreen} />
           </>
         )}

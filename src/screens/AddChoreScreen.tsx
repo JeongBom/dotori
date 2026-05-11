@@ -1,8 +1,4 @@
-// 루틴/할일 추가·수정 화면
-// - 제목, 태그, 담당자, 반복 주기, 마감일 설정
-// - 1인 가구 시 담당자 UI 숨김
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,13 +11,13 @@ import {
   Platform,
   Keyboard,
   Modal,
-  Pressable,
   Dimensions,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ChevronLeft, Plus, X, ChevronDown } from 'lucide-react-native';
+import { ChevronLeft, Plus, X, ChevronDown, Check } from 'lucide-react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
@@ -114,8 +110,6 @@ const dpStyles = StyleSheet.create({
   confirmText: { color: '#FFFFFF', fontWeight: '700' },
 });
 
-// ── 반복 주기 옵션 ────────────────────────────
-
 const REPEAT_OPTIONS: { type: RepeatType; label: string }[] = [
   { type: 'none', label: '없음' },
   { type: 'daily', label: '매일' },
@@ -123,6 +117,8 @@ const REPEAT_OPTIONS: { type: RepeatType; label: string }[] = [
   { type: 'monthly', label: '매달' },
   { type: 'custom', label: '직접' },
 ];
+
+const TOTAL_STEPS = 3;
 
 // ── 메인 화면 ─────────────────────────────────
 
@@ -132,34 +128,45 @@ const AddChoreScreen: React.FC = () => {
 
   const choreId = route.params?.choreId ?? null;
   const occurrenceDate = route.params?.occurrenceDate ?? null;
-  const editMode = route.params?.editMode ?? null; // null = 전체 수정 (기본)
+  const editMode = route.params?.editMode ?? null;
   const isEditing = !!choreId;
+
+  const [step, setStep] = useState(1);
+  const [done, setDone] = useState(false);
+  const doneOpacity = useRef(new Animated.Value(0)).current;
+  const doneScale = useRef(new Animated.Value(0.85)).current;
+  const titleInputRef = useRef<TextInput>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isEditing) {
+        const t = setTimeout(() => titleInputRef.current?.focus(), 600);
+        return () => clearTimeout(t);
+      }
+    }, [isEditing])
+  );
 
   const [familyId, setFamilyId] = useState<string | null>(route.params?.familyId ?? null);
   const [tags, setTags] = useState<ChoreTag[]>([]);
   const [members, setMembers] = useState<UserProfile[]>([]);
 
-  // 폼 상태
   const [title, setTitle] = useState('');
   const [tagId, setTagId] = useState<string | null>(null);
-  const [assignedTo, setAssignedTo] = useState<string | null>(null); // null = 모두
+  const [assignedTo, setAssignedTo] = useState<string | null>(null);
   const [repeatType, setRepeatType] = useState<RepeatType>('none');
-  // custom 전용
   const [customUnit, setCustomUnit] = useState<'week' | 'month'>('week');
-  const [customCount, setCustomCount] = useState(1); // N주 or N개월
-  const [customDayOfWeek, setCustomDayOfWeek] = useState(new Date().getDay()); // 0=일~6=토
-  const [customWeekOfMonth, setCustomWeekOfMonth] = useState(1); // 1~4
+  const [customCount, setCustomCount] = useState(1);
+  const [customDayOfWeek, setCustomDayOfWeek] = useState(new Date().getDay());
+  const [customWeekOfMonth, setCustomWeekOfMonth] = useState(1);
   const [dueDate, setDueDate] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // 새 태그 인라인 추가
   const [showNewTagInput, setShowNewTagInput] = useState(false);
   const [newTagName, setNewTagName] = useState('');
 
   const isSolo = members.length <= 1;
 
-  // 초기 데이터 로드
   useEffect(() => {
     (async () => {
       const fid = familyId ?? await getOrCreateFamilyId();
@@ -172,7 +179,6 @@ const AddChoreScreen: React.FC = () => {
       if (!tagsRes.error && tagsRes.data) setTags(tagsRes.data as ChoreTag[]);
       if (!membersRes.error && membersRes.data) setMembers(membersRes.data as UserProfile[]);
 
-      // 수정 모드: 기존 데이터 로드
       if (choreId) {
         const { data } = await supabase.from('chores').select('*').eq('id', choreId).single();
         if (data) {
@@ -190,11 +196,9 @@ const AddChoreScreen: React.FC = () => {
     })();
   }, [choreId, familyId]);
 
-  // 새 태그 추가
   const handleAddNewTag = useCallback(async () => {
     const name = newTagName.trim();
-    if (!name) return;
-    if (!familyId) return;
+    if (!name || !familyId) return;
     if (tags.some(t => t.name === name)) { Alert.alert('알림', '이미 같은 이름의 태그가 있어요.'); return; }
     const { data, error } = await supabase.from('chore_tags').insert({ family_id: familyId, name }).select().single();
     if (!error && data) {
@@ -207,10 +211,16 @@ const AddChoreScreen: React.FC = () => {
     Keyboard.dismiss();
   }, [familyId, tags, newTagName]);
 
-  // 저장
-  const handleSave = async () => {
-    if (!title.trim()) { Alert.alert('알림', '제목을 입력해주세요.'); return; }
+  const goNext = () => {
+    if (step === 1 && !title.trim()) {
+      Alert.alert('알림', '제목을 입력해주세요.');
+      return;
+    }
+    if (step < TOTAL_STEPS) setStep(s => s + 1);
+    else handleSave();
+  };
 
+  const handleSave = async () => {
     const fid = familyId ?? await getOrCreateFamilyId();
     if (!fid) { Alert.alert('오류', '가족 정보를 생성할 수 없습니다.'); return; }
     if (!familyId) setFamilyId(fid);
@@ -230,7 +240,6 @@ const AddChoreScreen: React.FC = () => {
       };
 
       if (isEditing && choreId && editMode === 'this' && occurrenceDate) {
-        // 이 일정만 수정: 원본에서 이 날짜 제외 + 새 단발 일정 생성
         const { data: orig } = await supabase.from('chores').select('excluded_dates').eq('id', choreId).single();
         const newExcluded = [...((orig?.excluded_dates as string[] | null) ?? []), occurrenceDate];
         await supabase.from('chores').update({ excluded_dates: newExcluded }).eq('id', choreId);
@@ -242,9 +251,9 @@ const AddChoreScreen: React.FC = () => {
           is_done: false, last_done_at: null, is_active: true,
         });
         if (error) throw error;
+        navigation.goBack();
 
       } else if (isEditing && choreId && editMode === 'future' && occurrenceDate) {
-        // 이후 일정 모두 수정: 원본 종료일 설정 + 새 반복 일정 생성
         await supabase.from('chores').update({ end_date: occurrenceDate }).eq('id', choreId);
         const { error } = await supabase.from('chores').insert({
           family_id: fid, ...payload,
@@ -252,21 +261,26 @@ const AddChoreScreen: React.FC = () => {
           is_done: false, last_done_at: null, is_active: true,
         });
         if (error) throw error;
+        navigation.goBack();
 
       } else if (isEditing && choreId) {
-        // 전체 수정 (기본)
         const { error } = await supabase.from('chores').update(payload).eq('id', choreId);
         if (error) throw error;
+        navigation.goBack();
 
       } else {
-        // 새로 추가
         const { error } = await supabase.from('chores').insert({
           family_id: fid, ...payload,
           is_done: false, last_done_at: null, is_active: true,
         });
         if (error) throw error;
+
+        setDone(true);
+        Animated.parallel([
+          Animated.spring(doneScale, { toValue: 1, useNativeDriver: true }),
+          Animated.timing(doneOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+        ]).start();
       }
-      navigation.goBack();
     } catch (e) {
       Alert.alert('오류', '저장에 실패했습니다. 다시 시도해주세요.');
       console.error(e);
@@ -275,88 +289,106 @@ const AddChoreScreen: React.FC = () => {
     }
   };
 
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      {/* 헤더 */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <ChevronLeft color="#5C3D1E" size={24} strokeWidth={2} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{isEditing ? '일정 수정' : '일정 추가'}</Text>
-        <View style={styles.headerRight} />
-      </View>
+  // ── 완료 화면 ────────────────────────────────
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          keyboardDismissMode="interactive"
-        >
-          {/* 제목 */}
-          <Text style={styles.label}>제목</Text>
-          <View style={styles.inputBox}>
-            <TextInput
-              style={styles.input}
-              placeholder="할 일을 입력하세요"
-              placeholderTextColor="#C49A6C"
-              value={title}
-              onChangeText={setTitle}
-              returnKeyType="done"
-              onSubmitEditing={() => Keyboard.dismiss()}
-              maxLength={50}
-            />
+  if (done) {
+    return (
+      <SafeAreaView style={s.safeArea}>
+        <Animated.View style={[s.doneWrap, { opacity: doneOpacity, transform: [{ scale: doneScale }] }]}>
+          <View style={s.doneCircle}>
+            <Check color="#FFFFFF" size={36} strokeWidth={2.5} />
           </View>
+          <Text style={s.doneTitle}>일정을 추가했어요!</Text>
+          <Text style={s.doneSub}>{title}</Text>
+          <TouchableOpacity style={s.doneBtn} onPress={() => navigation.goBack()}>
+            <Text style={s.doneBtnText}>확인</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </SafeAreaView>
+    );
+  }
 
-          {/* 태그 */}
-          <Text style={[styles.label, { marginTop: 24 }]}>태그</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-            {/* 없음 칩 */}
+  const Progress = () => (
+    <View style={s.progressRow}>
+      {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
+        <View key={i} style={[s.progressSeg, i + 1 <= step ? s.progressSegActive : s.progressSegInactive]} />
+      ))}
+    </View>
+  );
+
+  const renderStep = () => {
+    if (step === 1) {
+      return (
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <ScrollView contentContainerStyle={s.stepContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <Text style={s.stepQuestion}>무엇을 할 건가요?</Text>
+            <View style={s.inputBox}>
+              <TextInput
+                ref={titleInputRef}
+                style={s.input}
+                placeholder="할 일을 입력하세요"
+                placeholderTextColor="#C49A6C"
+                value={title}
+                onChangeText={setTitle}
+                returnKeyType="done"
+                onSubmitEditing={() => Keyboard.dismiss()}
+                maxLength={50}
+                keyboardAppearance="light"
+              />
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      );
+    }
+
+    if (step === 2) {
+      return (
+        <ScrollView contentContainerStyle={s.stepContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <Text style={s.stepQuestion}>태그와 담당자를 정해요</Text>
+
+          <Text style={s.label}>태그 <Text style={s.labelOptional}>(선택)</Text></Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
             <TouchableOpacity
-              style={[styles.chip, tagId === null && styles.chipActive]}
+              style={[s.chip, tagId === null && s.chipActive]}
               onPress={() => setTagId(null)}
             >
-              <Text style={[styles.chipText, tagId === null && styles.chipTextActive]}>없음</Text>
+              <Text style={[s.chipText, tagId === null && s.chipTextActive]}>없음</Text>
             </TouchableOpacity>
-
-            {/* 기존 태그 칩 */}
             {tags.map(t => (
               <TouchableOpacity
                 key={t.id}
-                style={[styles.chip, tagId === t.id && styles.chipActive]}
+                style={[s.chip, tagId === t.id && s.chipActive]}
                 onPress={() => setTagId(t.id)}
               >
-                <Text style={[styles.chipText, tagId === t.id && styles.chipTextActive]}>{t.name}</Text>
+                <Text style={[s.chipText, tagId === t.id && s.chipTextActive]}>{t.name}</Text>
               </TouchableOpacity>
             ))}
-
-            {/* 새 태그 추가 버튼 */}
             {!showNewTagInput && (
-              <TouchableOpacity style={styles.addChip} onPress={() => setShowNewTagInput(true)}>
+              <TouchableOpacity style={s.addChip} onPress={() => setShowNewTagInput(true)}>
                 <Plus color="#8B5E3C" size={13} strokeWidth={2.5} />
-                <Text style={styles.addChipText}>새 태그</Text>
+                <Text style={s.addChipText}>새 태그</Text>
               </TouchableOpacity>
             )}
           </ScrollView>
 
-          {/* 인라인 새 태그 입력 */}
           {showNewTagInput && (
-            <View style={styles.newTagRow}>
-              <View style={styles.newTagInputBox}>
+            <View style={[s.newTagRow, { marginBottom: 16 }]}>
+              <View style={s.newTagInputBox}>
                 <TextInput
-                  style={styles.newTagInput}
+                  style={s.newTagInput}
                   placeholder="태그 이름"
                   placeholderTextColor="#C49A6C"
                   value={newTagName}
                   onChangeText={setNewTagName}
                   autoFocus
                   returnKeyType="done"
+                  keyboardAppearance="light"
                   onSubmitEditing={handleAddNewTag}
                   maxLength={12}
                 />
               </View>
-              <TouchableOpacity style={styles.newTagSaveBtn} onPress={handleAddNewTag}>
-                <Text style={styles.newTagSaveBtnText}>추가</Text>
+              <TouchableOpacity style={s.newTagSaveBtn} onPress={handleAddNewTag}>
+                <Text style={s.newTagSaveBtnText}>추가</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => { setShowNewTagInput(false); setNewTagName(''); }}>
                 <X color="#C49A6C" size={18} strokeWidth={2} />
@@ -364,151 +396,171 @@ const AddChoreScreen: React.FC = () => {
             </View>
           )}
 
-          {/* 담당자 */}
-          <Text style={[styles.label, { marginTop: 24 }]}>담당자</Text>
+          <Text style={[s.label, { marginTop: 20 }]}>담당자 <Text style={s.labelOptional}>(선택)</Text></Text>
           {isSolo ? (
-            <Text style={styles.soloHint}>가족을 초대하면 담당자를 지정할 수 있어요</Text>
+            <Text style={s.soloHint}>가족을 초대하면 담당자를 지정할 수 있어요</Text>
           ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <TouchableOpacity
-                style={[styles.chip, assignedTo === null && styles.chipActive]}
+                style={[s.chip, assignedTo === null && s.chipActive]}
                 onPress={() => setAssignedTo(null)}
               >
-                <Text style={[styles.chipText, assignedTo === null && styles.chipTextActive]}>모두</Text>
+                <Text style={[s.chipText, assignedTo === null && s.chipTextActive]}>모두</Text>
               </TouchableOpacity>
               {members.map(m => (
                 <TouchableOpacity
                   key={m.id}
-                  style={[styles.chip, assignedTo === m.id && styles.chipActive]}
+                  style={[s.chip, assignedTo === m.id && s.chipActive]}
                   onPress={() => setAssignedTo(m.id)}
                 >
-                  <Text style={[styles.chipText, assignedTo === m.id && styles.chipTextActive]}>{m.nickname}</Text>
+                  <Text style={[s.chipText, assignedTo === m.id && s.chipTextActive]}>{m.nickname}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
           )}
+        </ScrollView>
+      );
+    }
 
-          {/* 반복 주기 — 한 줄 가로 스크롤 */}
-          <Text style={[styles.label, { marginTop: 24 }]}>반복</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.repeatScroll} contentContainerStyle={styles.repeatScrollContent}>
-            {REPEAT_OPTIONS.map(opt => (
-              <TouchableOpacity
-                key={opt.type}
-                style={[styles.repeatBtn, repeatType === opt.type && styles.repeatBtnActive]}
-                onPress={() => setRepeatType(opt.type)}
-              >
-                <Text style={[styles.repeatBtnText, repeatType === opt.type && styles.repeatBtnTextActive]}>
-                  {opt.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+    // step 3
+    return (
+      <ScrollView contentContainerStyle={s.stepContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <Text style={s.stepQuestion}>반복과 날짜를 설정해요</Text>
 
-          {/* 직접 설정: 요일 기반 반복 UI */}
-          {repeatType === 'custom' && (
-            <View style={styles.customBox}>
-              {/* 단위 선택: 주 / 개월 */}
-              <View style={styles.customUnitRow}>
-                {(['week', 'month'] as const).map(u => (
-                  <TouchableOpacity
-                    key={u}
-                    style={[styles.customUnitBtn, customUnit === u && styles.customUnitBtnActive]}
-                    onPress={() => setCustomUnit(u)}
-                  >
-                    <Text style={[styles.customUnitText, customUnit === u && styles.customUnitTextActive]}>
-                      {u === 'week' ? '주' : '개월'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* N 선택 */}
-              <Text style={styles.customSubLabel}> 몇 {customUnit === 'week' ? '주' : '개월'}?</Text>
-              <View style={styles.customCountRow}>
-                {[1, 2, 3, 4, 6].map(n => (
-                  <TouchableOpacity
-                    key={n}
-                    style={[styles.customCountBtn, customCount === n && styles.customCountBtnActive]}
-                    onPress={() => setCustomCount(n)}
-                  >
-                    <Text style={[styles.customCountText, customCount === n && styles.customCountTextActive]}>{n}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* 개월 선택 시: 몇째 주? */}
-              {customUnit === 'month' && (
-                <>
-                  <Text style={styles.customSubLabel}>몇째 주?</Text>
-                  <View style={styles.customCountRow}>
-                    {[1, 2, 3, 4].map(w => (
-                      <TouchableOpacity
-                        key={w}
-                        style={[styles.customCountBtn, customWeekOfMonth === w && styles.customCountBtnActive]}
-                        onPress={() => setCustomWeekOfMonth(w)}
-                      >
-                        <Text style={[styles.customCountText, customWeekOfMonth === w && styles.customCountTextActive]}>{w}째</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </>
-              )}
-
-              {/* 요일 선택 */}
-              <Text style={styles.customSubLabel}>무슨 요일?</Text>
-              <View style={styles.dowRow}>
-                {['일', '월', '화', '수', '목', '금', '토'].map((d, i) => (
-                  <TouchableOpacity
-                    key={i}
-                    style={[styles.dowBtn, customDayOfWeek === i && styles.dowBtnActive]}
-                    onPress={() => setCustomDayOfWeek(i)}
-                  >
-                    <Text style={[styles.dowText, customDayOfWeek === i && styles.dowTextActive]}>{d}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* 미리보기 */}
-              <Text style={styles.customPreview}>
-                {customCount >=- 1 ? `${customCount}` : ''}
-                {customUnit === 'week' ? '주' : '개월'}
-                {'마다'}
-                {customUnit === 'month' ? ` ${customWeekOfMonth}째주` : ''}
-                {' '}
-                {['일', '월', '화', '수', '목', '금', '토'][customDayOfWeek]}요일
-              </Text>
-            </View>
-          )}
-
-          {/* 날짜 / 종료일 */}
-          <Text style={[styles.label, { marginTop: 24 }]}>{repeatType === 'custom' ? '종료일' : '날짜'}</Text>
-          <TouchableOpacity style={styles.dateRow} onPress={() => setShowDatePicker(true)}>
-            <Text style={[styles.dateText, !dueDate && styles.datePlaceholder]}>
-              {dueDate ? formatDisplayDate(dueDate) : '없음 (선택사항)'}
-            </Text>
-            <ChevronDown color="#8B5E3C" size={18} strokeWidth={2} />
-          </TouchableOpacity>
-          {dueDate ? (
-            <TouchableOpacity style={styles.clearDate} onPress={() => setDueDate('')}>
-              <Text style={styles.clearDateText}>날짜 초기화</Text>
+        <Text style={s.label}>반복</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }} contentContainerStyle={{ gap: 8, alignItems: 'center' }}>
+          {REPEAT_OPTIONS.map(opt => (
+            <TouchableOpacity
+              key={opt.type}
+              style={[s.repeatBtn, repeatType === opt.type && s.repeatBtnActive]}
+              onPress={() => setRepeatType(opt.type)}
+            >
+              <Text style={[s.repeatBtnText, repeatType === opt.type && s.repeatBtnTextActive]}>{opt.label}</Text>
             </TouchableOpacity>
-          ) : null}
-
+          ))}
         </ScrollView>
 
-        {/* 저장 버튼 */}
-        <View style={styles.bottomBar}>
-          <TouchableOpacity
-            style={[styles.saveBtn, saving && { opacity: 0.5 }]}
-            onPress={handleSave}
-            disabled={saving}
-          >
-            <Text style={styles.saveBtnText}>{saving ? '저장 중...' : (isEditing ? '수정 완료' : '저장')}</Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+        {repeatType === 'custom' && (
+          <View style={s.customBox}>
+            <View style={s.customUnitRow}>
+              {(['week', 'month'] as const).map(u => (
+                <TouchableOpacity
+                  key={u}
+                  style={[s.customUnitBtn, customUnit === u && s.customUnitBtnActive]}
+                  onPress={() => setCustomUnit(u)}
+                >
+                  <Text style={[s.customUnitText, customUnit === u && s.customUnitTextActive]}>
+                    {u === 'week' ? '주' : '개월'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
-      {/* 날짜 선택 모달 */}
+            <Text style={s.customSubLabel}>몇 {customUnit === 'week' ? '주' : '개월'}?</Text>
+            <View style={s.customCountRow}>
+              {[1, 2, 3, 4, 6].map(n => (
+                <TouchableOpacity
+                  key={n}
+                  style={[s.customCountBtn, customCount === n && s.customCountBtnActive]}
+                  onPress={() => setCustomCount(n)}
+                >
+                  <Text style={[s.customCountText, customCount === n && s.customCountTextActive]}>{n}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {customUnit === 'month' && (
+              <>
+                <Text style={s.customSubLabel}>몇째 주?</Text>
+                <View style={s.customCountRow}>
+                  {[1, 2, 3, 4].map(w => (
+                    <TouchableOpacity
+                      key={w}
+                      style={[s.customCountBtn, customWeekOfMonth === w && s.customCountBtnActive]}
+                      onPress={() => setCustomWeekOfMonth(w)}
+                    >
+                      <Text style={[s.customCountText, customWeekOfMonth === w && s.customCountTextActive]}>{w}째</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+
+            <Text style={s.customSubLabel}>무슨 요일?</Text>
+            <View style={s.dowRow}>
+              {['일', '월', '화', '수', '목', '금', '토'].map((d, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={[s.dowBtn, customDayOfWeek === i && s.dowBtnActive]}
+                  onPress={() => setCustomDayOfWeek(i)}
+                >
+                  <Text style={[s.dowText, customDayOfWeek === i && s.dowTextActive]}>{d}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={s.customPreview}>
+              {customCount}
+              {customUnit === 'week' ? '주' : '개월'}마다
+              {customUnit === 'month' ? ` ${customWeekOfMonth}째주` : ''}
+              {' '}
+              {['일', '월', '화', '수', '목', '금', '토'][customDayOfWeek]}요일
+            </Text>
+          </View>
+        )}
+
+        <Text style={[s.label, { marginTop: 24 }]}>{repeatType === 'custom' ? '종료일' : '날짜'} <Text style={s.labelOptional}>(선택)</Text></Text>
+        <TouchableOpacity style={s.dateRow} onPress={() => setShowDatePicker(true)}>
+          <Text style={[s.dateText, !dueDate && s.datePlaceholder]}>
+            {dueDate ? formatDisplayDate(dueDate) : '없음 (선택사항)'}
+          </Text>
+          <ChevronDown color="#8B5E3C" size={18} strokeWidth={2} />
+        </TouchableOpacity>
+        {dueDate ? (
+          <TouchableOpacity style={s.clearDate} onPress={() => setDueDate('')}>
+            <Text style={s.clearDateText}>날짜 초기화</Text>
+          </TouchableOpacity>
+        ) : null}
+      </ScrollView>
+    );
+  };
+
+  const ctaLabel = () => {
+    if (saving) return '저장 중...';
+    if (step < TOTAL_STEPS) return '다음';
+    return isEditing ? '수정 완료' : '저장';
+  };
+
+  return (
+    <SafeAreaView style={s.safeArea}>
+      <View style={s.header}>
+        <TouchableOpacity
+          onPress={() => { if (step > 1) setStep(st => st - 1); else navigation.goBack(); }}
+          style={s.backBtn}
+        >
+          <ChevronLeft color="#5C3D1E" size={24} strokeWidth={2} />
+        </TouchableOpacity>
+        <Text style={s.headerTitle}>{isEditing ? '일정 수정' : '일정 추가'}</Text>
+        <View style={s.headerRight} />
+      </View>
+
+      <Progress />
+
+      <View style={{ flex: 1 }}>
+        {renderStep()}
+      </View>
+
+      <View style={s.bottomBar}>
+        <TouchableOpacity
+          style={[s.ctaBtn, saving && { opacity: 0.5 }]}
+          onPress={goNext}
+          disabled={saving}
+          activeOpacity={0.85}
+        >
+          <Text style={s.ctaBtnText}>{ctaLabel()}</Text>
+        </TouchableOpacity>
+      </View>
+
       <DatePickerModal
         visible={showDatePicker}
         value={dueDate || todayStr()}
@@ -519,29 +571,34 @@ const AddChoreScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#FDF6EC' },
+const s = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
 
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: '#DEC8A8',
   },
   backBtn: { width: 40, alignItems: 'flex-start' },
   headerTitle: { fontSize: 17, fontWeight: '700', color: '#5C3D1E' },
   headerRight: { width: 40 },
 
-  content: { padding: 20, paddingBottom: 16 },
+  progressRow: { flexDirection: 'row', paddingHorizontal: 20, gap: 6, marginBottom: 4 },
+  progressSeg: { flex: 1, height: 4, borderRadius: 2 },
+  progressSegActive: { backgroundColor: '#8B5E3C' },
+  progressSegInactive: { backgroundColor: '#EDD9C0' },
+
+  stepContent: { padding: 24, paddingBottom: 32 },
+  stepQuestion: { fontSize: 22, fontWeight: '800', color: '#5C3D1E', marginBottom: 32, lineHeight: 30 },
+
   label: { fontSize: 13, fontWeight: '600', color: '#8B5E3C', marginBottom: 10 },
+  labelOptional: { fontSize: 12, fontWeight: '400', color: '#C49A6C' },
+  soloHint: { fontSize: 13, color: '#C49A6C', fontStyle: 'italic', marginBottom: 8 },
 
-  // 입력
-  inputBox: { backgroundColor: '#FFF8F0', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14, borderWidth: 1, borderColor: '#DEC8A8' },
-  input: { fontSize: 16, color: '#5C3D1E', padding: 0 },
+  inputBox: { backgroundColor: '#FFF8F0', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: '#DEC8A8' },
+  input: { fontSize: 17, color: '#5C3D1E', padding: 0 },
 
-  // 칩
-  chipScroll: { marginBottom: 4 },
   chip: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, marginRight: 8,
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20, marginRight: 8,
     backgroundColor: '#FFF8F0', borderWidth: 1, borderColor: '#DEC8A8',
   },
   chipActive: { backgroundColor: '#8B5E3C', borderColor: '#8B5E3C' },
@@ -549,21 +606,17 @@ const styles = StyleSheet.create({
   chipTextActive: { color: '#FFFFFF' },
   addChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, marginRight: 8,
+    paddingHorizontal: 12, paddingVertical: 9, borderRadius: 20, marginRight: 8,
     backgroundColor: '#FFF8F0', borderWidth: 1, borderColor: '#DEC8A8', borderStyle: 'dashed',
   },
   addChipText: { fontSize: 13, color: '#8B5E3C', fontWeight: '600' },
 
-  // 새 태그 인라인
   newTagRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
   newTagInputBox: { flex: 1, backgroundColor: '#FFF8F0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: '#DEC8A8' },
   newTagInput: { fontSize: 14, color: '#5C3D1E', padding: 0 },
   newTagSaveBtn: { backgroundColor: '#8B5E3C', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10 },
   newTagSaveBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
 
-  // 반복 (한 줄 가로 스크롤)
-  repeatScroll: { marginBottom: 4 },
-  repeatScrollContent: { gap: 8, alignItems: 'center', paddingRight: 4 },
   repeatBtn: {
     paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12,
     backgroundColor: '#FFF8F0', borderWidth: 1, borderColor: '#DEC8A8', alignItems: 'center',
@@ -572,59 +625,45 @@ const styles = StyleSheet.create({
   repeatBtnText: { fontSize: 14, fontWeight: '600', color: '#8B5E3C' },
   repeatBtnTextActive: { color: '#FFFFFF' },
 
-  // 직접 설정 박스
-  customBox: {
-    backgroundColor: '#FFF8F0', borderRadius: 14, padding: 14, marginTop: 8,
-    borderWidth: 1, borderColor: '#DEC8A8',
-  },
+  customBox: { backgroundColor: '#FFF8F0', borderRadius: 14, padding: 14, marginTop: 8, borderWidth: 1, borderColor: '#DEC8A8' },
   customSubLabel: { fontSize: 12, fontWeight: '600', color: '#8B5E3C', marginBottom: 8, marginTop: 12 },
   customUnitRow: { flexDirection: 'row', gap: 8 },
-  customUnitBtn: {
-    flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center',
-    backgroundColor: '#FDF6EC', borderWidth: 1, borderColor: '#DEC8A8',
-  },
+  customUnitBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: '#FDF6EC', borderWidth: 1, borderColor: '#DEC8A8' },
   customUnitBtnActive: { backgroundColor: '#8B5E3C', borderColor: '#8B5E3C' },
   customUnitText: { fontSize: 15, fontWeight: '700', color: '#8B5E3C' },
   customUnitTextActive: { color: '#FFFFFF' },
   customCountRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  customCountBtn: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-    backgroundColor: '#FDF6EC', borderWidth: 1, borderColor: '#DEC8A8',
-  },
+  customCountBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#FDF6EC', borderWidth: 1, borderColor: '#DEC8A8' },
   customCountBtnActive: { backgroundColor: '#8B5E3C', borderColor: '#8B5E3C' },
   customCountText: { fontSize: 14, fontWeight: '600', color: '#8B5E3C' },
   customCountTextActive: { color: '#FFFFFF' },
   dowRow: { flexDirection: 'row', gap: 6 },
-  dowBtn: {
-    flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center',
-    backgroundColor: '#FDF6EC', borderWidth: 1, borderColor: '#DEC8A8',
-  },
+  dowBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: '#FDF6EC', borderWidth: 1, borderColor: '#DEC8A8' },
   dowBtnActive: { backgroundColor: '#8B5E3C', borderColor: '#8B5E3C' },
   dowText: { fontSize: 13, fontWeight: '600', color: '#8B5E3C' },
   dowTextActive: { color: '#FFFFFF' },
-  customPreview: {
-    marginTop: 12, fontSize: 13, fontWeight: '600', color: '#A87850',
-    textAlign: 'center',
-  },
+  customPreview: { marginTop: 12, fontSize: 13, fontWeight: '600', color: '#A87850', textAlign: 'center' },
 
-  // 솔로 안내
-  soloHint: { fontSize: 13, color: '#C49A6C', fontStyle: 'italic' },
-
-  // 날짜
   dateRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#FFF8F0', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14,
+    backgroundColor: '#FFF8F0', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 16,
     borderWidth: 1, borderColor: '#DEC8A8',
   },
   dateText: { fontSize: 16, color: '#5C3D1E', fontWeight: '500' },
   datePlaceholder: { color: '#C49A6C' },
-  clearDate: { marginTop: 8, alignSelf: 'flex-start' },
+  clearDate: { marginTop: 10, alignSelf: 'flex-start' },
   clearDateText: { fontSize: 12, color: '#C49A6C', textDecorationLine: 'underline' },
 
-  // 하단 저장
-  bottomBar: { paddingHorizontal: 20, paddingVertical: 12, paddingBottom: 16, borderTopWidth: 1, borderTopColor: '#EDD9C0', backgroundColor: '#FDF6EC' },
-  saveBtn: { backgroundColor: '#8B5E3C', borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
-  saveBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  bottomBar: { paddingHorizontal: 24, paddingVertical: 16, backgroundColor: '#FFFFFF' },
+  ctaBtn: { backgroundColor: '#8B5E3C', borderRadius: 16, paddingVertical: 18, alignItems: 'center' },
+  ctaBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
+
+  doneWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  doneCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#8B5E3C', alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  doneTitle: { fontSize: 24, fontWeight: '800', color: '#5C3D1E', marginBottom: 10 },
+  doneSub: { fontSize: 15, color: '#A87850', textAlign: 'center', lineHeight: 22, marginBottom: 48 },
+  doneBtn: { backgroundColor: '#8B5E3C', borderRadius: 16, paddingVertical: 16, paddingHorizontal: 48 },
+  doneBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
 });
 
 export default AddChoreScreen;
