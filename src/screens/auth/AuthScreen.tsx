@@ -19,40 +19,22 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import Svg, { Path, Circle, Rect, Ellipse } from 'react-native-svg';
+import Svg, { Path, Circle, Rect } from 'react-native-svg';
 
 import { supabase } from '../../lib/supabase';
 import { RootStackParamList } from '../../navigation';
-
-// ── 디자인 토큰 ────────────────────────────────
-
-const C = {
-  brown:    '#8B5E3C',
-  warmOak:  '#A87850',
-  lightOak: '#C49A6C',
-  deep:     '#6B4226',
-  ivory:    '#FFF8F0',
-  cream:    '#FDF6EC',
-  edge:     '#DEC8A8',
-  dark:     '#5C3D1E',
-  mid:      '#A87850',
-  danger:   '#D95F4B',
-} as const;
+import { theme } from '../../theme';
 
 // ── 도토리 마크 SVG ────────────────────────────
 
 const AcornMark = ({ size = 52 }: { size?: number }) => (
   <Svg width={size} height={size} viewBox="0 0 52 60" fill="none">
-    {/* 몸통 */}
-    <Path d="M12 30 Q11 52 26 52 Q41 52 40 30 Z" fill={C.brown} />
-    {/* 뚜껑 */}
-    <Rect x="8" y="18" width="36" height="16" rx="7" fill={C.deep} />
-    {/* 뚜껑 질감 */}
+    <Path d="M12 30 Q11 52 26 52 Q41 52 40 30 Z" fill={theme.colors.brand} />
+    <Rect x="8" y="18" width="36" height="16" rx="7" fill={theme.colors.warm.deep} />
     <Circle cx="17" cy="26" r="1.5" fill="rgba(255,255,255,0.22)" />
     <Circle cx="26" cy="26" r="1.5" fill="rgba(255,255,255,0.22)" />
     <Circle cx="35" cy="26" r="1.5" fill="rgba(255,255,255,0.22)" />
-    {/* 줄기 */}
-    <Path d="M26 18 Q29 11 33 7" stroke={C.deep} strokeWidth="2.5" strokeLinecap="round" />
+    <Path d="M26 18 Q29 11 33 7" stroke={theme.colors.warm.deep} strokeWidth="2.5" strokeLinecap="round" />
   </Svg>
 );
 
@@ -60,10 +42,10 @@ const AcornMark = ({ size = 52 }: { size?: number }) => (
 
 const EnvelopeSvg = () => (
   <Svg width="80" height="80" viewBox="0 0 80 80" fill="none">
-    <Rect x="8" y="20" width="64" height="44" rx="6" fill={C.edge} />
-    <Rect x="8" y="20" width="64" height="44" rx="6" stroke={C.brown} strokeWidth="2" />
-    <Path d="M8 26 L40 48 L72 26" stroke={C.brown} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    <Circle cx="58" cy="22" r="11" fill={C.danger} />
+    <Rect x="8" y="20" width="64" height="44" rx="6" fill={theme.colors.warm.edge} />
+    <Rect x="8" y="20" width="64" height="44" rx="6" stroke={theme.colors.brand} strokeWidth="2" />
+    <Path d="M8 26 L40 48 L72 26" stroke={theme.colors.brand} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <Circle cx="58" cy="22" r="11" fill={theme.colors.status.danger} />
     <Path d="M58 16.5 L58 23" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" />
     <Circle cx="58" cy="27" r="1.8" fill="#fff" />
   </Svg>
@@ -218,9 +200,9 @@ const AuthScreen: React.FC = () => {
           <EnvelopeSvg />
           <Text style={styles.pendingTitle}>이메일을 확인해주세요</Text>
           <Text style={styles.pendingDesc}>
-            <Text style={{ fontWeight: '700', color: C.dark }}>{pendingEmail}</Text>
+            <Text style={{ fontWeight: '700', color: theme.colors.warm.dark }}>{pendingEmail}</Text>
             {'\n'}로 인증 메일을 보냈어요.{'\n\n'}
-            <Text style={{ color: C.lightOak }}>
+            <Text style={{ color: theme.colors.warm.lightOak }}>
               1. 메일함에서 인증 링크를 클릭하세요{'\n'}
               2. 앱으로 돌아와 아래 버튼을 눌러주세요
             </Text>
@@ -286,7 +268,7 @@ const AuthScreen: React.FC = () => {
               <TextInput
                 style={inputStyle('email')}
                 placeholder="example@email.com"
-                placeholderTextColor={C.edge}
+                placeholderTextColor={theme.colors.warm.edge}
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
@@ -303,7 +285,7 @@ const AuthScreen: React.FC = () => {
               <TextInput
                 style={inputStyle('password')}
                 placeholder="6자 이상"
-                placeholderTextColor={C.edge}
+                placeholderTextColor={theme.colors.warm.edge}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry
@@ -320,7 +302,7 @@ const AuthScreen: React.FC = () => {
                   <TextInput
                     style={inputStyle('passwordConfirm')}
                     placeholder="비밀번호를 다시 입력하세요"
-                    placeholderTextColor={C.edge}
+                    placeholderTextColor={theme.colors.warm.edge}
                     value={passwordConfirm}
                     onChangeText={setPasswordConfirm}
                     secureTextEntry
@@ -338,7 +320,7 @@ const AuthScreen: React.FC = () => {
                   <TextInput
                     style={inputStyle('nickname')}
                     placeholder="예: 도토리, 아내, 남편"
-                    placeholderTextColor={C.edge}
+                    placeholderTextColor={theme.colors.warm.edge}
                     value={nickname}
                     onChangeText={setNickname}
                     autoCorrect={false}
@@ -380,18 +362,18 @@ const AuthScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: C.cream },
+  safeArea: { flex: 1, backgroundColor: theme.colors.warm.cream },
   content: { paddingHorizontal: 24, paddingTop: 36, paddingBottom: 60 },
 
   // 로고
   logoArea: { alignItems: 'center', marginBottom: 36 },
-  appName: { fontSize: 30, fontWeight: '900', color: C.dark, letterSpacing: -1, marginTop: 10 },
-  appDesc: { fontSize: 13, color: C.mid, fontWeight: '500', marginTop: 4 },
+  appName: { fontSize: 30, fontWeight: '700', color: theme.colors.warm.dark, letterSpacing: -1, marginTop: 10 },
+  appDesc: { fontSize: 13, color: theme.colors.warm.oak, fontWeight: '500', marginTop: 4 },
 
   // 탭
   tabRow: {
     flexDirection: 'row',
-    backgroundColor: '#EDD9C0',
+    backgroundColor: theme.colors.warm.edge,
     borderRadius: 16,
     padding: 4,
     marginBottom: 20,
@@ -405,16 +387,16 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  tabText: { fontSize: 14, fontWeight: '700', color: C.mid },
-  tabTextActive: { color: C.dark },
+  tabText: { fontSize: 14, fontWeight: '700', color: theme.colors.warm.oak },
+  tabTextActive: { color: theme.colors.warm.dark },
 
   // 카드
   card: {
-    backgroundColor: C.ivory,
+    backgroundColor: theme.colors.warm.ivory,
     borderRadius: 20,
     padding: 22,
     gap: 14,
-    shadowColor: C.brown,
+    shadowColor: theme.colors.brand,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.07,
     shadowRadius: 12,
@@ -424,26 +406,26 @@ const styles = StyleSheet.create({
   // 필드
   fieldWrap: { gap: 0 },
   labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 },
-  label: { fontSize: 12, fontWeight: '700', color: C.mid, marginBottom: 7 },
-  labelHint: { fontSize: 11, color: C.lightOak, fontWeight: '500' },
+  label: { fontSize: 12, fontWeight: '700', color: theme.colors.warm.oak, marginBottom: 7 },
+  labelHint: { fontSize: 11, color: theme.colors.warm.lightOak, fontWeight: '500' },
   input: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 13,
     fontSize: 15,
-    color: C.dark,
+    color: theme.colors.warm.dark,
     borderWidth: 1,
-    borderColor: C.edge,
+    borderColor: theme.colors.warm.edge,
   },
   inputFocused: {
-    borderColor: C.brown,
+    borderColor: theme.colors.brand,
     borderWidth: 1.5,
   },
 
   // 버튼
   submitBtn: {
-    backgroundColor: C.brown,
+    backgroundColor: theme.colors.brand,
     borderRadius: 14,
     paddingVertical: 15,
     alignItems: 'center',
@@ -451,12 +433,12 @@ const styles = StyleSheet.create({
   },
   submitText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   secondaryBtn: { alignItems: 'center', paddingVertical: 10 },
-  secondaryText: { fontSize: 13, color: C.mid, fontWeight: '600' },
+  secondaryText: { fontSize: 13, color: theme.colors.warm.oak, fontWeight: '600' },
 
   // 이메일 인증 대기
   pendingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 0 },
-  pendingTitle: { fontSize: 22, fontWeight: '900', color: C.dark, marginTop: 28, marginBottom: 14, textAlign: 'center' },
-  pendingDesc: { fontSize: 14, color: C.mid, textAlign: 'center', lineHeight: 26, marginBottom: 36 },
+  pendingTitle: { fontSize: 22, fontWeight: '700', color: theme.colors.warm.dark, marginTop: 28, marginBottom: 14, textAlign: 'center' },
+  pendingDesc: { fontSize: 14, color: theme.colors.warm.oak, textAlign: 'center', lineHeight: 26, marginBottom: 36 },
 });
 
 export default AuthScreen;
