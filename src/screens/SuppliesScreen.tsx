@@ -12,12 +12,13 @@ import { useNavigation, useIsFocused, CompositeNavigationProp } from '@react-nav
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Swipeable } from 'react-native-gesture-handler';
-import Svg, { Path, Circle, Rect } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { Supply, SupplyCategoryEntry } from '../types';
 import { RootTabParamList, RootStackParamList } from '../navigation';
 import { sendLowStockNotification } from '../lib/notifications';
+import { theme } from '../theme';
 
 type SuppliesNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<RootTabParamList, 'Supplies'>,
@@ -27,28 +28,11 @@ type SuppliesNavProp = CompositeNavigationProp<
 type FilterType = '전체' | string;
 type SortType = '이름순' | '재고적은순' | '추가순';
 
-// ── 디자인 토큰 ───────────────────────────────
-const C = {
-  brown:    '#8B5E3C',
-  warmOak:  '#A87850',
-  lightOak: '#C49A6C',
-  ivory:    '#FFF8F0',
-  cream:    '#FDF6EC',
-  edge:     '#DEC8A8',
-  dark:     '#5C3D1E',
-  deep:     '#6B4226',
-  danger:   '#D95F4B',
-  warn:     '#E09B4B',
-  success:  '#5AAF6E',
-} as const;
-
-const CAT_COLOR = C.brown;
+const CAT_COLOR = theme.colors.brand;
 
 // ── 물품명 → 이모지 매핑 ──────────────────────
 function getSupplyEmoji(name: string, category?: string): string {
   const n = name;
-
-  // 욕실 / 세면
   if (/샴푸|린스|컨디셔너/.test(n)) return '🚿';
   if (/비누|핸드워시|손비누|폼클/.test(n)) return '🫧';
   if (/치약|칫솔/.test(n)) return '🦷';
@@ -57,50 +41,35 @@ function getSupplyEmoji(name: string, category?: string): string {
   if (/로션|보디로션|핸드크림|크림/.test(n)) return '🧴';
   if (/면봉/.test(n)) return '🩺';
   if (/선크림|선스크린|자외선차단/.test(n)) return '☀️';
-
-  // 세탁
   if (/섬유유연제|유연제/.test(n)) return '🌸';
   if (/세탁세제|세탁|빨래/.test(n)) return '🧺';
-
-  // 주방 / 설거지
   if (/주방세제|설거지세제/.test(n)) return '🍽️';
   if (/수세미/.test(n)) return '🧽';
   if (/고무장갑|위생장갑/.test(n)) return '🧤';
   if (/종이컵|일회용컵/.test(n)) return '☕';
   if (/지퍼백|비닐봉투|랩|호일/.test(n)) return '📦';
   if (/쓰레기봉투|쓰레기|봉투/.test(n)) return '🗑️';
-
-  // 청소
   if (/락스|표백제|염소/.test(n)) return '🧪';
   if (/청소포|물걸레|청소티슈/.test(n)) return '🫧';
   if (/세제/.test(n)) return '🧴';
   if (/청소/.test(n)) return '🧹';
-
-  // 화장지 / 티슈
   if (/화장지|두루마리휴지|두루마리/.test(n)) return '🧻';
   if (/물티슈/.test(n)) return '💧';
   if (/휴지|티슈|화장솜/.test(n)) return '🧻';
-
-  // 위생 / 헬스
   if (/기저귀|팸퍼스|하기스/.test(n)) return '👶';
   if (/생리대|탐폰|생리팬티/.test(n)) return '🩹';
   if (/마스크/.test(n)) return '😷';
   if (/밴드|반창고|붕대/.test(n)) return '🩹';
   if (/소독|알코올|과산화수소/.test(n)) return '🧪';
   if (/진통제|소화제|약|비타민/.test(n)) return '💊';
-
-  // 방향 / 탈취
   if (/방향제|탈취제|디퓨저|향수/.test(n)) return '🌸';
   if (/방충제|모기/.test(n)) return '🪰';
-
-  // 카테고리 fallback
   if (category) {
     if (/욕실|세면/.test(category)) return '🚿';
     if (/주방/.test(category))      return '🍽️';
     if (/세탁|세제/.test(category)) return '🧺';
     if (/청소/.test(category))      return '🧹';
   }
-
   return '📦';
 }
 
@@ -123,7 +92,7 @@ function IconBtn({ onPress, children }: { onPress?: () => void; children: React.
 }
 const iconBtnStyle: object = {
   width: 36, height: 36, borderRadius: 18,
-  backgroundColor: C.ivory, borderWidth: 1, borderColor: C.edge,
+  backgroundColor: theme.colors.warm.ivory, borderWidth: 1, borderColor: theme.colors.warm.edge,
   justifyContent: 'center', alignItems: 'center',
 };
 
@@ -138,10 +107,10 @@ function SectionLabel({ label, count, color }: { label: string; count: number; c
   );
 }
 const sl = StyleSheet.create({
-  wrap: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 6 },
-  dot: { width: 6, height: 6, borderRadius: 3 },
+  wrap:  { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 6 },
+  dot:   { width: 6, height: 6, borderRadius: 3 },
   label: { fontSize: 12, fontWeight: '700' },
-  count: { fontSize: 11, color: C.lightOak, fontWeight: '500' },
+  count: { fontSize: 11, color: theme.colors.warm.lightOak, fontWeight: '500' },
 });
 
 // ── 스와이프 삭제 ─────────────────────────────
@@ -152,7 +121,7 @@ const RightAction: React.FC<{ onDelete: () => void }> = ({ onDelete }) => (
 );
 const swipe = StyleSheet.create({
   btn: {
-    backgroundColor: C.danger, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: theme.colors.status.danger, justifyContent: 'center', alignItems: 'center',
     width: 80, marginBottom: 8, borderTopRightRadius: 14, borderBottomRightRadius: 14,
   },
   text: { color: '#fff', fontWeight: '700', fontSize: 14 },
@@ -172,9 +141,12 @@ const SupplyRow: React.FC<SupplyRowProps> = React.memo(({ item, onDelete, onQuan
   const [editingQty, setEditingQty] = useState(false);
   const [qtyInput, setQtyInput] = useState(String(item.quantity));
 
-  // 재고 레벨 (0~1): threshold*3을 만재로 봄
   const level = Math.min(item.quantity / Math.max(item.low_stock_threshold * 3, 1), 1);
-  const barColor = isLow ? C.danger : level > 0.8 ? C.success : C.warn;
+  const barColor = isLow
+    ? theme.colors.status.danger
+    : level > 0.8
+      ? theme.colors.status.safe
+      : theme.colors.status.warn;
 
   const commitQtyEdit = () => {
     setEditingQty(false);
@@ -266,43 +238,43 @@ const SupplyRow: React.FC<SupplyRowProps> = React.memo(({ item, onDelete, onQuan
 const row = StyleSheet.create({
   card: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: C.ivory, marginHorizontal: 16, marginBottom: 8,
+    backgroundColor: theme.colors.warm.ivory, marginHorizontal: 16, marginBottom: 8,
     borderRadius: 14, padding: 10,
-    shadowColor: C.brown, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+    shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
   },
-  cardLow: { borderWidth: 1, borderColor: '#F5C2BB' },
+  cardLow: { borderWidth: 1, borderColor: theme.colors.alert.dangerBorder },
   iconBox: {
-    width: 36, height: 36, borderRadius: 10, backgroundColor: C.cream,
+    width: 36, height: 36, borderRadius: 10, backgroundColor: theme.colors.warm.cream,
     justifyContent: 'center', alignItems: 'center', flexShrink: 0,
   },
   iconEmoji: { fontSize: 18 },
   body: { flex: 1, minWidth: 0 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
-  name: { fontSize: 13, fontWeight: '700', color: C.dark, flex: 1 },
-  catChip: { backgroundColor: C.cream, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 },
-  catText: { fontSize: 9, fontWeight: '600', color: C.lightOak },
-  barTrack: { height: 4, backgroundColor: C.edge + '66', borderRadius: 2, marginBottom: 4, overflow: 'hidden' },
+  name: { fontSize: 13, fontWeight: '700', color: theme.colors.warm.dark, flex: 1 },
+  catChip: { backgroundColor: theme.colors.warm.cream, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 },
+  catText: { fontSize: 9, fontWeight: '600', color: theme.colors.warm.lightOak },
+  barTrack: { height: 4, backgroundColor: `${theme.colors.warm.edge}66`, borderRadius: 2, marginBottom: 4, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 2 },
   bottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  note: { fontSize: 10, color: C.lightOak, flex: 1 },
-  threshold: { fontSize: 10, color: C.lightOak },
-  lowLabel: { fontSize: 10, fontWeight: '700', color: C.danger },
+  note: { fontSize: 10, color: theme.colors.warm.lightOak, flex: 1 },
+  threshold: { fontSize: 10, color: theme.colors.warm.lightOak },
+  lowLabel: { fontSize: 10, fontWeight: '700', color: theme.colors.status.danger },
   stepper: { alignItems: 'center', gap: 2, flexShrink: 0 },
   stepBtnPlus: {
     width: 22, height: 22, borderRadius: 11,
-    backgroundColor: C.brown, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: theme.colors.brand, justifyContent: 'center', alignItems: 'center',
   },
   stepPlusText: { fontSize: 13, fontWeight: '700', color: '#fff', lineHeight: 16 },
   stepBtnMinus: {
     width: 22, height: 22, borderRadius: 11,
-    backgroundColor: C.edge, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: theme.colors.warm.edge, justifyContent: 'center', alignItems: 'center',
   },
-  stepMinusText: { fontSize: 13, fontWeight: '700', color: C.dark, lineHeight: 16 },
-  qtyNum: { fontSize: 15, fontWeight: '800', color: C.dark, minWidth: 20, textAlign: 'center' },
-  qtyNumLow: { color: C.danger },
+  stepMinusText: { fontSize: 13, fontWeight: '700', color: theme.colors.warm.dark, lineHeight: 16 },
+  qtyNum: { fontSize: 15, fontWeight: '700', color: theme.colors.warm.dark, minWidth: 20, textAlign: 'center' },
+  qtyNumLow: { color: theme.colors.status.danger },
   qtyInput: {
-    fontSize: 14, fontWeight: '700', color: C.dark, textAlign: 'center',
-    minWidth: 28, borderBottomWidth: 1.5, borderBottomColor: C.brown,
+    fontSize: 14, fontWeight: '700', color: theme.colors.warm.dark, textAlign: 'center',
+    minWidth: 28, borderBottomWidth: 1.5, borderBottomColor: theme.colors.brand,
     paddingHorizontal: 2, paddingVertical: 0,
   },
 });
@@ -351,13 +323,13 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ visible, editing, onClose
               {editing && (
                 <TouchableOpacity onPress={handleDelete}>
                   <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-                    <Path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke={C.danger} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+                    <Path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke={theme.colors.status.danger} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
                   </Svg>
                 </TouchableOpacity>
               )}
               <TouchableOpacity onPress={handleClose}>
                 <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-                  <Path d="M18 6L6 18M6 6l12 12" stroke={C.brown} strokeWidth={2} strokeLinecap="round" />
+                  <Path d="M18 6L6 18M6 6l12 12" stroke={theme.colors.brand} strokeWidth={2} strokeLinecap="round" />
                 </Svg>
               </TouchableOpacity>
             </View>
@@ -367,7 +339,7 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ visible, editing, onClose
             <TextInput
               style={cm.input}
               placeholder="예) 욕실용품, 세탁용품"
-              placeholderTextColor={C.lightOak}
+              placeholderTextColor={theme.colors.warm.lightOak}
               value={name}
               onChangeText={setName}
               returnKeyType="done"
@@ -385,15 +357,15 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ visible, editing, onClose
 };
 
 const cm = StyleSheet.create({
-  kav: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: C.ivory, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingBottom: 40, paddingTop: 12 },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.edge, alignSelf: 'center', marginBottom: 20 },
+  kav:       { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  sheet:     { backgroundColor: theme.colors.warm.ivory, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingBottom: 40, paddingTop: 12 },
+  handle:    { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.colors.warm.edge, alignSelf: 'center', marginBottom: 20 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  title: { fontSize: 17, fontWeight: '700', color: C.dark },
-  label: { fontSize: 13, fontWeight: '600', color: C.brown, marginBottom: 8 },
-  inputBox: { backgroundColor: C.cream, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: C.edge },
-  input: { fontSize: 16, color: C.dark, padding: 0 },
-  saveBtn: { backgroundColor: C.brown, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 20 },
+  title:     { fontSize: 17, fontWeight: '700', color: theme.colors.warm.dark },
+  label:     { fontSize: 13, fontWeight: '600', color: theme.colors.brand, marginBottom: 8 },
+  inputBox:  { backgroundColor: theme.colors.warm.cream, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: theme.colors.warm.edge },
+  input:     { fontSize: 16, color: theme.colors.warm.dark, padding: 0 },
+  saveBtn:   { backgroundColor: theme.colors.brand, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 20 },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
 
@@ -480,16 +452,14 @@ const SuppliesScreen: React.FC = () => {
     if (filter === cat.name) setFilter('전체');
   }, [familyId, filter]);
 
-  // 필터 + 정렬 + 섹션 분리
   const filtered = useMemo(() => sortItems(
     items.filter(item => filter === '전체' || item.category === filter), sort,
   ), [items, filter, sort]);
 
-  const lowItems    = useMemo(() => filtered.filter(i => i.quantity <= i.low_stock_threshold), [filtered]);
-  const okItems     = useMemo(() => filtered.filter(i => i.quantity > i.low_stock_threshold), [filtered]);
+  const lowItems      = useMemo(() => filtered.filter(i => i.quantity <= i.low_stock_threshold), [filtered]);
+  const okItems       = useMemo(() => filtered.filter(i => i.quantity > i.low_stock_threshold), [filtered]);
   const lowStockCount = useMemo(() => items.filter(i => i.quantity <= i.low_stock_threshold).length, [items]);
 
-  // 카테고리별 아이템 수 (필터 탭 카운트용)
   const catCounts = useMemo(() => {
     const map: Record<string, number> = { '전체': items.length };
     categories.forEach(c => { map[c.name] = items.filter(i => i.category === c.name).length; });
@@ -504,7 +474,7 @@ const SuppliesScreen: React.FC = () => {
   }, [lowItems, okItems]);
 
   if (loading) {
-    return <SafeAreaView style={s.centered}><ActivityIndicator size="large" color={C.brown} /></SafeAreaView>;
+    return <SafeAreaView style={s.centered}><ActivityIndicator size="large" color={theme.colors.brand} /></SafeAreaView>;
   }
 
   const filterTabs: FilterType[] = ['전체', ...categories.map(c => c.name)];
@@ -520,12 +490,12 @@ const SuppliesScreen: React.FC = () => {
         <View style={s.headerRight}>
           <IconBtn onPress={() => setShowSortMenu(v => !v)}>
             <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-              <Path d="M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3" stroke={C.dark} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+              <Path d="M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3" stroke={theme.colors.warm.dark} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
             </Svg>
           </IconBtn>
           <IconBtn onPress={() => navigation.navigate('AddSupply', { familyId: familyId ?? undefined })}>
             <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-              <Path d="M12 5v14M5 12h14" stroke={C.dark} strokeWidth={2} strokeLinecap="round" />
+              <Path d="M12 5v14M5 12h14" stroke={theme.colors.warm.dark} strokeWidth={2} strokeLinecap="round" />
             </Svg>
           </IconBtn>
         </View>
@@ -584,7 +554,7 @@ const SuppliesScreen: React.FC = () => {
           ListFooterComponent={
             <TouchableOpacity style={s.addCatBtn} onPress={() => setCategoryModal({ visible: true, editing: null })}>
               <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-                <Path d="M12 5v14M5 12h14" stroke={C.brown} strokeWidth={2.5} strokeLinecap="round" />
+                <Path d="M12 5v14M5 12h14" stroke={theme.colors.brand} strokeWidth={2.5} strokeLinecap="round" />
               </Svg>
               <Text style={s.addCatText}>카테고리</Text>
             </TouchableOpacity>
@@ -608,8 +578,8 @@ const SuppliesScreen: React.FC = () => {
           keyExtractor={item => item.id}
           renderSectionHeader={({ section }) => (
             section.key === 'low'
-              ? <SectionLabel label="부족" count={lowItems.length} color={C.danger} />
-              : <SectionLabel label="충분" count={okItems.length} color={C.success} />
+              ? <SectionLabel label="부족" count={lowItems.length} color={theme.colors.status.danger} />
+              : <SectionLabel label="충분" count={okItems.length} color={theme.colors.status.safe} />
           )}
           renderItem={({ item }) => (
             <SupplyRow
@@ -649,69 +619,69 @@ const SuppliesScreen: React.FC = () => {
 };
 
 const s = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: C.cream },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.cream },
+  safeArea: { flex: 1, backgroundColor: theme.colors.warm.cream },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.warm.cream },
 
   header: {
     flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingTop: 6, paddingBottom: 14,
   },
-  subLabel: { fontSize: 11, color: C.lightOak, fontWeight: '600', marginBottom: 1 },
-  title: { fontSize: 24, fontWeight: '800', color: C.dark, letterSpacing: -0.4 },
+  subLabel:    { fontSize: 11, color: theme.colors.warm.lightOak, fontWeight: '600', marginBottom: 1 },
+  title:       { fontSize: 24, fontWeight: '700', color: theme.colors.warm.dark, letterSpacing: -0.4 },
   headerRight: { flexDirection: 'row', gap: 8 },
 
   sortMenu: {
     position: 'absolute', right: 60, top: 52, zIndex: 20,
-    backgroundColor: C.ivory, borderRadius: 12, borderWidth: 1, borderColor: C.edge,
-    shadowColor: C.brown, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 8,
+    backgroundColor: theme.colors.warm.ivory, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.warm.edge,
+    shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 8,
     overflow: 'hidden',
   },
-  sortMenuItem: { paddingHorizontal: 20, paddingVertical: 12 },
-  sortMenuItemActive: { backgroundColor: C.cream },
-  sortMenuText: { fontSize: 14, color: C.brown, fontWeight: '500' },
-  sortMenuTextActive: { color: C.dark, fontWeight: '700' },
+  sortMenuItem:      { paddingHorizontal: 20, paddingVertical: 12 },
+  sortMenuItemActive:{ backgroundColor: theme.colors.warm.cream },
+  sortMenuText:      { fontSize: 14, color: theme.colors.brand, fontWeight: '500' },
+  sortMenuTextActive:{ color: theme.colors.warm.dark, fontWeight: '700' },
 
   alertBanner: {
     marginHorizontal: 16, marginBottom: 12, padding: 10,
-    backgroundColor: '#FDECEA', borderRadius: 14, borderWidth: 1, borderColor: C.danger + '33',
+    backgroundColor: theme.colors.alert.dangerBg, borderRadius: 14, borderWidth: 1, borderColor: `${theme.colors.status.danger}33`,
     flexDirection: 'row', alignItems: 'center', gap: 10,
   },
   alertIcon: {
-    width: 30, height: 30, borderRadius: 10, backgroundColor: C.danger,
+    width: 30, height: 30, borderRadius: 10, backgroundColor: theme.colors.status.danger,
     justifyContent: 'center', alignItems: 'center', flexShrink: 0,
   },
-  alertTitle: { fontSize: 12, fontWeight: '700', color: C.danger },
-  alertSub: { fontSize: 10, color: C.warmOak, marginTop: 1 },
+  alertTitle: { fontSize: 12, fontWeight: '700', color: theme.colors.status.danger },
+  alertSub:   { fontSize: 10, color: theme.colors.warm.oak, marginTop: 1 },
 
   filterRow: { marginBottom: 8 },
   filterTab: {
     paddingHorizontal: 11, paddingVertical: 5, borderRadius: 14,
-    backgroundColor: C.ivory, borderWidth: 1, borderColor: C.edge,
+    backgroundColor: theme.colors.warm.ivory, borderWidth: 1, borderColor: theme.colors.warm.edge,
     flexDirection: 'row', alignItems: 'center', gap: 4,
   },
-  filterTabActive: { backgroundColor: C.brown, borderColor: C.brown },
-  filterText: { fontSize: 11, fontWeight: '600', color: C.warmOak, lineHeight: 16 },
-  filterTextActive: { color: '#fff' },
-  filterCount: { fontSize: 9, fontWeight: '600', color: C.lightOak, opacity: 0.75 },
-  filterCountActive: { color: 'rgba(255,255,255,0.75)' },
+  filterTabActive:    { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
+  filterText:         { fontSize: 11, fontWeight: '600', color: theme.colors.warm.oak, lineHeight: 16 },
+  filterTextActive:   { color: '#fff' },
+  filterCount:        { fontSize: 9, fontWeight: '600', color: theme.colors.warm.lightOak, opacity: 0.75 },
+  filterCountActive:  { color: 'rgba(255,255,255,0.75)' },
   addCatBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 11, paddingVertical: 5, borderRadius: 14,
-    backgroundColor: C.ivory, borderWidth: 1, borderColor: C.edge, borderStyle: 'dashed',
+    backgroundColor: theme.colors.warm.ivory, borderWidth: 1, borderColor: theme.colors.warm.edge, borderStyle: 'dashed',
   },
-  addCatText: { fontSize: 11, fontWeight: '600', color: C.brown, lineHeight: 16 },
+  addCatText: { fontSize: 11, fontWeight: '600', color: theme.colors.brand, lineHeight: 16 },
 
-  countBar: { paddingHorizontal: 20, marginBottom: 2 },
-  countText: { fontSize: 11, color: C.lightOak, fontWeight: '500' },
+  countBar:  { paddingHorizontal: 20, marginBottom: 2 },
+  countText: { fontSize: 11, color: theme.colors.warm.lightOak, fontWeight: '500' },
 
-  empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  emptyText: { fontSize: 15, color: C.lightOak, fontWeight: '500' },
+  empty:     { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  emptyText: { fontSize: 15, color: theme.colors.warm.lightOak, fontWeight: '500' },
 
   fab: {
     position: 'absolute', bottom: 24, right: 24,
-    backgroundColor: C.deep, width: 52, height: 52, borderRadius: 26,
+    backgroundColor: theme.colors.warm.deep, width: 52, height: 52, borderRadius: 26,
     justifyContent: 'center', alignItems: 'center',
-    shadowColor: C.deep, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 16, elevation: 6,
+    shadowColor: theme.colors.warm.deep, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 16, elevation: 6,
   },
 });
 

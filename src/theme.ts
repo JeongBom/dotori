@@ -41,9 +41,10 @@ export const theme = {
 
     // ── 알림 배경/전경 ────────────────────────
     alert: {
-      dangerBg: '#FDECEA',   // 위험 알림 pill 배경
-      warnBg:   '#FCF2E0',   // 경고 알림 pill 배경
-      warnFg:   '#B67628',   // 경고 알림 pill 텍스트
+      dangerBg:     '#FDECEA',  // 위험 알림 pill/배너 배경
+      dangerBorder: '#F5C2BB',  // 위험 알림 카드 테두리
+      warnBg:       '#FCF2E0',  // 경고 알림 pill 배경
+      warnFg:       '#B67628',  // 경고 알림 pill 텍스트
     },
 
     // ── 보관 유형 칩 ──────────────────────────
