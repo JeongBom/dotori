@@ -19,6 +19,7 @@ import { useRoute, RouteProp } from '@react-navigation/native';
 
 import { supabase, joinFamily } from '../../lib/supabase';
 import { RootStackParamList } from '../../navigation';
+import { theme } from '../../theme';
 
 type RouteType = RouteProp<RootStackParamList, 'FamilySetup'>;
 
@@ -142,7 +143,7 @@ const CreateFamily: React.FC<CreateFamilyProps> = ({ userId, onDone, onSwitchToJ
         value={familyName}
         onChangeText={setFamilyName}
         placeholder="우리 가족"
-        placeholderTextColor="#C49A6C"
+        placeholderTextColor={theme.colors.warm.lightOak}
         autoCorrect={false}
         maxLength={20}
         returnKeyType="done"
@@ -251,7 +252,7 @@ const JoinFamily: React.FC<JoinFamilyProps> = ({ userId, onDone, onSwitchToCreat
         value={code}
         onChangeText={text => setCode(text.toUpperCase())}
         placeholder="A1B2C3"
-        placeholderTextColor="#C49A6C"
+        placeholderTextColor={theme.colors.warm.lightOak}
         autoCapitalize="characters"
         autoCorrect={false}
         maxLength={6}
@@ -280,34 +281,34 @@ const JoinFamily: React.FC<JoinFamilyProps> = ({ userId, onDone, onSwitchToCreat
 // ── 스타일 ─────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#FDF6EC' },
+  safeArea: { flex: 1, backgroundColor: theme.colors.warm.cream },
   content: { flex: 1, padding: 24, paddingTop: 48 },
 
-  title: { fontSize: 26, fontWeight: '800', color: '#5C3D1E', marginBottom: 6 },
-  subtitle: { fontSize: 14, color: '#8B5E3C', marginBottom: 36, lineHeight: 22 },
+  title: { fontSize: 26, fontWeight: '700', color: theme.colors.warm.dark, marginBottom: 6 },
+  subtitle: { fontSize: 14, color: theme.colors.brand, marginBottom: 36, lineHeight: 22 },
 
-  label: { fontSize: 13, fontWeight: '600', color: '#8B5E3C', marginBottom: 10 },
+  label: { fontSize: 13, fontWeight: '600', color: theme.colors.brand, marginBottom: 10 },
   input: {
-    backgroundColor: '#FFF8F0',
+    backgroundColor: theme.colors.warm.ivory,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 18,
-    color: '#5C3D1E',
+    color: theme.colors.warm.dark,
     fontWeight: '600',
     borderWidth: 1,
-    borderColor: '#DEC8A8',
+    borderColor: theme.colors.warm.edge,
   },
   codeInput: {
     letterSpacing: 6,
     textAlign: 'center',
     fontSize: 28,
-    fontWeight: '800',
+    fontWeight: '700',
   },
 
   // 초대 코드 카드
   codeCard: {
-    backgroundColor: '#8B5E3C',
+    backgroundColor: theme.colors.brand,
     borderRadius: 20,
     padding: 28,
     alignItems: 'center',
@@ -317,7 +318,7 @@ const styles = StyleSheet.create({
   codeLabel: { fontSize: 13, color: 'rgba(255,255,255,0.75)', fontWeight: '600' },
   codeText: {
     fontSize: 40,
-    fontWeight: '800',
+    fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 8,
   },
@@ -331,14 +332,14 @@ const styles = StyleSheet.create({
   shareBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
   codeHint: {
     fontSize: 13,
-    color: '#8B5E3C',
+    color: theme.colors.brand,
     textAlign: 'center',
     marginTop: 16,
     lineHeight: 20,
   },
 
   startBtn: {
-    backgroundColor: '#8B5E3C',
+    backgroundColor: theme.colors.brand,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
@@ -352,7 +353,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
   },
-  switchLinkText: { fontSize: 14, color: '#8B5E3C', fontWeight: '500' },
+  switchLinkText: { fontSize: 14, color: theme.colors.brand, fontWeight: '500' },
 });
 
 export default FamilySetupScreen;
