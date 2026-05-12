@@ -21,6 +21,7 @@ import { ArrowLeft } from 'lucide-react-native';
 
 import { supabase } from '../../lib/supabase';
 import { RootStackParamList } from '../../navigation';
+import { theme } from '../../theme';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -57,13 +58,12 @@ const ForgotPasswordScreen: React.FC = () => {
         <View style={styles.content}>
 
           <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-            <ArrowLeft color="#8B5E3C" size={24} strokeWidth={1.5} />
+            <ArrowLeft color={theme.colors.brand} size={24} strokeWidth={1.5} />
           </TouchableOpacity>
 
           <Text style={styles.title}>비밀번호 재설정</Text>
 
           {sent ? (
-            // ── 발송 완료 ───────────────────────────────
             <View style={styles.sentBox}>
               <Text style={styles.sentEmoji}>📬</Text>
               <Text style={styles.sentTitle}>메일을 확인해주세요</Text>
@@ -77,7 +77,6 @@ const ForgotPasswordScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
           ) : (
-            // ── 이메일 입력 ─────────────────────────────
             <>
               <Text style={styles.desc}>
                 가입한 이메일을 입력하면{'\n'}
@@ -88,7 +87,7 @@ const ForgotPasswordScreen: React.FC = () => {
               <TextInput
                 style={styles.input}
                 placeholder="example@email.com"
-                placeholderTextColor="#C49A6C"
+                placeholderTextColor={theme.colors.warm.lightOak}
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
@@ -119,42 +118,41 @@ const ForgotPasswordScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#FDF6EC' },
+  safeArea: { flex: 1, backgroundColor: theme.colors.warm.cream },
   content: { flex: 1, padding: 24, paddingTop: 16 },
 
   backBtn: { marginBottom: 24, alignSelf: 'flex-start', padding: 4 },
 
-  title: { fontSize: 26, fontWeight: '800', color: '#5C3D1E', marginBottom: 8 },
-  desc: { fontSize: 14, color: '#8B5E3C', lineHeight: 22, marginBottom: 32 },
+  title: { fontSize: 26, fontWeight: '700', color: theme.colors.warm.dark, marginBottom: 8 },
+  desc: { fontSize: 14, color: theme.colors.brand, lineHeight: 22, marginBottom: 32 },
 
-  label: { fontSize: 13, fontWeight: '600', color: '#8B5E3C', marginBottom: 8 },
+  label: { fontSize: 13, fontWeight: '600', color: theme.colors.brand, marginBottom: 8 },
   input: {
-    backgroundColor: '#FFF8F0',
+    backgroundColor: theme.colors.warm.ivory,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
-    color: '#5C3D1E',
+    color: theme.colors.warm.dark,
     borderWidth: 1,
-    borderColor: '#DEC8A8',
+    borderColor: theme.colors.warm.edge,
     marginBottom: 24,
   },
 
   submitBtn: {
-    backgroundColor: '#8B5E3C',
+    backgroundColor: theme.colors.brand,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
   },
   submitText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
 
-  // 발송 완료
   sentBox: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 },
   sentEmoji: { fontSize: 56, marginBottom: 16 },
-  sentTitle: { fontSize: 22, fontWeight: '800', color: '#5C3D1E', marginBottom: 12 },
-  sentDesc: { fontSize: 15, color: '#8B5E3C', textAlign: 'center', lineHeight: 24, marginBottom: 40 },
+  sentTitle: { fontSize: 22, fontWeight: '700', color: theme.colors.warm.dark, marginBottom: 12 },
+  sentDesc: { fontSize: 15, color: theme.colors.brand, textAlign: 'center', lineHeight: 24, marginBottom: 40 },
   backToLoginBtn: { paddingVertical: 12, paddingHorizontal: 24 },
-  backToLoginText: { fontSize: 15, color: '#8B5E3C', fontWeight: '600' },
+  backToLoginText: { fontSize: 15, color: theme.colors.brand, fontWeight: '600' },
 });
 
 export default ForgotPasswordScreen;
