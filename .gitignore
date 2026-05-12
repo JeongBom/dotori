@@ -1,5 +1,8 @@
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
+# 디자인 참고 자료 (로컬 전용)
+design-reference/
+
 # dependencies
 node_modules/
 
