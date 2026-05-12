@@ -33,6 +33,7 @@ export const theme = {
       lightOak: '#C49A6C',  // 비활성 탭, 서브 레이블
       ivory:    '#FFF8F0',  // 카드 배경 변형
       cream:    '#FDF6EC',  // 화면 배경 변형
+      sand:     '#F0E6D9',  // 뱃지/칩 배경 (ivory보다 진한 베이지)
       edge:     '#DEC8A8',  // 테두리, 구분선
       dark:     '#5C3D1E',  // 텍스트 강조 (브라운 계열)
       deep:     '#6B4226',  // 다크 강조

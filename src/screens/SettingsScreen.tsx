@@ -28,6 +28,7 @@ import { User, Bell, ChevronLeft, Check, Users, LogOut } from 'lucide-react-nati
 import { supabase, getOrCreateFamilyId, joinFamily, leaveFamily } from '../lib/supabase';
 import { UserProfile } from '../types';
 import { RootStackParamList } from '../navigation';
+import { theme } from '../theme';
 
 type SettingsNav = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
 
@@ -58,10 +59,8 @@ const SettingsScreen: React.FC = () => {
   const [profile, setProfile]       = useState<UserProfile | null>(null);
   const [saved, setSaved]           = useState(false);
 
-  // 기능 활성화 상태
   const [enabledFeatures, setEnabledFeatures] = useState<string[]>([...ALL_FEATURES]);
 
-  // 가족 참여 관련 상태
   const [joinCode, setJoinCode]         = useState('');
   const [joining, setJoining]           = useState(false);
   const [leaving, setLeaving]           = useState(false);
@@ -70,13 +69,11 @@ const SettingsScreen: React.FC = () => {
   const [familyMembers, setFamilyMembers] = useState<{ id: string; nickname: string; role: string }[]>([]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 초기 로드
   useEffect(() => {
     loadAll();
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
-  // 가족장: 대기 중인 가입 요청 로드
   const loadJoinRequests = useCallback(async (fid: string) => {
     const { data } = await supabase
       .from('family_join_requests')
@@ -86,7 +83,6 @@ const SettingsScreen: React.FC = () => {
     setJoinRequests(data ?? []);
   }, []);
 
-  // 요청자: 내 요청 승인 여부 폴링
   const startPolling = useCallback((requestId: string, currentFamilyId: string, targetFamilyId: string, userId: string) => {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
@@ -152,12 +148,9 @@ const SettingsScreen: React.FC = () => {
         setNotifyDays(settings.notify_days_before as 1|2|3|5|7);
         await AsyncStorage.setItem(STORAGE_KEY_NOTIFY_DAYS, String(settings.notify_days_before));
       }
-      // 가족장이면 대기 중인 가입 요청 로드
       if (loadedProfile?.role === 'owner') {
         await loadJoinRequests(fid);
       }
-
-      // 가족 구성원 로드
       const { data: members } = await supabase
         .from('user_profiles')
         .select('id, nickname, role')
@@ -192,7 +185,6 @@ const SettingsScreen: React.FC = () => {
     const next = enabledFeatures.includes(key)
       ? enabledFeatures.filter(f => f !== key)
       : [...enabledFeatures, key];
-    // 최소 1개는 활성화 유지
     if (next.length === 0) return;
     setEnabledFeatures(next);
     await AsyncStorage.setItem(STORAGE_KEY_ENABLED_FEATURES, JSON.stringify(next));
@@ -208,8 +200,6 @@ const SettingsScreen: React.FC = () => {
       );
     }
   };
-
-  // ── 초대 코드로 가족 참여 (가족장 승인 방식) ──────────────────────
 
   const handleJoin = async () => {
     const trimmed = joinCode.trim().toUpperCase();
@@ -273,8 +263,6 @@ const SettingsScreen: React.FC = () => {
     );
   };
 
-  // ── 가족 합류 요청 승인/거절 (가족장) ───────────────────────────
-
   const handleApprove = async (requestId: string, requesterId: string) => {
     try {
       const { data: requesterProfile } = await supabase
@@ -307,8 +295,6 @@ const SettingsScreen: React.FC = () => {
     if (familyId) await loadJoinRequests(familyId);
   };
 
-  // ── 가족 나가기 ───────────────────────────────
-
   const handleLeaveFamily = () => {
     if (!profile) return;
 
@@ -324,11 +310,9 @@ const SettingsScreen: React.FC = () => {
             setLeaving(true);
             try {
               if (profile.personal_family_id) {
-                // 기존 개인 가족으로 복귀
                 const err = await leaveFamily(profile.id, profile.personal_family_id);
                 if (err) throw err;
               } else {
-                // personal_family_id가 없으면 새 가족 생성 후 이동
                 const { data: newFamily, error: familyErr } = await supabase
                   .from('families')
                   .insert({ name: '내 가족' })
@@ -354,20 +338,18 @@ const SettingsScreen: React.FC = () => {
     );
   };
 
-  // ── 렌더 ────────────────────────────────────
-
   const isInOtherFamily = profile?.role === 'member';
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <ChevronLeft color="#5C3D1E" size={24} strokeWidth={2} />
+          <ChevronLeft color={theme.colors.warm.dark} size={24} strokeWidth={2} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>설정</Text>
         <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
           {saved
-            ? <Check color="#8B5E3C" size={22} strokeWidth={2.5} />
+            ? <Check color={theme.colors.brand} size={22} strokeWidth={2.5} />
             : <Text style={styles.saveText}>저장</Text>
           }
         </TouchableOpacity>
@@ -378,7 +360,7 @@ const SettingsScreen: React.FC = () => {
 
           {/* ── 계정 정보 ── */}
           <View style={styles.sectionHeader}>
-            <User color="#8B5E3C" size={16} strokeWidth={1.8} />
+            <User color={theme.colors.brand} size={16} strokeWidth={1.8} />
             <Text style={styles.sectionTitle}>계정 정보</Text>
           </View>
           <View style={styles.card}>
@@ -386,7 +368,7 @@ const SettingsScreen: React.FC = () => {
               <Text style={styles.fieldLabel}>가족 이름</Text>
               <TextInput
                 style={styles.input} value={familyName} onChangeText={setFamilyName}
-                placeholder="우리 가족" placeholderTextColor="#C49A6C" maxLength={20}
+                placeholder="우리 가족" placeholderTextColor={theme.colors.warm.lightOak} maxLength={20}
               />
             </View>
             <View style={styles.divider} />
@@ -394,16 +376,16 @@ const SettingsScreen: React.FC = () => {
               <Text style={styles.fieldLabel}>내 닉네임</Text>
               <TextInput
                 style={styles.input} value={nickname} onChangeText={setNickname}
-                placeholder="예) 엄마, 아빠, 홍길동" placeholderTextColor="#C49A6C" maxLength={12}
+                placeholder="예) 엄마, 아빠, 홍길동" placeholderTextColor={theme.colors.warm.lightOak} maxLength={12}
               />
             </View>
           </View>
 
-          {/* ── 초대 코드 (모든 멤버에게 보임) ── */}
+          {/* ── 초대 코드 ── */}
           {inviteCode && (
             <>
               <View style={styles.sectionHeader}>
-                <Users color="#8B5E3C" size={16} strokeWidth={1.8} />
+                <Users color={theme.colors.brand} size={16} strokeWidth={1.8} />
                 <Text style={styles.sectionTitle}>가족 초대</Text>
               </View>
               <View style={styles.card}>
@@ -428,7 +410,7 @@ const SettingsScreen: React.FC = () => {
           {familyMembers.length > 0 && (
             <>
               <View style={styles.sectionHeader}>
-                <Users color="#8B5E3C" size={16} strokeWidth={1.8} />
+                <Users color={theme.colors.brand} size={16} strokeWidth={1.8} />
                 <Text style={styles.sectionTitle}>가족 구성원</Text>
               </View>
               <View style={styles.card}>
@@ -456,7 +438,7 @@ const SettingsScreen: React.FC = () => {
           {!isInOtherFamily && joinRequests.length > 0 && (
             <>
               <View style={styles.sectionHeader}>
-                <Users color="#8B5E3C" size={16} strokeWidth={1.8} />
+                <Users color={theme.colors.brand} size={16} strokeWidth={1.8} />
                 <Text style={styles.sectionTitle}>합류 요청</Text>
               </View>
               <View style={styles.card}>
@@ -466,16 +448,10 @@ const SettingsScreen: React.FC = () => {
                     <View style={styles.requestRow}>
                       <Text style={styles.requestNickname}>{req.requester_nickname}</Text>
                       <View style={styles.requestBtns}>
-                        <TouchableOpacity
-                          style={styles.rejectBtn}
-                          onPress={() => handleReject(req.id)}
-                        >
+                        <TouchableOpacity style={styles.rejectBtn} onPress={() => handleReject(req.id)}>
                           <Text style={styles.rejectBtnText}>거절</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.approveBtn}
-                          onPress={() => handleApprove(req.id, req.requester_id)}
-                        >
+                        <TouchableOpacity style={styles.approveBtn} onPress={() => handleApprove(req.id, req.requester_id)}>
                           <Text style={styles.approveBtnText}>승인</Text>
                         </TouchableOpacity>
                       </View>
@@ -486,11 +462,11 @@ const SettingsScreen: React.FC = () => {
             </>
           )}
 
-          {/* ── 다른 가족에 참여 (코드 입력 or 대기 중 안내) ── */}
+          {/* ── 다른 가족에 참여 ── */}
           {!isInOtherFamily && (
             <>
               <View style={styles.sectionHeader}>
-                <Users color="#8B5E3C" size={16} strokeWidth={1.8} />
+                <Users color={theme.colors.brand} size={16} strokeWidth={1.8} />
                 <Text style={styles.sectionTitle}>다른 가족에 참여</Text>
               </View>
               <View style={styles.card}>
@@ -523,7 +499,7 @@ const SettingsScreen: React.FC = () => {
                           value={joinCode}
                           onChangeText={text => setJoinCode(text.toUpperCase())}
                           placeholder="A1B2C3"
-                          placeholderTextColor="#C49A6C"
+                          placeholderTextColor={theme.colors.warm.lightOak}
                           autoCapitalize="characters"
                           autoCorrect={false}
                           maxLength={6}
@@ -548,7 +524,7 @@ const SettingsScreen: React.FC = () => {
 
           {/* ── 알림 설정 ── */}
           <View style={styles.sectionHeader}>
-            <Bell color="#8B5E3C" size={16} strokeWidth={1.8} />
+            <Bell color={theme.colors.brand} size={16} strokeWidth={1.8} />
             <Text style={styles.sectionTitle}>알림 설정</Text>
           </View>
           <View style={styles.card}>
@@ -571,23 +547,9 @@ const SettingsScreen: React.FC = () => {
             </View>
           </View>
 
-          {/* ── 일정 안내 ── */}
+          {/* ── 사용할 기능 ── */}
           <View style={styles.sectionHeader}>
-            <Bell color="#8B5E3C" size={16} strokeWidth={1.8} />
-            <Text style={styles.sectionTitle}>일정 안내</Text>
-          </View>
-          <View style={styles.card}>
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldDesc}>
-                반복 일정은 올해 12월 31일까지만 표시돼요.{'\n'}
-                새해가 되면 자동으로 다음 해 일정이 생성됩니다.
-              </Text>
-            </View>
-          </View>
-
-          {/* ── 기능 설정 ── */}
-          <View style={styles.sectionHeader}>
-            <Bell color="#8B5E3C" size={16} strokeWidth={1.8} />
+            <Bell color={theme.colors.brand} size={16} strokeWidth={1.8} />
             <Text style={styles.sectionTitle}>사용할 기능</Text>
           </View>
           <View style={styles.card}>
@@ -615,12 +577,12 @@ const SettingsScreen: React.FC = () => {
             </View>
           </View>
 
-          {/* ── 가족 나가기 (다른 가족에 합류한 경우만 표시) ── */}
+          {/* ── 가족 나가기 ── */}
           {isInOtherFamily && (
             <>
               <View style={styles.sectionHeader}>
-                <LogOut color="#D95F4B" size={16} strokeWidth={1.8} />
-                <Text style={[styles.sectionTitle, { color: '#D95F4B' }]}>가족 나가기</Text>
+                <LogOut color={theme.colors.status.danger} size={16} strokeWidth={1.8} />
+                <Text style={[styles.sectionTitle, { color: theme.colors.status.danger }]}>가족 나가기</Text>
               </View>
               <View style={styles.card}>
                 <View style={styles.fieldGroup}>
@@ -634,7 +596,7 @@ const SettingsScreen: React.FC = () => {
                     disabled={leaving}
                   >
                     {leaving
-                      ? <ActivityIndicator color="#D95F4B" size="small" />
+                      ? <ActivityIndicator color={theme.colors.status.danger} size="small" />
                       : <Text style={styles.leaveBtnText}>가족 나가기</Text>
                     }
                   </TouchableOpacity>
@@ -645,7 +607,7 @@ const SettingsScreen: React.FC = () => {
 
           {/* ── 계정 ── */}
           <View style={styles.sectionHeader}>
-            <LogOut color="#8B5E3C" size={16} strokeWidth={1.8} />
+            <LogOut color={theme.colors.brand} size={16} strokeWidth={1.8} />
             <Text style={styles.sectionTitle}>계정</Text>
           </View>
           <View style={styles.card}>
@@ -669,127 +631,114 @@ const SettingsScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#FDF6EC' },
+  safeArea: { flex: 1, backgroundColor: theme.colors.warm.cream },
 
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: '#DEC8A8',
+    borderBottomWidth: 1, borderBottomColor: theme.colors.warm.edge,
   },
   backButton: { width: 40, alignItems: 'flex-start' },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: '#5C3D1E' },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: theme.colors.warm.dark },
   saveButton: { width: 40, alignItems: 'flex-end' },
-  saveText: { fontSize: 15, fontWeight: '600', color: '#8B5E3C' },
+  saveText: { fontSize: 15, fontWeight: '600', color: theme.colors.brand },
 
   content: { padding: 24 },
   sectionHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12, marginTop: 8,
   },
   sectionTitle: {
-    fontSize: 13, fontWeight: '600', color: '#8B5E3C',
+    fontSize: 13, fontWeight: '600', color: theme.colors.brand,
     textTransform: 'uppercase', letterSpacing: 0.5,
   },
 
   card: {
-    backgroundColor: '#FFF8F0', borderRadius: 16, paddingHorizontal: 18, marginBottom: 28,
-    shadowColor: '#8B5E3C', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 2,
+    backgroundColor: theme.colors.warm.ivory, borderRadius: 16, paddingHorizontal: 18, marginBottom: 28,
+    shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 2,
   },
   fieldGroup: { paddingVertical: 14 },
-  fieldLabel: { fontSize: 12, color: '#8B5E3C', fontWeight: '600', marginBottom: 6 },
-  fieldDesc: { fontSize: 12, color: '#C49A6C', marginBottom: 10, lineHeight: 18 },
-  input: { fontSize: 16, color: '#5C3D1E', fontWeight: '500', padding: 0 },
-  divider: { height: 1, backgroundColor: '#DEC8A8' },
+  fieldLabel: { fontSize: 12, color: theme.colors.brand, fontWeight: '600', marginBottom: 6 },
+  fieldDesc: { fontSize: 12, color: theme.colors.warm.lightOak, marginBottom: 10, lineHeight: 18 },
+  input: { fontSize: 16, color: theme.colors.warm.dark, fontWeight: '500', padding: 0 },
+  divider: { height: 1, backgroundColor: theme.colors.warm.edge },
 
-  // 초대 코드
   inviteRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
-  inviteCode: { fontSize: 22, fontWeight: '800', color: '#5C3D1E', letterSpacing: 4 },
-  shareBtn: { backgroundColor: '#8B5E3C', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8 },
+  inviteCode: { fontSize: 22, fontWeight: '700', color: theme.colors.warm.dark, letterSpacing: 4 },
+  shareBtn: { backgroundColor: theme.colors.brand, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8 },
   shareBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
 
-  // 가족 참여
   joinRow: { flexDirection: 'row', gap: 10, marginTop: 8 },
   joinInput: {
-    flex: 1, backgroundColor: '#FDF6EC', borderRadius: 10,
+    flex: 1, backgroundColor: theme.colors.warm.cream, borderRadius: 10,
     paddingHorizontal: 14, paddingVertical: 10,
-    fontSize: 18, fontWeight: '800', color: '#5C3D1E',
-    borderWidth: 1, borderColor: '#DEC8A8', letterSpacing: 4, textAlign: 'center',
+    fontSize: 18, fontWeight: '700', color: theme.colors.warm.dark,
+    borderWidth: 1, borderColor: theme.colors.warm.edge, letterSpacing: 4, textAlign: 'center',
   },
   joinBtn: {
-    backgroundColor: '#8B5E3C', borderRadius: 10,
+    backgroundColor: theme.colors.brand, borderRadius: 10,
     paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center',
   },
   joinBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
 
-  // 알림 칩
   notifyRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   notifyChip: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-    backgroundColor: '#FDF6EC', borderWidth: 1, borderColor: '#DEC8A8',
+    backgroundColor: theme.colors.warm.cream, borderWidth: 1, borderColor: theme.colors.warm.edge,
   },
-  notifyChipActive: { backgroundColor: '#8B5E3C', borderColor: '#8B5E3C' },
-  notifyChipText: { fontSize: 13, color: '#8B5E3C', fontWeight: '600' },
+  notifyChipActive: { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
+  notifyChipText: { fontSize: 13, color: theme.colors.brand, fontWeight: '600' },
   notifyChipTextActive: { color: '#FFFFFF' },
 
-  // 가족 구성원
   memberRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12,
   },
-  memberNickname: { fontSize: 15, fontWeight: '500', color: '#5C3D1E', flex: 1 },
+  memberNickname: { fontSize: 15, fontWeight: '500', color: theme.colors.warm.dark, flex: 1 },
   memberRoleBadge: {
     paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20,
-    backgroundColor: '#F0E6D9', borderWidth: 1, borderColor: '#DEC8A8',
+    backgroundColor: theme.colors.warm.sand, borderWidth: 1, borderColor: theme.colors.warm.edge,
   },
-  memberRoleBadgeOwner: { backgroundColor: '#8B5E3C', borderColor: '#8B5E3C' },
-  memberRoleText: { fontSize: 12, fontWeight: '600', color: '#8B5E3C' },
+  memberRoleBadgeOwner: { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
+  memberRoleText: { fontSize: 12, fontWeight: '600', color: theme.colors.brand },
   memberRoleTextOwner: { color: '#FFFFFF' },
 
-  // 합류 요청 (가족장 승인 UI)
   requestRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12,
   },
-  requestNickname: { fontSize: 15, fontWeight: '600', color: '#5C3D1E', flex: 1 },
+  requestNickname: { fontSize: 15, fontWeight: '600', color: theme.colors.warm.dark, flex: 1 },
   requestBtns: { flexDirection: 'row', gap: 8 },
   rejectBtn: {
     paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8,
-    borderWidth: 1, borderColor: '#D95F4B',
+    borderWidth: 1, borderColor: theme.colors.status.danger,
   },
-  rejectBtnText: { fontSize: 13, fontWeight: '600', color: '#D95F4B' },
+  rejectBtnText: { fontSize: 13, fontWeight: '600', color: theme.colors.status.danger },
   approveBtn: {
-    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: '#8B5E3C',
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: theme.colors.brand,
   },
   approveBtnText: { fontSize: 13, fontWeight: '600', color: '#FFFFFF' },
 
-  // 요청 취소
   cancelRequestBtn: {
     marginTop: 10, paddingVertical: 10, alignItems: 'center',
-    borderWidth: 1, borderColor: '#DEC8A8', borderRadius: 10,
+    borderWidth: 1, borderColor: theme.colors.warm.edge, borderRadius: 10,
   },
-  cancelRequestText: { fontSize: 14, fontWeight: '600', color: '#8B5E3C' },
+  cancelRequestText: { fontSize: 14, fontWeight: '600', color: theme.colors.brand },
 
-  // 가족 나가기
   leaveBtn: {
     marginTop: 8, paddingVertical: 10, alignItems: 'center',
-    borderWidth: 1, borderColor: '#D95F4B', borderRadius: 10,
+    borderWidth: 1, borderColor: theme.colors.status.danger, borderRadius: 10,
   },
-  leaveBtnText: { color: '#D95F4B', fontWeight: '700', fontSize: 14 },
+  leaveBtnText: { color: theme.colors.status.danger, fontWeight: '700', fontSize: 14 },
 
   logoutBtn: { paddingVertical: 16, alignItems: 'center' },
-  logoutText: { fontSize: 15, fontWeight: '600', color: '#D95F4B' },
+  logoutText: { fontSize: 15, fontWeight: '600', color: theme.colors.status.danger },
 
-  // 기능 선택 칩
   featureGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   featureChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: '#FDF6EC',
-    borderWidth: 1,
-    borderColor: '#DEC8A8',
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20,
+    backgroundColor: theme.colors.warm.cream, borderWidth: 1, borderColor: theme.colors.warm.edge,
   },
-  featureChipActive: { backgroundColor: '#8B5E3C', borderColor: '#8B5E3C' },
-  featureChipText: { fontSize: 14, fontWeight: '600', color: '#8B5E3C' },
+  featureChipActive: { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
+  featureChipText: { fontSize: 14, fontWeight: '600', color: theme.colors.brand },
   featureChipTextActive: { color: '#FFFFFF' },
 });
 
