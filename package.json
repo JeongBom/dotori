@@ -10,6 +10,7 @@
     "prebuild:ios": "expo prebuild --platform ios && node scripts/fix-entitlements.js"
   },
   "dependencies": {
+    "@expo/ngrok": "^4.1.0",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/datetimepicker": "8.4.4",
     "@react-navigation/bottom-tabs": "^7.15.9",

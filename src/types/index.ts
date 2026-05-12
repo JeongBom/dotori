@@ -70,16 +70,6 @@ export interface FoodEntry {
   room_days: number | null;
 }
 
-// 가족이 직접 등록한 자주 쓰는 음식
-export interface FamilyFood {
-  id: string;
-  family_id: string;
-  name: string;
-  fridge_days: number | null;
-  freezer_days: number | null;
-  room_days: number | null;
-}
-
 // user_settings 테이블 타입
 export interface UserSettings {
   id: string;
