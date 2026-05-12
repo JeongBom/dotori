@@ -18,12 +18,10 @@ import type { Session } from '@supabase/supabase-js';
 
 import DashboardScreen from '../screens/DashboardScreen';
 import FridgeScreen from '../screens/FridgeScreen';
-import ChoresScreen from '../screens/ChoresScreen';
 import SuppliesScreen from '../screens/SuppliesScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import AddFridgeItemScreen from '../screens/AddFridgeItemScreen';
 import AddSupplyScreen from '../screens/AddSupplyScreen';
-import AddChoreScreen from '../screens/AddChoreScreen';
 import FamilyFoodsScreen from '../screens/FamilyFoodsScreen';
 import NotesScreen from '../screens/NotesScreen';
 import NoteDetailScreen from '../screens/NoteDetailScreen';
@@ -41,7 +39,6 @@ import { UserProfile } from '../types';
 export type RootTabParamList = {
   Home: undefined;
   Fridge: undefined;
-  Chores: undefined;
   Supplies: undefined;
   Notes: undefined;
 };
@@ -58,7 +55,6 @@ export type RootStackParamList = {
   Settings: undefined;
   AddFridgeItem: { familyId?: string; itemId?: string };
   AddSupply: { familyId?: string; supplyId?: string };
-  AddChore: { familyId?: string; choreId?: string; occurrenceDate?: string; editMode?: 'this' | 'future' | 'all' };
   FamilyFoods: undefined;
   NoteDetail: { noteId: string };
 };
@@ -80,19 +76,17 @@ function TabIcon({ name, color }: { name: string; color: string }) {
     return <Svg {...s} viewBox="0 0 24 24" fill="none"><Path d="M5 8h14l-1.5 11a2 2 0 0 1-2 1.7h-7a2 2 0 0 1-2-1.7z" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"/><Path d="M9 8V6a3 3 0 0 1 6 0v2M9 12v5M15 12v5" stroke={color} strokeWidth={1.6} strokeLinecap="round"/></Svg>;
   if (name === 'wallet')
     return <Svg {...s} viewBox="0 0 24 24" fill="none"><Path d="M3 7a2 2 0 0 1 2-2h14v4H5a2 2 0 0 0-2 2z" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"/><Path d="M3 7v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9H5" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"/><Circle cx="16" cy="14" r="1.3" fill={color}/></Svg>;
-  if (name === 'calendar')
-    return <Svg {...s} viewBox="0 0 24 24" fill="none"><Rect x="3" y="5" width="18" height="16" rx="2" stroke={color} strokeWidth={1.6} fill="none"/><Path d="M8 3v4M16 3v4M3 10h18" stroke={color} strokeWidth={1.6} strokeLinecap="round"/></Svg>;
   if (name === 'note')
     return <Svg {...s} viewBox="0 0 24 24" fill="none"><Path d="M5 4h11l4 4v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"/><Path d="M15 4v5h5M8 13h8M8 17h5" stroke={color} strokeWidth={1.6} strokeLinecap="round"/></Svg>;
   return null;
 }
 
 const TAB_ICON_NAMES: Partial<Record<keyof RootTabParamList, string>> = {
-  Home: 'home', Fridge: 'fridge', Supplies: 'basket', Chores: 'calendar', Notes: 'note',
+  Home: 'home', Fridge: 'fridge', Supplies: 'basket', Notes: 'note',
 };
 
 const TAB_LABELS: Partial<Record<keyof RootTabParamList, string>> = {
-  Home: '홈', Fridge: '음식', Supplies: '생필품', Chores: '일정', Notes: '메모',
+  Home: '홈', Fridge: '음식', Supplies: '생필품', Notes: '메모',
 };
 
 // ---- 하단 탭 ----
@@ -123,7 +117,6 @@ function MainTabs() {
       <Tab.Screen name="Home" component={DashboardScreen} />
       <Tab.Screen name="Fridge"   component={FridgeScreen} />
       <Tab.Screen name="Supplies" component={SuppliesScreen} />
-      <Tab.Screen name="Chores"   component={ChoresScreen} />
       <Tab.Screen name="Notes"    component={NotesScreen} />
     </Tab.Navigator>
   );
@@ -271,7 +264,6 @@ export default function AppNavigator({ navigationRef }: AppNavigatorProps) {
             <Stack.Screen name="Settings" component={SettingsScreen} options={{ presentation: 'modal' }} />
             <Stack.Screen name="AddFridgeItem" component={AddFridgeItemScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
             <Stack.Screen name="AddSupply" component={AddSupplyScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
-            <Stack.Screen name="AddChore" component={AddChoreScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
             <Stack.Screen name="FamilyFoods" component={FamilyFoodsScreen} options={{ presentation: 'modal' }} />
             <Stack.Screen name="NoteDetail" component={NoteDetailScreen} />
           </>

@@ -17,7 +17,6 @@ export interface UserProfile {
   role: UserRole;
   created_at: string;
 }
-export type RepeatType = 'none' | 'daily' | 'weekly' | 'monthly' | 'custom';
 export type TransactionType = 'expense' | 'income';
 
 // ---- 가족 ----
@@ -108,40 +107,6 @@ export interface Transaction {
 
 export type NewTransaction = Omit<Transaction, 'id' | 'created_at' | 'family_members'>;
 
-// ---- 루틴/할일 ----
-
-export interface ChoreTag {
-  id: string;
-  family_id: string;
-  name: string;
-  created_at: string;
-}
-
-export interface Chore {
-  id: string;
-  family_id: string;
-  title: string;
-  tag_id: string | null;
-  assigned_to: string | null;  // user_profiles.id, null = 모두
-  repeat_type: RepeatType;
-  repeat_interval: number | null;      // custom: N주 or N개월
-  repeat_unit: 'week' | 'month' | null; // custom 전용
-  repeat_day_of_week: number | null;   // 0=일~6=토 (custom 전용)
-  repeat_week_of_month: number | null; // 1~4 (custom+month 전용)
-  due_date: string | null;        // YYYY-MM-DD
-  end_date: string | null;        // YYYY-MM-DD (이후 발생 모두 삭제 시 사용)
-  excluded_dates: string[] | null; // 건너뛴 특정 발생 날짜 목록
-  last_done_at: string | null;    // YYYY-MM-DD (반복 완료 추적)
-  is_done: boolean;               // none 타입 전용
-  is_active: boolean;
-  created_at: string;
-  // JOIN 결과 (optional)
-  tag?: Pick<ChoreTag, 'id' | 'name'> | null;
-  assignee?: { id: string; nickname: string } | null;
-}
-
-export type NewChore = Omit<Chore, 'id' | 'created_at' | 'tag' | 'assignee'>;
-
 // ---- 생필품 ----
 
 // 카테고리는 사용자가 직접 추가 (supply_categories 테이블)
@@ -188,14 +153,6 @@ export interface DashboardSummary {
     totalItems: number;
     expiringCount: number;   // D-3 이내 만료 예정 항목 수
     expiredCount: number;    // 이미 만료된 항목 수
-  };
-  chores: {
-    pendingCount: number;     // 미완료 집안일 수
-    overdueCount: number;     // 기한 지난 집안일 수
-    todayTitles: string[];    // 오늘 할 일 제목 목록 (매일 반복 + 마감일=오늘)
-    overdueTitles: string[];  // 기한 초과 제목 목록 (마감일 < 오늘)
-    weekTitles: string[];     // 이번주 할 일 제목 목록
-    monthTitles: string[];    // 이번달 할 일 제목 목록
   };
   supplies: {
     lowStockCount: number;    // 재고 부족 항목 수

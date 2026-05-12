@@ -14,9 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path } from 'react-native-svg';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
-import { Chore } from '../types';
 import { RootTabParamList, RootStackParamList } from '../navigation';
-import { generateOccurrences } from '../lib/choreUtils';
 import { STORAGE_KEY_FAMILY_NAME, STORAGE_KEY_NICKNAME, STORAGE_KEY_NOTIFY_DAYS } from './SettingsScreen';
 
 // ── 디자인 토큰 ───────────────────────────────
@@ -63,12 +61,12 @@ function localDate(offset = 0): string {
 
 // ── 데이터 타입 ───────────────────────────────
 interface Member { id: string; nickname: string }
-interface UrgentItem { name: string; type: 'expired' | 'expiring' | 'lowstock' | 'chore'; dday?: string }
+interface UrgentItem { name: string; type: 'expired' | 'expiring' | 'lowstock'; dday?: string }
 interface StockItem { name: string; qty: number; min_qty: number }
 interface NoteItem { id: string; title: string }
 interface ActivityItem {
   id: string;
-  type: 'food' | 'chore' | 'supply' | 'note';
+  type: 'food' | 'supply' | 'note';
   action: string;
   name: string;
   timestamp: string;
@@ -80,10 +78,6 @@ interface DashboardData {
   fridgeTotal: number;
   fridgeExpiring: number;
   fridgeExpired: number;
-  // 일정
-  todayChores: { title: string; assignee: string | null }[];
-  todayDone: number;
-  todayTotal: number;
   // 생필품
   stockItems: StockItem[];
   lowStockCount: number;
@@ -104,28 +98,18 @@ async function fetchDashboard(familyId: string, notifyDays: number): Promise<Das
 
   const [
     fridgeTotalRes, fridgeExpiringRes, fridgeExpiredRes, fridgeExpItemsRes,
-    choresRes, suppliesRes, notesRes, membersRes,
+    suppliesRes, notesRes, membersRes,
     recentFridgeRes,
   ] = await Promise.all([
     supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false),
     supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false).gte('expiry_date', today).lte('expiry_date', sooner),
     supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false).lt('expiry_date', today),
     supabase.from('fridge_items').select('food_name, expiry_date').eq('family_id', familyId).eq('is_consumed', false).lte('expiry_date', sooner).order('expiry_date').limit(5),
-    supabase.from('chores').select('*, assignee:user_profiles(id, nickname)').eq('family_id', familyId).eq('is_active', true),
     supabase.from('supplies').select('id, name, quantity, low_stock_threshold, created_at').eq('family_id', familyId).eq('is_active', true).limit(6),
     supabase.from('notes').select('id, title, updated_at').eq('family_id', familyId).order('updated_at', { ascending: false }).limit(4),
     supabase.from('user_profiles').select('id, nickname').eq('family_id', familyId).limit(4),
     supabase.from('fridge_items').select('id, food_name, created_at').eq('family_id', familyId).eq('is_consumed', false).order('created_at', { ascending: false }).limit(4),
   ]);
-
-  // 일정 오늘 발생
-  const choreList = ((choresRes.data ?? []) as Chore[]).filter(c => c.created_at);
-  const todayOccs = generateOccurrences(choreList, today, today);
-  const todayChores = todayOccs.map(o => ({
-    title: o.chore.title,
-    assignee: (o.chore as any).assignee?.nickname ?? null,
-  }));
-  const todayDone = todayOccs.filter(o => o.isDone).length;
 
   // 생필품
   const stockItems: StockItem[] = (suppliesRes.data ?? []).map(s => ({
@@ -157,9 +141,6 @@ async function fetchDashboard(familyId: string, notifyDays: number): Promise<Das
   for (const s of stockItems.filter(s => s.qty <= s.min_qty).slice(0, 3)) {
     urgentItems.push({ name: s.name, type: 'lowstock' });
   }
-  for (const o of todayOccs.filter(o => !o.isDone).slice(0, 2)) {
-    urgentItems.push({ name: o.chore.title, type: 'chore' });
-  }
 
   // ── 최근 활동 피드 생성 ─────────────────────
   const allActivities: ActivityItem[] = [];
@@ -167,14 +148,6 @@ async function fetchDashboard(familyId: string, notifyDays: number): Promise<Das
   // 음식 (최근 추가)
   for (const f of (recentFridgeRes.data ?? []) as any[]) {
     allActivities.push({ id: f.id, type: 'food', action: '추가됨', name: f.food_name, timestamp: f.created_at, emoji: '🥬' });
-  }
-
-  // 일정 (최근 추가, choreList에서)
-  const sortedChores = [...choreList]
-    .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())
-    .slice(0, 4);
-  for (const c of sortedChores) {
-    allActivities.push({ id: c.id, type: 'chore', action: '추가됨', name: c.title, timestamp: c.created_at!, emoji: '📅' });
   }
 
   // 생필품 (최근 추가)
@@ -201,7 +174,6 @@ async function fetchDashboard(familyId: string, notifyDays: number): Promise<Das
     fridgeTotal: fridgeTotalRes.count ?? 0,
     fridgeExpiring: fridgeExpiringRes.count ?? 0,
     fridgeExpired: fridgeExpiredRes.count ?? 0,
-    todayChores, todayDone, todayTotal: todayOccs.length,
     stockItems, lowStockCount,
     recentNotes, urgentItems, members, activities,
   };
@@ -222,23 +194,22 @@ function AcornMark({ size = 26, color = C.brown }: { size?: number; color?: stri
 
 // 긴급 알림 pill
 function FocusPill({ item }: { item: UrgentItem }) {
-  const isExpired  = item.type === 'expired';
-  const isLow      = item.type === 'lowstock';
-  const isDanger   = isExpired || isLow;
-  const isChore    = item.type === 'chore';
-  const bg    = isDanger ? '#FDECEA' : isChore ? '#F3E7D2' : '#FCF2E0';
-  const fg    = isDanger ? C.danger  : isChore ? C.deep    : '#B67628';
-  const dotBg = isDanger ? C.danger  : isChore ? C.brown   : C.warn;
+  const isExpired = item.type === 'expired';
+  const isLow     = item.type === 'lowstock';
+  const isDanger  = isExpired || isLow;
+  const bg    = isDanger ? '#FDECEA' : '#FCF2E0';
+  const fg    = isDanger ? C.danger  : '#B67628';
+  const dotBg = isDanger ? C.danger  : C.warn;
 
   return (
     <View style={[pillStyles.wrap, { backgroundColor: bg }]}>
       <View style={[pillStyles.dot, { backgroundColor: dotBg }]}>
-        <Text style={pillStyles.dotIcon}>{isDanger ? '!' : isChore ? '✓' : '~'}</Text>
+        <Text style={pillStyles.dotIcon}>{isDanger ? '!' : '~'}</Text>
       </View>
       <View>
         <Text style={[pillStyles.name, { color: fg }]} numberOfLines={1}>{item.name}</Text>
         <Text style={[pillStyles.sub, { color: fg }]}>
-          {isExpired ? '기한 초과' : isLow ? '재고 부족' : isChore ? '오늘' : item.dday}
+          {isExpired ? '기한 초과' : isLow ? '재고 부족' : item.dday}
         </Text>
       </View>
     </View>
@@ -483,7 +454,7 @@ const DashboardScreen: React.FC = () => {
           </ScrollView>
         )}
 
-        {/* ── 위젯 2x2 ── */}
+        {/* ── 위젯 ── */}
         <View style={s.widgetRow}>
           {/* 음식 */}
           <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('Fridge')} activeOpacity={0.85}>
@@ -500,29 +471,6 @@ const DashboardScreen: React.FC = () => {
             </MiniWidget>
           </TouchableOpacity>
 
-          {/* 일정 */}
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('Chores')} activeOpacity={0.85}>
-            <MiniWidget accentColor={C.warmOak} title="오늘 일정" icon={<Text style={{ fontSize: 13 }}>📅</Text>}>
-              {(data?.todayChores.length ?? 0) === 0 ? (
-                <Text style={s.widgetEmpty}>할 일 없음</Text>
-              ) : (
-                data!.todayChores.slice(0, 3).map((c, i) => (
-                  <View key={i} style={s.choreRow}>
-                    <View style={s.choreDot} />
-                    <Text style={s.choreTitle} numberOfLines={1}>{c.title}</Text>
-                    {c.assignee && (
-                      <View style={[s.choreAvatar, { backgroundColor: i % 2 === 1 ? C.purple : C.brown }]}>
-                        <Text style={s.choreAvatarText}>{c.assignee.charAt(0)}</Text>
-                      </View>
-                    )}
-                  </View>
-                ))
-              )}
-            </MiniWidget>
-          </TouchableOpacity>
-        </View>
-
-        <View style={[s.widgetRow, { marginTop: 10 }]}>
           {/* 생필품 */}
           <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('Supplies')} activeOpacity={0.85}>
             <MiniWidget accentColor={C.deep} title="생필품" icon={<Text style={{ fontSize: 13 }}>🧴</Text>}>
@@ -533,7 +481,9 @@ const DashboardScreen: React.FC = () => {
               )}
             </MiniWidget>
           </TouchableOpacity>
+        </View>
 
+        <View style={[s.widgetRow, { marginTop: 10 }]}>
           {/* 메모 */}
           <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('Notes')} activeOpacity={0.85}>
             <MiniWidget accentColor="#A07A5C" title="메모" icon={<Text style={{ fontSize: 13 }}>📝</Text>}>
@@ -621,13 +571,6 @@ const s = StyleSheet.create({
   widgetStatLabel: { fontSize: 10, color: C.warmOak },
   widgetStatVal:   { fontSize: 10, fontWeight: '700', color: C.dark },
   widgetEmpty:  { fontSize: 11, color: C.lightOak, fontStyle: 'italic', marginTop: 4 },
-
-  // 일정 위젯
-  choreRow:      { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
-  choreDot:      { width: 10, height: 10, borderRadius: 3, borderWidth: 1.5, borderColor: C.lightOak },
-  choreTitle:    { fontSize: 11, color: C.dark, fontWeight: '500', flex: 1 },
-  choreAvatar:   { width: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
-  choreAvatarText: { color: '#fff', fontSize: 8, fontWeight: '700' },
 
   // 메모 위젯
   noteRow:   { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
