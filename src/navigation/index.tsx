@@ -18,7 +18,6 @@ import type { Session } from '@supabase/supabase-js';
 
 import DashboardScreen from '../screens/DashboardScreen';
 import FridgeScreen from '../screens/FridgeScreen';
-import FinanceScreen from '../screens/FinanceScreen';
 import ChoresScreen from '../screens/ChoresScreen';
 import SuppliesScreen from '../screens/SuppliesScreen';
 import SettingsScreen from '../screens/SettingsScreen';
@@ -26,12 +25,6 @@ import AddFridgeItemScreen from '../screens/AddFridgeItemScreen';
 import AddSupplyScreen from '../screens/AddSupplyScreen';
 import AddChoreScreen from '../screens/AddChoreScreen';
 import FamilyFoodsScreen from '../screens/FamilyFoodsScreen';
-import AssetHistoryScreen from '../screens/AssetHistoryScreen';
-import AllAssetHistoryScreen from '../screens/AllAssetHistoryScreen';
-import AssetUpdateScreen from '../screens/asset/AssetUpdateScreen';
-import AssetAddScreen from '../screens/asset/AssetAddScreen';
-import GoalAddScreen from '../screens/GoalAddScreen';
-import GoalItemAddScreen from '../screens/GoalItemAddScreen';
 import NotesScreen from '../screens/NotesScreen';
 import NoteDetailScreen from '../screens/NoteDetailScreen';
 import AuthScreen from '../screens/auth/AuthScreen';
@@ -48,7 +41,6 @@ import { UserProfile } from '../types';
 export type RootTabParamList = {
   Home: undefined;
   Fridge: undefined;
-  Finance: undefined;
   Chores: undefined;
   Supplies: undefined;
   Notes: undefined;
@@ -68,24 +60,6 @@ export type RootStackParamList = {
   AddSupply: { familyId?: string; supplyId?: string };
   AddChore: { familyId?: string; choreId?: string; occurrenceDate?: string; editMode?: 'this' | 'future' | 'all' };
   FamilyFoods: undefined;
-  AssetHistory: {
-    assetId: string;
-    assetName: string;
-    category: string;
-    currentAmount: number;
-    ownerNickname?: string;
-  };
-  AllAssetHistory: undefined;
-  AssetAdd: undefined;
-  GoalAdd: { familyId: string };
-  GoalItemAdd: { goalId: string; familyId: string; itemId?: string };
-  AssetUpdate: {
-    assetId: string;
-    assetName: string;
-    assetAmount: number;
-    category: string;
-    ownerNickname?: string;
-  };
   NoteDetail: { noteId: string };
 };
 
@@ -114,11 +88,11 @@ function TabIcon({ name, color }: { name: string; color: string }) {
 }
 
 const TAB_ICON_NAMES: Partial<Record<keyof RootTabParamList, string>> = {
-  Home: 'home', Fridge: 'fridge', Supplies: 'basket', Finance: 'wallet', Chores: 'calendar', Notes: 'note',
+  Home: 'home', Fridge: 'fridge', Supplies: 'basket', Chores: 'calendar', Notes: 'note',
 };
 
 const TAB_LABELS: Partial<Record<keyof RootTabParamList, string>> = {
-  Home: '홈', Fridge: '음식', Supplies: '생필품', Finance: '자산', Chores: '일정', Notes: '메모',
+  Home: '홈', Fridge: '음식', Supplies: '생필품', Chores: '일정', Notes: '메모',
 };
 
 // ---- 하단 탭 ----
@@ -149,7 +123,6 @@ function MainTabs() {
       <Tab.Screen name="Home" component={DashboardScreen} />
       <Tab.Screen name="Fridge"   component={FridgeScreen} />
       <Tab.Screen name="Supplies" component={SuppliesScreen} />
-      <Tab.Screen name="Finance"  component={FinanceScreen} />
       <Tab.Screen name="Chores"   component={ChoresScreen} />
       <Tab.Screen name="Notes"    component={NotesScreen} />
     </Tab.Navigator>
@@ -300,12 +273,6 @@ export default function AppNavigator({ navigationRef }: AppNavigatorProps) {
             <Stack.Screen name="AddSupply" component={AddSupplyScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
             <Stack.Screen name="AddChore" component={AddChoreScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
             <Stack.Screen name="FamilyFoods" component={FamilyFoodsScreen} options={{ presentation: 'modal' }} />
-            <Stack.Screen name="AssetHistory" component={AssetHistoryScreen} />
-            <Stack.Screen name="AllAssetHistory" component={AllAssetHistoryScreen} />
-            <Stack.Screen name="AssetAdd" component={AssetAddScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
-            <Stack.Screen name="GoalAdd" component={GoalAddScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
-            <Stack.Screen name="GoalItemAdd" component={GoalItemAddScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
-            <Stack.Screen name="AssetUpdate" component={AssetUpdateScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
             <Stack.Screen name="NoteDetail" component={NoteDetailScreen} />
           </>
         )}

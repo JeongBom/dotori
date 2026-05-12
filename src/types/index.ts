@@ -168,61 +168,6 @@ export interface Supply {
 
 export type NewSupply = Omit<Supply, 'id' | 'created_at' | 'updated_at'>;
 
-// ---- 재무/목표 관리 ----
-
-// 자산 카테고리
-export type AssetCategory = '예금' | '적금' | '주식' | '부동산' | '기타';
-
-// assets 테이블 타입
-export interface Asset {
-  id: string;
-  family_id: string;
-  user_id: string | null; // 담당자 auth UID. null이면 파트너 소유
-  category: AssetCategory;
-  name: string;           // 자산명 (예: 국민은행 적금)
-  amount: number;         // 원 단위
-  updated_at: string;
-}
-
-// 자산 등록/수정 시 사용 (id, updated_at은 DB가 자동 생성)
-export type NewAsset = Omit<Asset, 'id' | 'updated_at'>;
-
-// asset_histories 테이블 타입
-export interface AssetHistory {
-  id: string;
-  asset_id: string;
-  previous_amount: number; // 변경 전 금액
-  new_amount: number;      // 변경 후 금액
-  memo: string | null;     // 변경 이유 (예: 월급 입금, 주식 매수)
-  created_at: string;
-}
-
-// goals 테이블 타입
-export interface Goal {
-  id: string;
-  family_id: string;
-  title: string;          // 목표명 (예: 유럽 여행)
-  target_amount: number;  // 목표 금액
-  deadline: string | null; // "YYYY-MM-DD" or null (기한 없음)
-  memo: string | null;
-  created_at: string;
-  // JOIN으로 붙어오는 항목 목록 (optional)
-  goal_items?: GoalItem[];
-}
-
-export type NewGoal = Omit<Goal, 'id' | 'created_at' | 'goal_items'>;
-
-// goal_items 테이블 타입
-export interface GoalItem {
-  id: string;
-  goal_id: string;
-  name: string;   // 항목명 (예: A계좌, 비상금 통장)
-  amount: number; // 해당 항목에 모인 금액
-  memo: string | null;
-}
-
-export type NewGoalItem = Omit<GoalItem, 'id'>;
-
 // ---- 메모 ----
 
 export interface Note {
@@ -243,12 +188,6 @@ export interface DashboardSummary {
     totalItems: number;
     expiringCount: number;   // D-3 이내 만료 예정 항목 수
     expiredCount: number;    // 이미 만료된 항목 수
-  };
-  finance: {
-    thisMonthExpense: number; // 이번달 총 지출
-    thisMonthIncome: number;  // 이번달 총 수입
-    totalAssets: number;      // 총 자산 합계
-    assetCount: number;       // 자산 항목 수
   };
   chores: {
     pendingCount: number;     // 미완료 집안일 수

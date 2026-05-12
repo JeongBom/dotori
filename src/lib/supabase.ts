@@ -57,8 +57,6 @@ export const triggerProfileReload = () => { _reloadProfile?.(); };
 export async function joinFamily(userId: string, currentFamilyId: string, newFamilyId: string) {
   // 1. 내 기존 데이터 소프트 삭제
   await supabase.from('fridge_items').update({ is_active: false }).eq('family_id', currentFamilyId);
-  await supabase.from('assets').update({ is_active: false }).eq('user_id', userId);
-  await supabase.from('goals').update({ is_active: false }).eq('family_id', currentFamilyId);
 
   // 2. 프로필 업데이트: 기존 family_id는 personal_family_id에 저장 (나가기 시 복구용)
   const { error } = await supabase
@@ -73,8 +71,6 @@ export async function joinFamily(userId: string, currentFamilyId: string, newFam
 export async function leaveFamily(userId: string, personalFamilyId: string) {
   // 1. 내 기존 데이터 복구
   await supabase.from('fridge_items').update({ is_active: true }).eq('family_id', personalFamilyId);
-  await supabase.from('assets').update({ is_active: true }).eq('user_id', userId);
-  await supabase.from('goals').update({ is_active: true }).eq('family_id', personalFamilyId);
 
   // 2. 원래 가족으로 복귀
   const { error } = await supabase

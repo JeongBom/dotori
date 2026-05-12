@@ -36,13 +36,12 @@ export const STORAGE_KEY_NICKNAME         = '@home_manager:nickname';
 export const STORAGE_KEY_NOTIFY_DAYS      = '@home_manager:notify_days_before';
 export const STORAGE_KEY_ENABLED_FEATURES = '@home_manager:enabled_features';
 
-export const ALL_FEATURES = ['Fridge', 'Supplies', 'Finance', 'Chores', 'Notes'] as const;
+export const ALL_FEATURES = ['Fridge', 'Supplies', 'Chores', 'Notes'] as const;
 type FeatureKey = typeof ALL_FEATURES[number];
 
 const FEATURE_LABELS: Record<FeatureKey, string> = {
   Fridge:   '음식',
   Supplies: '생필품',
-  Finance:  '자산',
   Chores:   '일정',
   Notes:    '메모',
 };

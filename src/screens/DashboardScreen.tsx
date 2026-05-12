@@ -11,7 +11,7 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Settings, Users, CircleUser, TriangleAlert } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Svg, { Path, Circle, Rect } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { Chore } from '../types';
@@ -61,17 +61,6 @@ function localDate(offset = 0): string {
   return `${y}-${m}-${day}`;
 }
 
-
-function formatAmount(n: number): string {
-  if (n === 0) return '0원';
-  const eok = Math.floor(n / 100_000_000);
-  const man = Math.floor((n % 100_000_000) / 10_000);
-  const parts: string[] = [];
-  if (eok > 0) parts.push(`${eok}억`);
-  if (man > 0) parts.push(`${man.toLocaleString()}만`);
-  return parts.join(' ') + '원';
-}
-
 // ── 데이터 타입 ───────────────────────────────
 interface Member { id: string; nickname: string }
 interface UrgentItem { name: string; type: 'expired' | 'expiring' | 'lowstock' | 'chore'; dday?: string }
@@ -79,20 +68,14 @@ interface StockItem { name: string; qty: number; min_qty: number }
 interface NoteItem { id: string; title: string }
 interface ActivityItem {
   id: string;
-  type: 'food' | 'chore' | 'supply' | 'note' | 'asset';
+  type: 'food' | 'chore' | 'supply' | 'note';
   action: string;
   name: string;
   timestamp: string;
   emoji: string;
 }
 
-const ASSET_EMOJI: Record<string, string> = {
-  '예금': '🏦', '적금': '💵', '주식': '📈', '부동산': '🏠', '기타': '📦',
-};
-
 interface DashboardData {
-  // 자산
-  totalAssets: number;
   // 음식
   fridgeTotal: number;
   fridgeExpiring: number;
@@ -120,12 +103,10 @@ async function fetchDashboard(familyId: string, notifyDays: number): Promise<Das
   const sooner = localDate(notifyDays);
 
   const [
-    assetsRes,
     fridgeTotalRes, fridgeExpiringRes, fridgeExpiredRes, fridgeExpItemsRes,
     choresRes, suppliesRes, notesRes, membersRes,
-    recentFridgeRes, assetHistRes,
+    recentFridgeRes,
   ] = await Promise.all([
-    supabase.from('assets').select('amount').eq('family_id', familyId).eq('is_active', true),
     supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false),
     supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false).gte('expiry_date', today).lte('expiry_date', sooner),
     supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false).lt('expiry_date', today),
@@ -135,10 +116,7 @@ async function fetchDashboard(familyId: string, notifyDays: number): Promise<Das
     supabase.from('notes').select('id, title, updated_at').eq('family_id', familyId).order('updated_at', { ascending: false }).limit(4),
     supabase.from('user_profiles').select('id, nickname').eq('family_id', familyId).limit(4),
     supabase.from('fridge_items').select('id, food_name, created_at').eq('family_id', familyId).eq('is_consumed', false).order('created_at', { ascending: false }).limit(4),
-    supabase.from('assets').select('id, name, category, asset_histories(id, created_at, new_amount, previous_amount, memo)').eq('family_id', familyId).eq('is_active', true),
   ]);
-
-  const totalAssets = (assetsRes.data ?? []).reduce((s, a) => s + a.amount, 0);
 
   // 일정 오늘 발생
   const choreList = ((choresRes.data ?? []) as Chore[]).filter(c => c.created_at);
@@ -215,26 +193,11 @@ async function fetchDashboard(familyId: string, notifyDays: number): Promise<Das
     }
   }
 
-  // 자산 (최근 변경 내역)
-  for (const asset of (assetHistRes.data ?? [] as any[])) {
-    const emoji = ASSET_EMOJI[asset.category as string] ?? '📦';
-    const histories = [...(asset.asset_histories ?? [])]
-      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      .slice(0, 2);
-    for (const h of histories as any[]) {
-      const diff = h.new_amount - h.previous_amount;
-      const isFirst = h.previous_amount === 0 && h.memo === '최초 등록';
-      const action = isFirst ? '자산 등록' : diff > 0 ? `+${formatAmount(Math.abs(diff))}` : `−${formatAmount(Math.abs(diff))}`;
-      allActivities.push({ id: h.id, type: 'asset', action, name: asset.name, timestamp: h.created_at, emoji });
-    }
-  }
-
   const activities = allActivities
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     .slice(0, 8);
 
   return {
-    totalAssets,
     fridgeTotal: fridgeTotalRes.count ?? 0,
     fridgeExpiring: fridgeExpiringRes.count ?? 0,
     fridgeExpired: fridgeExpiredRes.count ?? 0,
@@ -332,22 +295,6 @@ function StockBar({ item }: { item: StockItem }) {
         <View style={{ width: `${Math.max(level * 100, 4)}%`, height: 3, backgroundColor: critical ? C.danger : C.warn, borderRadius: 2 }} />
       </View>
     </View>
-  );
-}
-
-// 스파크라인 SVG
-function Sparkline() {
-  return (
-    <Svg width="100%" height={28} viewBox="0 0 300 28" preserveAspectRatio="none">
-      <Path
-        d="M0,20 L30,18 L60,22 L90,16 L120,17 L150,12 L180,14 L210,8 L240,10 L270,6 L300,4"
-        stroke="rgba(255,255,255,0.9)" strokeWidth={2} fill="none" strokeLinecap="round"
-      />
-      <Path
-        d="M0,20 L30,18 L60,22 L90,16 L120,17 L150,12 L180,14 L210,8 L240,10 L270,6 L300,4 L300,28 L0,28 Z"
-        fill="rgba(255,255,255,0.12)"
-      />
-    </Svg>
   );
 }
 
@@ -536,24 +483,6 @@ const DashboardScreen: React.FC = () => {
           </ScrollView>
         )}
 
-        {/* ── 자산 히어로 카드 ── */}
-        <TouchableOpacity style={s.heroCard} onPress={() => navigation.navigate('Finance')} activeOpacity={0.9}>
-          {/* 배경 도토리 워터마크 */}
-          <View style={s.heroWatermark} pointerEvents="none">
-            <AcornMark size={120} color="rgba(255,255,255,0.08)" />
-          </View>
-          <View style={s.heroTop}>
-            <Text style={s.heroLabel}>우리 집 총 자산</Text>
-            <View style={s.heroUpdateBtn}>
-              <Text style={s.heroUpdateText}>업데이트 →</Text>
-            </View>
-          </View>
-          <Text style={s.heroAmount}>{formatAmount(data?.totalAssets ?? 0)}</Text>
-          <View>
-            <Sparkline />
-          </View>
-        </TouchableOpacity>
-
         {/* ── 위젯 2x2 ── */}
         <View style={s.widgetRow}>
           {/* 음식 */}
@@ -684,18 +613,6 @@ const s = StyleSheet.create({
 
   // 긴급 strip
   focusStrip: { paddingHorizontal: 16, paddingBottom: 10 },
-
-  // 히어로 카드
-  heroCard:      { marginHorizontal: 16, marginBottom: 10, backgroundColor: C.brown, borderRadius: 18, padding: 14, overflow: 'hidden', shadowColor: C.deep, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 20, elevation: 6 },
-  heroWatermark: { position: 'absolute', right: -20, top: -10 },
-  heroTop:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  heroLabel:     { fontSize: 11, color: 'rgba(255,255,255,0.8)', fontWeight: '600' },
-  heroUpdateBtn: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  heroUpdateText:{ fontSize: 10, color: '#fff', fontWeight: '700' },
-  heroAmount:    { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.5, marginBottom: 8 },
-  heroFooter:    { flexDirection: 'row', gap: 10 },
-  heroStat:      { fontSize: 10, color: '#fff', fontWeight: '700' },
-  heroStatLabel: { color: 'rgba(255,255,255,0.65)', fontWeight: '400' },
 
   // 위젯
   widgetRow:    { flexDirection: 'row', paddingHorizontal: 16, gap: 10 },
