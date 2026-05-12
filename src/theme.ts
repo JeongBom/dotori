@@ -58,6 +58,7 @@ export const theme = {
     purple:    '#9478C9',    // 아바타 등 보조 포인트 컬러
     neutral:   '#9EA8B0',    // 비활성 칩/뱃지 (cool gray)
     link:      '#4A90D9',    // 인라인 URL 하이퍼링크
+    star:      '#F5A623',    // 즐겨찾기 별 색상
     noteCards: ['#FFF8F0', '#FAEFD8', '#EBE5F4', '#FDF1E4', '#EBF4F8', '#EEF5EE'],
 
     // ── 아이콘 기본 ───────────────────────────

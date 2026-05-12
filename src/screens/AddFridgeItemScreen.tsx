@@ -26,6 +26,7 @@ import { RootStackParamList } from '../navigation';
 import { scheduleExpiryNotification, cancelExpiryNotification, requestNotificationPermissions } from '../lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEY_NOTIFY_DAYS } from './SettingsScreen';
+import { theme } from '../theme';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'AddFridgeItem'>;
 type RouteType = RouteProp<RootStackParamList, 'AddFridgeItem'>;
@@ -123,7 +124,7 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({ visible, value, onCon
             onChange={onChange}
             locale="ko-KR"
             style={{ width: calendarWidth - 16, alignSelf: 'center' }}
-            accentColor="#8B5E3C"
+            accentColor={theme.colors.brand}
             minimumDate={minimumDate}
           />
           <View style={dpStyles.actions}>
@@ -142,12 +143,12 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({ visible, value, onCon
 
 const dpStyles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  container: { backgroundColor: '#FFF8F0', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 16 },
-  title: { fontSize: 16, fontWeight: '700', color: '#5C3D1E', textAlign: 'center', marginBottom: 4 },
+  container: { backgroundColor: theme.colors.warm.ivory, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 16 },
+  title: { fontSize: 16, fontWeight: '700', color: theme.colors.warm.dark, textAlign: 'center', marginBottom: 4 },
   actions: { flexDirection: 'row', gap: 12, marginTop: 12, paddingHorizontal: 8 },
-  cancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#D4B896', alignItems: 'center' },
-  cancelText: { color: '#8B5E3C', fontWeight: '600' },
-  confirmBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: '#8B5E3C', alignItems: 'center' },
+  cancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.warm.edge, alignItems: 'center' },
+  cancelText: { color: theme.colors.brand, fontWeight: '600' },
+  confirmBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: theme.colors.brand, alignItems: 'center' },
   confirmText: { color: '#FFFFFF', fontWeight: '700' },
 });
 
@@ -399,7 +400,7 @@ const AddFridgeItemScreen: React.FC = () => {
             {favorites.length > 0 && (
               <View style={s.favSection}>
                 <View style={s.favHeader}>
-                  <Star color="#F5A623" size={13} fill="#F5A623" strokeWidth={0} />
+                  <Star color={theme.colors.star} size={13} fill={theme.colors.star} strokeWidth={0} />
                   <Text style={s.favLabel}>즐겨찾기</Text>
                 </View>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.favRow}>
@@ -431,12 +432,12 @@ const AddFridgeItemScreen: React.FC = () => {
 
             <View style={s.autocompleteWrap}>
               <View style={s.inputRow}>
-                <Search color="#C49A6C" size={18} strokeWidth={1.8} style={{ marginRight: 8 }} />
+                <Search color={theme.colors.warm.lightOak} size={18} strokeWidth={1.8} style={{ marginRight: 8 }} />
                 <TextInput
                   ref={nameInputRef}
                   style={s.input}
                   placeholder="음식 이름을 입력하세요"
-                  placeholderTextColor="#C49A6C"
+                  placeholderTextColor={theme.colors.warm.lightOak}
                   value={name}
                   onChangeText={onNameChange}
                   autoCorrect={false}
@@ -444,7 +445,7 @@ const AddFridgeItemScreen: React.FC = () => {
                 />
                 {name.length > 0 && (
                   <TouchableOpacity onPress={() => { setName(''); setSuggestions([]); }}>
-                    <X color="#C49A6C" size={18} strokeWidth={2} />
+                    <X color={theme.colors.warm.lightOak} size={18} strokeWidth={2} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -468,9 +469,9 @@ const AddFridgeItemScreen: React.FC = () => {
             {name.trim().length > 0 && (
               <TouchableOpacity style={s.starRow} onPress={toggleFavorite} activeOpacity={0.7}>
                 <Star
-                  color={isFav ? '#F5A623' : '#C49A6C'}
+                  color={isFav ? theme.colors.star : theme.colors.warm.lightOak}
                   size={16}
-                  fill={isFav ? '#F5A623' : 'none'}
+                  fill={isFav ? theme.colors.star : 'none'}
                   strokeWidth={2}
                 />
                 <Text style={[s.starText, isFav && s.starTextActive]}>
@@ -548,7 +549,7 @@ const AddFridgeItemScreen: React.FC = () => {
         <Text style={s.label}>넣은 날짜</Text>
         <TouchableOpacity style={s.dateRow} onPress={() => setShowStoredPicker(true)}>
           <Text style={s.dateText}>{formatDisplayDate(storedDate)}</Text>
-          <ChevronDown color="#8B5E3C" size={18} strokeWidth={2} />
+          <ChevronDown color={theme.colors.brand} size={18} strokeWidth={2} />
         </TouchableOpacity>
 
         <Text style={[s.label, { marginTop: 24 }]}>유통기한 <Text style={s.labelOptional}>(선택)</Text></Text>
@@ -556,7 +557,7 @@ const AddFridgeItemScreen: React.FC = () => {
           <Text style={[s.dateText, !expiryDate && s.datePlaceholder]}>
             {expiryDate ? formatDisplayDate(expiryDate) : '날짜를 선택하세요'}
           </Text>
-          <ChevronDown color="#8B5E3C" size={18} strokeWidth={2} />
+          <ChevronDown color={theme.colors.brand} size={18} strokeWidth={2} />
         </TouchableOpacity>
 
         <View style={s.quickDateRow}>
@@ -593,7 +594,7 @@ const AddFridgeItemScreen: React.FC = () => {
           onPress={() => { if (step > 1) setStep(s => s - 1); else navigation.goBack(); }}
           style={s.backBtn}
         >
-          <ChevronLeft color="#5C3D1E" size={24} strokeWidth={2} />
+          <ChevronLeft color={theme.colors.warm.dark} size={24} strokeWidth={2} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>{isEditing ? '음식 수정' : '음식 추가'}</Text>
         <View style={s.headerRight} />
@@ -637,98 +638,98 @@ const AddFridgeItemScreen: React.FC = () => {
 };
 
 const s = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
+  safeArea: { flex: 1, backgroundColor: theme.colors.card },
 
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingVertical: 14,
   },
   backBtn: { width: 40, alignItems: 'flex-start' },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: '#5C3D1E' },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: theme.colors.warm.dark },
   headerRight: { width: 40 },
 
   progressRow: { flexDirection: 'row', paddingHorizontal: 20, gap: 6, marginBottom: 4 },
   progressSeg: { flex: 1, height: 4, borderRadius: 2 },
-  progressSegActive: { backgroundColor: '#8B5E3C' },
-  progressSegInactive: { backgroundColor: '#EDD9C0' },
+  progressSegActive: { backgroundColor: theme.colors.brand },
+  progressSegInactive: { backgroundColor: theme.colors.storage.fridge.bg },
 
   stepContent: { padding: 24, paddingBottom: 32 },
-  stepQuestion: { fontSize: 22, fontWeight: '800', color: '#5C3D1E', marginBottom: 32, lineHeight: 30 },
+  stepQuestion: { fontSize: 22, fontWeight: '700', color: theme.colors.warm.dark, marginBottom: 32, lineHeight: 30 },
 
-  label: { fontSize: 13, fontWeight: '600', color: '#8B5E3C', marginBottom: 10 },
-  labelOptional: { fontSize: 12, fontWeight: '400', color: '#C49A6C' },
+  label: { fontSize: 13, fontWeight: '600', color: theme.colors.brand, marginBottom: 10 },
+  labelOptional: { fontSize: 12, fontWeight: '400', color: theme.colors.warm.lightOak },
 
   autocompleteWrap: { position: 'relative', zIndex: 10 },
   inputRow: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#FFF8F0', borderRadius: 14,
+    backgroundColor: theme.colors.warm.ivory, borderRadius: 14,
     paddingHorizontal: 14, paddingVertical: 14,
-    borderWidth: 1, borderColor: '#DEC8A8',
+    borderWidth: 1, borderColor: theme.colors.warm.edge,
   },
-  input: { flex: 1, fontSize: 17, color: '#5C3D1E', padding: 0 },
+  input: { flex: 1, fontSize: 17, color: theme.colors.warm.dark, padding: 0 },
   dropdown: {
     position: 'absolute', top: '100%', left: 0, right: 0,
-    backgroundColor: '#FFF8F0', borderRadius: 14, marginTop: 4,
-    borderWidth: 1, borderColor: '#DEC8A8',
-    shadowColor: '#8B5E3C', shadowOffset: { width: 0, height: 4 },
+    backgroundColor: theme.colors.warm.ivory, borderRadius: 14, marginTop: 4,
+    borderWidth: 1, borderColor: theme.colors.warm.edge,
+    shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12, shadowRadius: 8, elevation: 5,
     overflow: 'hidden',
   },
   dropdownItem: {
     paddingHorizontal: 14, paddingVertical: 13,
-    borderBottomWidth: 1, borderBottomColor: '#EDD9C0',
+    borderBottomWidth: 1, borderBottomColor: theme.colors.storage.fridge.bg,
   },
-  dropdownName: { fontSize: 15, color: '#5C3D1E', fontWeight: '500' },
+  dropdownName: { fontSize: 15, color: theme.colors.warm.dark, fontWeight: '500' },
 
   toggleRow: { flexDirection: 'row', gap: 12 },
   toggleBtn: {
     flex: 1, paddingVertical: 14, borderRadius: 14,
-    backgroundColor: '#FFF8F0', borderWidth: 1, borderColor: '#DEC8A8', alignItems: 'center',
+    backgroundColor: theme.colors.warm.ivory, borderWidth: 1, borderColor: theme.colors.warm.edge, alignItems: 'center',
   },
-  toggleBtnActive: { backgroundColor: '#8B5E3C', borderColor: '#8B5E3C' },
-  toggleText: { fontSize: 15, fontWeight: '600', color: '#8B5E3C' },
+  toggleBtnActive: { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
+  toggleText: { fontSize: 15, fontWeight: '600', color: theme.colors.brand },
   toggleTextActive: { color: '#FFFFFF' },
 
   qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 20 },
   qtyBtn: {
     width: 44, height: 44, borderRadius: 22,
-    backgroundColor: '#EDD9C0', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: theme.colors.storage.fridge.bg, alignItems: 'center', justifyContent: 'center',
   },
-  qtyBtnText: { fontSize: 22, fontWeight: '700', color: '#5C3D1E', lineHeight: 26 },
-  qtyNum: { fontSize: 28, fontWeight: '800', color: '#5C3D1E', minWidth: 40, textAlign: 'center' },
+  qtyBtnText: { fontSize: 22, fontWeight: '700', color: theme.colors.warm.dark, lineHeight: 26 },
+  qtyNum: { fontSize: 28, fontWeight: '700', color: theme.colors.warm.dark, minWidth: 40, textAlign: 'center' },
   qtyInput: {
-    fontSize: 28, fontWeight: '800', color: '#5C3D1E',
+    fontSize: 28, fontWeight: '700', color: theme.colors.warm.dark,
     minWidth: 60, textAlign: 'center',
-    borderBottomWidth: 2, borderBottomColor: '#8B5E3C', padding: 0,
+    borderBottomWidth: 2, borderBottomColor: theme.colors.brand, padding: 0,
   },
 
   dateRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#FFF8F0', borderRadius: 14,
+    backgroundColor: theme.colors.warm.ivory, borderRadius: 14,
     paddingHorizontal: 16, paddingVertical: 16,
-    borderWidth: 1, borderColor: '#DEC8A8',
+    borderWidth: 1, borderColor: theme.colors.warm.edge,
   },
-  dateText: { fontSize: 16, color: '#5C3D1E', fontWeight: '500' },
-  datePlaceholder: { color: '#C49A6C' },
+  dateText: { fontSize: 16, color: theme.colors.warm.dark, fontWeight: '500' },
+  datePlaceholder: { color: theme.colors.warm.lightOak },
 
   quickDateRow: { flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' },
   quickBtn: {
     paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-    backgroundColor: '#EDD9C0', borderWidth: 1, borderColor: '#D4B896',
+    backgroundColor: theme.colors.storage.fridge.bg, borderWidth: 1, borderColor: theme.colors.warm.edge,
   },
-  quickBtnText: { fontSize: 13, fontWeight: '700', color: '#5C3D1E' },
+  quickBtnText: { fontSize: 13, fontWeight: '700', color: theme.colors.warm.dark },
   quickBtnClear: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-    backgroundColor: '#FFF8F0', borderWidth: 1, borderColor: '#DEC8A8',
+    backgroundColor: theme.colors.warm.ivory, borderWidth: 1, borderColor: theme.colors.warm.edge,
   },
-  quickBtnClearText: { fontSize: 12, color: '#C49A6C' },
+  quickBtnClearText: { fontSize: 12, color: theme.colors.warm.lightOak },
 
   bottomBar: {
     paddingHorizontal: 24, paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.card,
   },
   ctaBtn: {
-    backgroundColor: '#8B5E3C', borderRadius: 16,
+    backgroundColor: theme.colors.brand, borderRadius: 16,
     paddingVertical: 18, alignItems: 'center',
   },
   ctaBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
@@ -736,31 +737,31 @@ const s = StyleSheet.create({
   // 즐겨찾기
   favSection: { marginBottom: 20 },
   favHeader: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10 },
-  favLabel: { fontSize: 12, fontWeight: '700', color: '#A87850' },
+  favLabel: { fontSize: 12, fontWeight: '700', color: theme.colors.warm.oak },
   favRow: { gap: 8, paddingRight: 4 },
   favChip: {
     paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20,
-    backgroundColor: '#FFF8F0', borderWidth: 1.5, borderColor: '#F5A623',
+    backgroundColor: theme.colors.warm.ivory, borderWidth: 1.5, borderColor: theme.colors.star,
   },
-  favChipText: { fontSize: 13, fontWeight: '600', color: '#5C3D1E' },
+  favChipText: { fontSize: 13, fontWeight: '600', color: theme.colors.warm.dark },
   starRow: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     marginTop: 14, paddingVertical: 4,
   },
-  starText: { fontSize: 13, color: '#C49A6C', fontWeight: '500' },
-  starTextActive: { color: '#F5A623' },
+  starText: { fontSize: 13, color: theme.colors.warm.lightOak, fontWeight: '500' },
+  starTextActive: { color: theme.colors.star },
 
   // 완료 화면
   doneWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   doneCircle: {
     width: 80, height: 80, borderRadius: 40,
-    backgroundColor: '#8B5E3C', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: theme.colors.brand, alignItems: 'center', justifyContent: 'center',
     marginBottom: 24,
   },
-  doneTitle: { fontSize: 24, fontWeight: '800', color: '#5C3D1E', marginBottom: 10 },
-  doneSub: { fontSize: 15, color: '#A87850', textAlign: 'center', lineHeight: 22, marginBottom: 48 },
+  doneTitle: { fontSize: 24, fontWeight: '700', color: theme.colors.warm.dark, marginBottom: 10 },
+  doneSub: { fontSize: 15, color: theme.colors.warm.oak, textAlign: 'center', lineHeight: 22, marginBottom: 48 },
   doneBtn: {
-    backgroundColor: '#8B5E3C', borderRadius: 16,
+    backgroundColor: theme.colors.brand, borderRadius: 16,
     paddingVertical: 16, paddingHorizontal: 48,
   },
   doneBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
