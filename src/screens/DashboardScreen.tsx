@@ -16,21 +16,7 @@ import Svg, { Path } from 'react-native-svg';
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { RootTabParamList, RootStackParamList } from '../navigation';
 import { STORAGE_KEY_FAMILY_NAME, STORAGE_KEY_NICKNAME, STORAGE_KEY_NOTIFY_DAYS } from './SettingsScreen';
-
-// ── 디자인 토큰 ───────────────────────────────
-const C = {
-  brown:    '#8B5E3C',
-  warmOak:  '#A87850',
-  lightOak: '#C49A6C',
-  ivory:    '#FFF8F0',
-  cream:    '#FDF6EC',
-  edge:     '#DEC8A8',
-  dark:     '#5C3D1E',
-  deep:     '#6B4226',
-  danger:   '#D95F4B',
-  warn:     '#E09B4B',
-  purple:   '#9478C9',
-};
+import { theme } from '../theme';
 
 type DashboardNav = CompositeNavigationProp<
   BottomTabNavigationProp<RootTabParamList, 'Home'>,
@@ -74,20 +60,14 @@ interface ActivityItem {
 }
 
 interface DashboardData {
-  // 음식
   fridgeTotal: number;
   fridgeExpiring: number;
   fridgeExpired: number;
-  // 생필품
   stockItems: StockItem[];
   lowStockCount: number;
-  // 메모
   recentNotes: NoteItem[];
-  // 긴급 알림
   urgentItems: UrgentItem[];
-  // 구성원
   members: Member[];
-  // 최근 활동
   activities: ActivityItem[];
 }
 
@@ -111,7 +91,6 @@ async function fetchDashboard(familyId: string, notifyDays: number): Promise<Das
     supabase.from('fridge_items').select('id, food_name, created_at').eq('family_id', familyId).eq('is_consumed', false).order('created_at', { ascending: false }).limit(4),
   ]);
 
-  // 생필품
   const stockItems: StockItem[] = (suppliesRes.data ?? []).map(s => ({
     name: s.name,
     qty: s.quantity,
@@ -119,19 +98,16 @@ async function fetchDashboard(familyId: string, notifyDays: number): Promise<Das
   }));
   const lowStockCount = stockItems.filter(s => s.qty <= s.min_qty).length;
 
-  // 메모
   const recentNotes: NoteItem[] = (notesRes.data ?? []).map(n => ({
     id: n.id,
     title: n.title ?? '(제목 없음)',
   }));
 
-  // 구성원
   const members: Member[] = (membersRes.data ?? []).map(m => ({
     id: m.id,
     nickname: m.nickname ?? '?',
   }));
 
-  // 긴급 항목
   const urgentItems: UrgentItem[] = [];
   for (const item of (fridgeExpItemsRes.data ?? [])) {
     const diff = Math.ceil((new Date(item.expiry_date).getTime() - new Date(today).getTime()) / 86400000);
@@ -142,15 +118,10 @@ async function fetchDashboard(familyId: string, notifyDays: number): Promise<Das
     urgentItems.push({ name: s.name, type: 'lowstock' });
   }
 
-  // ── 최근 활동 피드 생성 ─────────────────────
   const allActivities: ActivityItem[] = [];
-
-  // 음식 (최근 추가)
   for (const f of (recentFridgeRes.data ?? []) as any[]) {
     allActivities.push({ id: f.id, type: 'food', action: '추가됨', name: f.food_name, timestamp: f.created_at, emoji: '🥬' });
   }
-
-  // 생필품 (최근 추가)
   const sortedSupplies = [...(suppliesRes.data ?? [] as any[])]
     .filter((s: any) => s.created_at)
     .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -158,14 +129,11 @@ async function fetchDashboard(familyId: string, notifyDays: number): Promise<Das
   for (const s of sortedSupplies) {
     allActivities.push({ id: s.id ?? s.name, type: 'supply', action: '추가됨', name: s.name, timestamp: s.created_at, emoji: '🧴' });
   }
-
-  // 메모 (최근 작성/수정)
   for (const n of (notesRes.data ?? [] as any[])) {
     if (n.updated_at) {
       allActivities.push({ id: n.id, type: 'note', action: '작성/수정됨', name: n.title ?? '(제목 없음)', timestamp: n.updated_at, emoji: '📝' });
     }
   }
-
   const activities = allActivities
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     .slice(0, 8);
@@ -182,7 +150,7 @@ async function fetchDashboard(familyId: string, notifyDays: number): Promise<Das
 // ── 서브 컴포넌트들 ───────────────────────────
 
 // 도토리 로고 (SVG)
-function AcornMark({ size = 26, color = C.brown }: { size?: number; color?: string }) {
+function AcornMark({ size = 26, color = theme.colors.brand }: { size?: number; color?: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 28 28" fill="none">
       <Path d="M5 11c0-1 1-2 2-2h14c1 0 2 1 2 2 0 1-1 2-2 2H7c-1 0-2-1-2-2z" fill={color} />
@@ -197,9 +165,9 @@ function FocusPill({ item }: { item: UrgentItem }) {
   const isExpired = item.type === 'expired';
   const isLow     = item.type === 'lowstock';
   const isDanger  = isExpired || isLow;
-  const bg    = isDanger ? '#FDECEA' : '#FCF2E0';
-  const fg    = isDanger ? C.danger  : '#B67628';
-  const dotBg = isDanger ? C.danger  : C.warn;
+  const bg    = isDanger ? theme.colors.alert.dangerBg : theme.colors.alert.warnBg;
+  const fg    = isDanger ? theme.colors.status.danger  : theme.colors.alert.warnFg;
+  const dotBg = isDanger ? theme.colors.status.danger  : theme.colors.status.warn;
 
   return (
     <View style={[pillStyles.wrap, { backgroundColor: bg }]}>
@@ -218,7 +186,7 @@ function FocusPill({ item }: { item: UrgentItem }) {
 const pillStyles = StyleSheet.create({
   wrap:    { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 5, paddingRight: 10, paddingVertical: 5, borderRadius: 20, marginRight: 8 },
   dot:     { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  dotIcon: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  dotIcon: { color: '#fff', fontSize: 11, fontWeight: '700' },
   name:    { fontSize: 11, fontWeight: '700', lineHeight: 14 },
   sub:     { fontSize: 9, fontWeight: '500', opacity: 0.75 },
 });
@@ -243,7 +211,7 @@ function MiniWidget({
   );
 }
 const widgetStyles = StyleSheet.create({
-  card:        { backgroundColor: C.ivory, borderRadius: 14, overflow: 'hidden', flex: 1, shadowColor: C.brown, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  card:        { backgroundColor: theme.colors.warm.ivory, borderRadius: 14, overflow: 'hidden', flex: 1, shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
   header:      { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 11, paddingVertical: 7 },
   headerTitle: { fontSize: 11, fontWeight: '700', color: '#fff', flex: 1 },
   body:        { padding: 10, minHeight: 68 },
@@ -257,13 +225,13 @@ function StockBar({ item }: { item: StockItem }) {
   return (
     <View style={{ marginBottom: 5 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
-        <Text style={{ fontSize: 10, color: C.dark, fontWeight: '500' }} numberOfLines={1}>{item.name}</Text>
-        <Text style={{ fontSize: 10, fontWeight: '700', color: critical ? C.danger : C.warmOak }}>
+        <Text style={{ fontSize: 10, color: theme.colors.warm.dark, fontWeight: '500' }} numberOfLines={1}>{item.name}</Text>
+        <Text style={{ fontSize: 10, fontWeight: '700', color: critical ? theme.colors.status.danger : theme.colors.warm.oak }}>
           {item.qty === 0 ? '0' : `${item.qty}`}
         </Text>
       </View>
-      <View style={{ height: 3, backgroundColor: C.edge + '88', borderRadius: 2 }}>
-        <View style={{ width: `${Math.max(level * 100, 4)}%`, height: 3, backgroundColor: critical ? C.danger : C.warn, borderRadius: 2 }} />
+      <View style={{ height: 3, backgroundColor: `${theme.colors.warm.edge}88`, borderRadius: 2 }}>
+        <View style={{ width: `${Math.max(level * 100, 4)}%`, height: 3, backgroundColor: critical ? theme.colors.status.danger : theme.colors.status.warn, borderRadius: 2 }} />
       </View>
     </View>
   );
@@ -296,17 +264,17 @@ function RecentActivitySection({ items }: { items: ActivityItem[] }) {
 }
 
 const actStyles = StyleSheet.create({
-  card: { marginHorizontal: 16, marginTop: 10, backgroundColor: C.ivory, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: C.edge + '55', shadowColor: C.brown, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  title: { fontSize: 12, fontWeight: '700', color: C.dark },
-  empty: { fontSize: 12, color: C.lightOak, fontStyle: 'italic', textAlign: 'center', paddingVertical: 8 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 7 },
-  rowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.edge + '88' },
-  emoji: { fontSize: 16, width: 24, textAlign: 'center', flexShrink: 0 },
-  name: { fontSize: 12, fontWeight: '600', color: C.dark, flex: 1 },
-  right: { alignItems: 'flex-end', flexShrink: 0 },
-  action: { fontSize: 11, fontWeight: '600', color: C.warmOak },
-  time: { fontSize: 10, color: C.lightOak, marginTop: 1 },
+  card:      { marginHorizontal: 16, marginTop: 10, backgroundColor: theme.colors.warm.ivory, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: `${theme.colors.warm.edge}55`, shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  header:    { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  title:     { fontSize: 12, fontWeight: '700', color: theme.colors.warm.dark },
+  empty:     { fontSize: 12, color: theme.colors.warm.lightOak, fontStyle: 'italic', textAlign: 'center', paddingVertical: 8 },
+  row:       { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 7 },
+  rowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: `${theme.colors.warm.edge}88` },
+  emoji:     { fontSize: 16, width: 24, textAlign: 'center', flexShrink: 0 },
+  name:      { fontSize: 12, fontWeight: '600', color: theme.colors.warm.dark, flex: 1 },
+  right:     { alignItems: 'flex-end', flexShrink: 0 },
+  action:    { fontSize: 11, fontWeight: '600', color: theme.colors.warm.oak },
+  time:      { fontSize: 10, color: theme.colors.warm.lightOak, marginTop: 1 },
 });
 
 // ── 메인 화면 ─────────────────────────────────
@@ -339,7 +307,6 @@ const DashboardScreen: React.FC = () => {
       const familyId = await getOrCreateFamilyId();
       if (!familyId) { setLoading(false); setRefreshing(false); return; }
 
-      // 가족명 + 내 닉네임 동기화
       const [familyRes, userRes] = await Promise.all([
         supabase.from('families').select('name').eq('id', familyId).single(),
         supabase.auth.getUser(),
@@ -373,7 +340,6 @@ const DashboardScreen: React.FC = () => {
 
   const onRefresh = useCallback(() => { setRefreshing(true); loadData(); }, [loadData]);
 
-  // ── 날짜 텍스트 ──
   const now = new Date();
   const DOW = ['일', '월', '화', '수', '목', '금', '토'];
   const dateLabel = `${now.getMonth() + 1}월 ${now.getDate()}일 ${DOW[now.getDay()]}요일`;
@@ -383,7 +349,7 @@ const DashboardScreen: React.FC = () => {
   if (loading) {
     return (
       <SafeAreaView style={s.centered}>
-        <ActivityIndicator size="large" color={C.brown} />
+        <ActivityIndicator size="large" color={theme.colors.brand} />
       </SafeAreaView>
     );
   }
@@ -391,7 +357,7 @@ const DashboardScreen: React.FC = () => {
   if (error) {
     return (
       <SafeAreaView style={s.centered}>
-        <TriangleAlert color={C.brown} size={48} strokeWidth={1.5} />
+        <TriangleAlert color={theme.colors.brand} size={48} strokeWidth={1.5} />
         <Text style={s.errorText}>{error}</Text>
         <TouchableOpacity style={s.retryBtn} onPress={loadData}>
           <Text style={s.retryText}>다시 시도</Text>
@@ -404,7 +370,7 @@ const DashboardScreen: React.FC = () => {
     <SafeAreaView style={s.safe}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.brown} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.brand} />}
         contentContainerStyle={{ paddingBottom: 24 }}
       >
         {/* ── 헤더 ── */}
@@ -418,14 +384,14 @@ const DashboardScreen: React.FC = () => {
           </View>
           <View style={s.headerRight}>
             <TouchableOpacity onPress={() => navigation.navigate('Settings')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Settings color={C.warmOak} size={20} strokeWidth={1.5} />
+              <Settings color={theme.colors.warm.oak} size={20} strokeWidth={1.5} />
             </TouchableOpacity>
             {/* 아바타 클러스터 */}
             <View style={s.avatarCluster}>
               {(data?.members ?? []).slice(0, 3).map((m, i) => (
                 <View
                   key={m.id}
-                  style={[s.avatar, { backgroundColor: i === 1 ? C.purple : C.brown, marginLeft: i > 0 ? -10 : 0, borderWidth: i > 0 ? 2 : 0 }]}
+                  style={[s.avatar, { backgroundColor: i === 1 ? theme.colors.purple : theme.colors.brand, marginLeft: i > 0 ? -10 : 0, borderWidth: i > 0 ? 2 : 0 }]}
                 >
                   <Text style={s.avatarText}>{m.nickname.charAt(0)}</Text>
                 </View>
@@ -439,7 +405,7 @@ const DashboardScreen: React.FC = () => {
           <Text style={s.greetingDate}>{dateLabel}</Text>
           <Text style={s.greetingMain}>
             {nickname ? `${nickname}님, ` : ''}오늘 살펴볼 게{' '}
-            <Text style={{ color: C.brown }}>{urgentCount}개</Text> 있어요
+            <Text style={{ color: theme.colors.brand }}>{urgentCount}개</Text> 있어요
           </Text>
         </View>
 
@@ -458,22 +424,22 @@ const DashboardScreen: React.FC = () => {
         <View style={s.widgetRow}>
           {/* 음식 */}
           <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('Fridge')} activeOpacity={0.85}>
-            <MiniWidget accentColor={C.brown} title="음식" icon={<Text style={{ fontSize: 13 }}>🥬</Text>}>
+            <MiniWidget accentColor={theme.colors.brand} title="음식" icon={<Text style={{ fontSize: 13 }}>🥬</Text>}>
               <Text style={s.widgetBigNum}>{data?.fridgeTotal ?? 0}</Text>
               <View style={s.widgetRow2}>
                 <Text style={s.widgetStatLabel}>임박</Text>
-                <Text style={[s.widgetStatVal, (data?.fridgeExpiring ?? 0) > 0 && { color: C.warn }]}>{data?.fridgeExpiring ?? 0}개</Text>
+                <Text style={[s.widgetStatVal, (data?.fridgeExpiring ?? 0) > 0 && { color: theme.colors.status.warn }]}>{data?.fridgeExpiring ?? 0}개</Text>
               </View>
               <View style={s.widgetRow2}>
                 <Text style={s.widgetStatLabel}>초과</Text>
-                <Text style={[s.widgetStatVal, (data?.fridgeExpired ?? 0) > 0 && { color: C.danger }]}>{data?.fridgeExpired ?? 0}개</Text>
+                <Text style={[s.widgetStatVal, (data?.fridgeExpired ?? 0) > 0 && { color: theme.colors.status.danger }]}>{data?.fridgeExpired ?? 0}개</Text>
               </View>
             </MiniWidget>
           </TouchableOpacity>
 
           {/* 생필품 */}
           <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('Supplies')} activeOpacity={0.85}>
-            <MiniWidget accentColor={C.deep} title="생필품" icon={<Text style={{ fontSize: 13 }}>🧴</Text>}>
+            <MiniWidget accentColor={theme.colors.warm.deep} title="생필품" icon={<Text style={{ fontSize: 13 }}>🧴</Text>}>
               {(data?.stockItems.length ?? 0) === 0 ? (
                 <Text style={s.widgetEmpty}>항목 없음</Text>
               ) : (
@@ -486,7 +452,7 @@ const DashboardScreen: React.FC = () => {
         <View style={[s.widgetRow, { marginTop: 10 }]}>
           {/* 메모 */}
           <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('Notes')} activeOpacity={0.85}>
-            <MiniWidget accentColor="#A07A5C" title="메모" icon={<Text style={{ fontSize: 13 }}>📝</Text>}>
+            <MiniWidget accentColor={theme.colors.warm.oak} title="메모" icon={<Text style={{ fontSize: 13 }}>📝</Text>}>
               {(data?.recentNotes.length ?? 0) === 0 ? (
                 <Text style={s.widgetEmpty}>메모 없음</Text>
               ) : (
@@ -511,14 +477,14 @@ const DashboardScreen: React.FC = () => {
           <Pressable style={sheet.body} onPress={() => {}}>
             <View style={sheet.handle} />
             <View style={sheet.row}>
-              <View style={sheet.iconBox}><Users color={C.brown} size={20} strokeWidth={1.5} /></View>
+              <View style={sheet.iconBox}><Users color={theme.colors.brand} size={20} strokeWidth={1.5} /></View>
               <View>
                 <Text style={sheet.rowLabel}>속한 가족</Text>
                 <Text style={sheet.rowVal}>{familyName}</Text>
               </View>
             </View>
             <View style={sheet.row}>
-              <View style={sheet.iconBox}><CircleUser color={C.brown} size={20} strokeWidth={1.5} /></View>
+              <View style={sheet.iconBox}><CircleUser color={theme.colors.brand} size={20} strokeWidth={1.5} /></View>
               <View>
                 <Text style={sheet.rowLabel}>닉네임</Text>
                 <Text style={sheet.rowVal}>{nickname || '미설정'}</Text>
@@ -526,7 +492,7 @@ const DashboardScreen: React.FC = () => {
             </View>
             <View style={sheet.divider} />
             <TouchableOpacity style={sheet.settingsBtn} onPress={() => { setShowSheet(false); navigation.navigate('Settings'); }}>
-              <Settings color={C.brown} size={18} strokeWidth={1.5} />
+              <Settings color={theme.colors.brand} size={18} strokeWidth={1.5} />
               <Text style={sheet.settingsBtnText}>설정</Text>
             </TouchableOpacity>
           </Pressable>
@@ -539,62 +505,62 @@ const DashboardScreen: React.FC = () => {
 // ── 스타일 ────────────────────────────────────
 
 const s = StyleSheet.create({
-  safe:    { flex: 1, backgroundColor: C.cream },
-  centered:{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.cream },
-  errorText: { fontSize: 14, color: C.brown, textAlign: 'center', marginTop: 12, marginBottom: 20 },
-  retryBtn:  { backgroundColor: C.brown, paddingHorizontal: 28, paddingVertical: 12, borderRadius: 24 },
+  safe:      { flex: 1, backgroundColor: theme.colors.warm.cream },
+  centered:  { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.warm.cream },
+  errorText: { fontSize: 14, color: theme.colors.brand, textAlign: 'center', marginTop: 12, marginBottom: 20 },
+  retryBtn:  { backgroundColor: theme.colors.brand, paddingHorizontal: 28, paddingVertical: 12, borderRadius: 24 },
   retryText: { color: '#fff', fontWeight: '600', fontSize: 14 },
 
   // 헤더
-  header:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 6, paddingBottom: 4 },
-  headerLeft:  { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  appName:     { fontSize: 20, fontWeight: '800', color: C.dark, letterSpacing: -0.5 },
-  familyChip:  { backgroundColor: C.ivory, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8, borderWidth: 1, borderColor: C.edge + '66' },
-  familyChipText: { fontSize: 10, fontWeight: '600', color: C.lightOak },
-  avatarCluster: { flexDirection: 'row', alignItems: 'center' },
-  avatar:      { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderColor: '#fff' },
-  avatarText:  { color: '#fff', fontSize: 11, fontWeight: '700' },
+  header:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 6, paddingBottom: 4 },
+  headerLeft:     { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  headerRight:    { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  appName:        { fontSize: 20, fontWeight: '700', color: theme.colors.warm.dark, letterSpacing: -0.5 },
+  familyChip:     { backgroundColor: theme.colors.warm.ivory, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8, borderWidth: 1, borderColor: `${theme.colors.warm.edge}66` },
+  familyChipText: { fontSize: 10, fontWeight: '600', color: theme.colors.warm.lightOak },
+  avatarCluster:  { flexDirection: 'row', alignItems: 'center' },
+  avatar:         { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderColor: '#fff' },
+  avatarText:     { color: '#fff', fontSize: 11, fontWeight: '700' },
 
   // 인사말
   greeting:     { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 10 },
-  greetingDate: { fontSize: 11, color: C.lightOak, fontWeight: '600' },
-  greetingMain: { fontSize: 20, fontWeight: '800', color: C.dark, marginTop: 2, letterSpacing: -0.4 },
+  greetingDate: { fontSize: 11, color: theme.colors.warm.lightOak, fontWeight: '600' },
+  greetingMain: { fontSize: 20, fontWeight: '700', color: theme.colors.warm.dark, marginTop: 2, letterSpacing: -0.4 },
 
   // 긴급 strip
   focusStrip: { paddingHorizontal: 16, paddingBottom: 10 },
 
   // 위젯
-  widgetRow:    { flexDirection: 'row', paddingHorizontal: 16, gap: 10 },
-  widgetBigNum: { fontSize: 20, fontWeight: '800', color: C.dark, lineHeight: 22, marginBottom: 4 },
-  widgetRow2:   { flexDirection: 'row', justifyContent: 'space-between' },
-  widgetStatLabel: { fontSize: 10, color: C.warmOak },
-  widgetStatVal:   { fontSize: 10, fontWeight: '700', color: C.dark },
-  widgetEmpty:  { fontSize: 11, color: C.lightOak, fontStyle: 'italic', marginTop: 4 },
+  widgetRow:       { flexDirection: 'row', paddingHorizontal: 16, gap: 10 },
+  widgetBigNum:    { fontSize: 20, fontWeight: '700', color: theme.colors.warm.dark, lineHeight: 22, marginBottom: 4 },
+  widgetRow2:      { flexDirection: 'row', justifyContent: 'space-between' },
+  widgetStatLabel: { fontSize: 10, color: theme.colors.warm.oak },
+  widgetStatVal:   { fontSize: 10, fontWeight: '700', color: theme.colors.warm.dark },
+  widgetEmpty:     { fontSize: 11, color: theme.colors.warm.lightOak, fontStyle: 'italic', marginTop: 4 },
 
   // 메모 위젯
   noteRow:   { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
   noteEmoji: { fontSize: 11 },
-  noteTitle: { fontSize: 11, color: C.dark, fontWeight: '500', flex: 1 },
+  noteTitle: { fontSize: 11, color: theme.colors.warm.dark, fontWeight: '500', flex: 1 },
   notePinned:{ fontSize: 8 },
 
   // 인사이트 카드
-  insightCard: { marginHorizontal: 16, marginTop: 10, backgroundColor: '#F3E7D2', borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: C.edge, borderStyle: 'dashed' },
-  insightIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: C.ivory, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  insightText: { flex: 1, fontSize: 11, color: C.dark, lineHeight: 16 },
+  insightCard: { marginHorizontal: 16, marginTop: 10, backgroundColor: theme.colors.warm.sand, borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: theme.colors.warm.edge, borderStyle: 'dashed' },
+  insightIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: theme.colors.warm.ivory, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  insightText: { flex: 1, fontSize: 11, color: theme.colors.warm.dark, lineHeight: 16 },
 });
 
 const sheet = StyleSheet.create({
-  overlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  body:       { backgroundColor: C.ivory, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingBottom: 40, paddingTop: 12 },
-  handle:     { width: 40, height: 4, borderRadius: 2, backgroundColor: C.edge, alignSelf: 'center', marginBottom: 24 },
-  row:        { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 18 },
-  iconBox:    { width: 40, height: 40, borderRadius: 20, backgroundColor: C.cream, alignItems: 'center', justifyContent: 'center' },
-  rowLabel:   { fontSize: 11, color: C.brown, fontWeight: '600', marginBottom: 2 },
-  rowVal:     { fontSize: 17, color: C.dark, fontWeight: '700' },
-  divider:    { height: 1, backgroundColor: C.edge, marginBottom: 18 },
-  settingsBtn:{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
-  settingsBtnText: { fontSize: 15, color: C.brown, fontWeight: '600' },
+  overlay:         { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  body:            { backgroundColor: theme.colors.warm.ivory, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingBottom: 40, paddingTop: 12 },
+  handle:          { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.colors.warm.edge, alignSelf: 'center', marginBottom: 24 },
+  row:             { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 18 },
+  iconBox:         { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.warm.cream, alignItems: 'center', justifyContent: 'center' },
+  rowLabel:        { fontSize: 11, color: theme.colors.brand, fontWeight: '600', marginBottom: 2 },
+  rowVal:          { fontSize: 17, color: theme.colors.warm.dark, fontWeight: '700' },
+  divider:         { height: 1, backgroundColor: theme.colors.warm.edge, marginBottom: 18 },
+  settingsBtn:     { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
+  settingsBtnText: { fontSize: 15, color: theme.colors.brand, fontWeight: '600' },
 });
 
 export default DashboardScreen;

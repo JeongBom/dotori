@@ -39,6 +39,13 @@ export const theme = {
       deep:     '#6B4226',  // 다크 강조
     },
 
+    // ── 알림 배경/전경 ────────────────────────
+    alert: {
+      dangerBg: '#FDECEA',   // 위험 알림 pill 배경
+      warnBg:   '#FCF2E0',   // 경고 알림 pill 배경
+      warnFg:   '#B67628',   // 경고 알림 pill 텍스트
+    },
+
     // ── 보관 유형 칩 ──────────────────────────
     storage: {
       fridge:   { bg: '#EDD9C0', fg: '#8B5E3C' },  // 냉장
