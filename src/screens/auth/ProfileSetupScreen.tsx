@@ -17,20 +17,20 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 
 import { supabase } from '../../lib/supabase';
 import { RootStackParamList } from '../../navigation';
+import { theme } from '../../theme';
 
 const AcornMark = ({ size = 48 }: { size?: number }) => (
   <Svg width={size} height={size} viewBox="0 0 52 60" fill="none">
-    <Path d="M12 30 Q11 52 26 52 Q41 52 40 30 Z" fill="#8B5E3C" />
-    <Rect x="8" y="18" width="36" height="16" rx="7" fill="#6B4226" />
+    <Path d="M12 30 Q11 52 26 52 Q41 52 40 30 Z" fill={theme.colors.brand} />
+    <Rect x="8" y="18" width="36" height="16" rx="7" fill={theme.colors.warm.deep} />
     <Circle cx="17" cy="26" r="1.5" fill="rgba(255,255,255,0.22)" />
     <Circle cx="26" cy="26" r="1.5" fill="rgba(255,255,255,0.22)" />
     <Circle cx="35" cy="26" r="1.5" fill="rgba(255,255,255,0.22)" />
-    <Path d="M26 18 Q29 11 33 7" stroke="#6B4226" strokeWidth="2.5" strokeLinecap="round" />
+    <Path d="M26 18 Q29 11 33 7" stroke={theme.colors.warm.deep} strokeWidth="2.5" strokeLinecap="round" />
   </Svg>
 );
 
@@ -45,7 +45,6 @@ const ProfileSetupScreen: React.FC = () => {
   const [nickname, setNickname] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // params 없이 진입한 경우 (로그인 후 자동 전환) → 직접 세션에서 userId 조회
   useEffect(() => {
     if (!userId) {
       supabase.auth.getUser().then(({ data: { user } }) => {
@@ -67,7 +66,6 @@ const ProfileSetupScreen: React.FC = () => {
 
     setSaving(true);
     try {
-      // user_profiles 생성 (family_id는 다음 화면에서 설정)
       const { error } = await supabase
         .from('user_profiles')
         .insert({ id: userId, nickname: nickname.trim(), role: 'owner', family_id: null });
@@ -95,7 +93,7 @@ const ProfileSetupScreen: React.FC = () => {
           <TextInput
             style={styles.input}
             placeholder="예: 도토리, 아내, 남편"
-            placeholderTextColor="#C49A6C"
+            placeholderTextColor={theme.colors.warm.lightOak}
             value={nickname}
             onChangeText={setNickname}
             autoCorrect={false}
@@ -105,7 +103,6 @@ const ProfileSetupScreen: React.FC = () => {
           />
           <Text style={styles.inputHint}>{nickname.length} / 10자</Text>
 
-          {/* 도토리 아바타 미리보기 */}
           <View style={styles.avatarWrap}>
             <View style={styles.avatarCircle}>
               <AcornMark size={48} />
@@ -133,37 +130,37 @@ const ProfileSetupScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#FDF6EC' },
+  safeArea: { flex: 1, backgroundColor: theme.colors.warm.cream },
   content: { flex: 1, padding: 24, paddingTop: 48 },
 
-  title: { fontSize: 28, fontWeight: '800', color: '#5C3D1E', marginBottom: 6 },
-  subtitle: { fontSize: 15, color: '#8B5E3C', marginBottom: 36 },
+  title: { fontSize: 28, fontWeight: '700', color: theme.colors.warm.dark, marginBottom: 6 },
+  subtitle: { fontSize: 15, color: theme.colors.brand, marginBottom: 36 },
 
-  label: { fontSize: 13, fontWeight: '600', color: '#8B5E3C', marginBottom: 10 },
+  label: { fontSize: 13, fontWeight: '600', color: theme.colors.brand, marginBottom: 10 },
   input: {
-    backgroundColor: '#FFF8F0',
+    backgroundColor: theme.colors.warm.ivory,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 18,
-    color: '#5C3D1E',
+    color: theme.colors.warm.dark,
     fontWeight: '600',
     borderWidth: 1,
-    borderColor: '#DEC8A8',
+    borderColor: theme.colors.warm.edge,
   },
-  inputHint: { fontSize: 12, color: '#D4B896', textAlign: 'right', marginTop: 4 },
+  inputHint: { fontSize: 12, color: theme.colors.warm.lightOak, textAlign: 'right', marginTop: 4 },
 
   avatarWrap: { alignItems: 'center', marginTop: 28, marginBottom: 8 },
   avatarCircle: {
     width: 80, height: 80, borderRadius: 40,
-    backgroundColor: '#FDF6EC',
-    borderWidth: 2, borderColor: '#DEC8A8',
+    backgroundColor: theme.colors.warm.cream,
+    borderWidth: 2, borderColor: theme.colors.warm.edge,
     justifyContent: 'center', alignItems: 'center',
   },
-  avatarName: { marginTop: 10, fontSize: 14, fontWeight: '700', color: '#8B5E3C' },
+  avatarName: { marginTop: 10, fontSize: 14, fontWeight: '700', color: theme.colors.brand },
 
   nextBtn: {
-    backgroundColor: '#8B5E3C',
+    backgroundColor: theme.colors.brand,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
