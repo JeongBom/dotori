@@ -14,21 +14,7 @@ import Svg, { Path, Circle } from 'react-native-svg';
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { Note } from '../types';
 import { RootStackParamList } from '../navigation';
-
-// ── 디자인 토큰 ────────────────────────────────
-
-const C = {
-  brown:    '#8B5E3C',
-  warmOak:  '#A87850',
-  lightOak: '#C49A6C',
-  ivory:    '#FFF8F0',
-  cream:    '#FDF6EC',
-  edge:     '#DEC8A8',
-  dark:     '#5C3D1E',
-  fab:      '#A07A5C',
-} as const;
-
-const CARD_COLORS = ['#FFF8F0', '#FAEFD8', '#EBE5F4', '#FDF1E4', '#EBF4F8', '#EEF5EE'];
+import { theme } from '../theme';
 
 // ── 날짜 포맷 ──────────────────────────────────
 
@@ -46,7 +32,7 @@ function formatDate(iso: string): string {
 // ── SVG 아이콘 ──────────────────────────────────
 
 const SvgSearch = ({ active }: { active: boolean }) => (
-  <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={active ? C.brown : C.dark} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+  <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={active ? theme.colors.brand : theme.colors.warm.dark} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
     <Circle cx="11" cy="11" r="7" />
     <Path d="M20 20l-3.5-3.5" />
   </Svg>
@@ -59,7 +45,7 @@ const SvgPencil = () => (
 );
 
 const SvgEmpty = () => (
-  <Svg width={52} height={52} viewBox="0 0 24 24" fill="none" stroke={C.lightOak} strokeWidth={1} strokeLinecap="round" strokeLinejoin="round">
+  <Svg width={52} height={52} viewBox="0 0 24 24" fill="none" stroke={theme.colors.warm.lightOak} strokeWidth={1} strokeLinecap="round" strokeLinejoin="round">
     <Path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
     <Path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
   </Svg>
@@ -74,7 +60,7 @@ interface NoteCardProps {
 }
 
 const NoteCard: React.FC<NoteCardProps> = ({ note, index, onPress }) => {
-  const bg = CARD_COLORS[index % CARD_COLORS.length];
+  const bg = theme.colors.noteCards[index % theme.colors.noteCards.length];
   const preview = note.content.replace(/https?:\/\/[^\s]+/g, '🔗').slice(0, 80);
 
   return (
@@ -92,16 +78,16 @@ const card = StyleSheet.create({
     borderRadius: 14,
     padding: 12,
     borderWidth: 1,
-    borderColor: `${C.edge}55`,
-    shadowColor: C.brown,
+    borderColor: `${theme.colors.warm.edge}55`,
+    shadowColor: theme.colors.brand,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,
     shadowRadius: 4,
     elevation: 1,
   },
-  title: { fontSize: 13, fontWeight: '800', color: C.dark, letterSpacing: -0.2, marginBottom: 5 },
-  body: { fontSize: 11, color: C.warmOak, lineHeight: 16, marginBottom: 8 },
-  date: { fontSize: 10, color: C.lightOak, fontWeight: '500' },
+  title: { fontSize: 13, fontWeight: '700', color: theme.colors.warm.dark, letterSpacing: -0.2, marginBottom: 5 },
+  body: { fontSize: 11, color: theme.colors.warm.oak, lineHeight: 16, marginBottom: 8 },
+  date: { fontSize: 10, color: theme.colors.warm.lightOak, fontWeight: '500' },
 });
 
 // ── 메인 화면 ──────────────────────────────────
@@ -179,7 +165,7 @@ const NotesScreen: React.FC = () => {
           <TextInput
             style={s.searchInput}
             placeholder="메모 검색"
-            placeholderTextColor={C.lightOak}
+            placeholderTextColor={theme.colors.warm.lightOak}
             value={search}
             onChangeText={setSearch}
             autoFocus
@@ -189,7 +175,7 @@ const NotesScreen: React.FC = () => {
 
       {/* 컨텐츠 */}
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={C.brown} />
+        <ActivityIndicator style={{ marginTop: 40 }} color={theme.colors.brand} />
       ) : filtered.length === 0 ? (
         <View style={s.empty}>
           <SvgEmpty />
@@ -217,7 +203,7 @@ const NotesScreen: React.FC = () => {
 };
 
 const s = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: C.cream },
+  safeArea: { flex: 1, backgroundColor: theme.colors.warm.cream },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -226,34 +212,34 @@ const s = StyleSheet.create({
     paddingTop: 6,
     paddingBottom: 14,
   },
-  subLabel: { fontSize: 12, color: C.lightOak, fontWeight: '600', marginBottom: 2 },
-  title: { fontSize: 26, fontWeight: '800', color: C.dark, letterSpacing: -0.5 },
+  subLabel: { fontSize: 12, color: theme.colors.warm.lightOak, fontWeight: '600', marginBottom: 2 },
+  title: { fontSize: 26, fontWeight: '700', color: theme.colors.warm.dark, letterSpacing: -0.5 },
   iconBtn: {
     width: 36, height: 36, borderRadius: 18,
-    backgroundColor: C.ivory,
-    borderWidth: 1, borderColor: C.edge,
+    backgroundColor: theme.colors.warm.ivory,
+    borderWidth: 1, borderColor: theme.colors.warm.edge,
     justifyContent: 'center', alignItems: 'center',
   },
-  iconBtnActive: { backgroundColor: '#EDD9C0', borderColor: C.warmOak },
+  iconBtnActive: { backgroundColor: theme.colors.warm.edge, borderColor: theme.colors.warm.oak },
   searchBox: {
     marginHorizontal: 16, marginBottom: 12,
-    backgroundColor: C.ivory, borderRadius: 12,
-    borderWidth: 1, borderColor: C.edge,
+    backgroundColor: theme.colors.warm.ivory, borderRadius: 12,
+    borderWidth: 1, borderColor: theme.colors.warm.edge,
     paddingHorizontal: 14, paddingVertical: 11,
   },
-  searchInput: { fontSize: 15, color: C.dark, padding: 0 },
+  searchInput: { fontSize: 15, color: theme.colors.warm.dark, padding: 0 },
   list: { paddingHorizontal: 16, paddingBottom: 100 },
   columnWrapper: { gap: 8, marginBottom: 8 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingBottom: 60 },
-  emptyText: { fontSize: 16, fontWeight: '700', color: C.warmOak },
-  emptySubText: { fontSize: 13, color: C.lightOak, textAlign: 'center' },
+  emptyText: { fontSize: 16, fontWeight: '700', color: theme.colors.warm.oak },
+  emptySubText: { fontSize: 13, color: theme.colors.warm.lightOak, textAlign: 'center' },
   fab: {
     position: 'absolute',
     bottom: 24, right: 24,
-    backgroundColor: C.fab,
+    backgroundColor: theme.colors.warm.oak,
     width: 52, height: 52, borderRadius: 26,
     justifyContent: 'center', alignItems: 'center',
-    shadowColor: C.fab,
+    shadowColor: theme.colors.warm.oak,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.4,
     shadowRadius: 16,
