@@ -17,9 +17,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { supabase } from '../../lib/supabase';
+import { theme } from '../../theme';
 
 interface ResetPasswordScreenProps {
-  onDone: () => void; // 완료 후 일반 로그인 화면으로 전환
+  onDone: () => void;
 }
 
 const ResetPasswordScreen: React.FC<ResetPasswordScreenProps> = ({ onDone }) => {
@@ -68,7 +69,7 @@ const ResetPasswordScreen: React.FC<ResetPasswordScreenProps> = ({ onDone }) => 
           <TextInput
             style={styles.input}
             placeholder="6자 이상"
-            placeholderTextColor="#C49A6C"
+            placeholderTextColor={theme.colors.warm.lightOak}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -80,7 +81,7 @@ const ResetPasswordScreen: React.FC<ResetPasswordScreenProps> = ({ onDone }) => 
           <TextInput
             style={styles.input}
             placeholder="비밀번호를 다시 입력하세요"
-            placeholderTextColor="#C49A6C"
+            placeholderTextColor={theme.colors.warm.lightOak}
             value={passwordConfirm}
             onChangeText={setPasswordConfirm}
             secureTextEntry
@@ -106,27 +107,27 @@ const ResetPasswordScreen: React.FC<ResetPasswordScreenProps> = ({ onDone }) => 
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#FDF6EC' },
+  safeArea: { flex: 1, backgroundColor: theme.colors.warm.cream },
   content: { flex: 1, padding: 24, paddingTop: 60 },
 
   emoji: { fontSize: 48, marginBottom: 16 },
-  title: { fontSize: 26, fontWeight: '800', color: '#5C3D1E', marginBottom: 8 },
-  desc: { fontSize: 14, color: '#8B5E3C', lineHeight: 22, marginBottom: 32 },
+  title: { fontSize: 26, fontWeight: '700', color: theme.colors.warm.dark, marginBottom: 8 },
+  desc: { fontSize: 14, color: theme.colors.brand, lineHeight: 22, marginBottom: 32 },
 
-  label: { fontSize: 13, fontWeight: '600', color: '#8B5E3C', marginBottom: 8 },
+  label: { fontSize: 13, fontWeight: '600', color: theme.colors.brand, marginBottom: 8 },
   input: {
-    backgroundColor: '#FFF8F0',
+    backgroundColor: theme.colors.warm.ivory,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
-    color: '#5C3D1E',
+    color: theme.colors.warm.dark,
     borderWidth: 1,
-    borderColor: '#DEC8A8',
+    borderColor: theme.colors.warm.edge,
   },
 
   submitBtn: {
-    backgroundColor: '#8B5E3C',
+    backgroundColor: theme.colors.brand,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
