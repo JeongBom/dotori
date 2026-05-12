@@ -13,6 +13,7 @@ import { ChevronLeft, Trash2, Save } from 'lucide-react-native';
 import { supabase } from '../lib/supabase';
 import { Note } from '../types';
 import { RootStackParamList } from '../navigation';
+import { theme } from '../theme';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 type RouteT = RouteProp<RootStackParamList, 'NoteDetail'>;
@@ -131,15 +132,15 @@ const NoteDetailScreen: React.FC = () => {
         {/* 상단 바 */}
         <View style={styles.topBar}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7}>
-            <ChevronLeft color="#8B5E3C" size={26} strokeWidth={1.5} />
+            <ChevronLeft color={theme.colors.brand} size={26} strokeWidth={1.5} />
             <Text style={styles.backText}>메모</Text>
           </TouchableOpacity>
           <View style={styles.topBarRight}>
             <TouchableOpacity onPress={handleSave} style={styles.saveBtn} activeOpacity={0.7}>
-              <Save color="#8B5E3C" size={20} strokeWidth={1.5} />
+              <Save color={theme.colors.brand} size={20} strokeWidth={1.5} />
             </TouchableOpacity>
             <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn} activeOpacity={0.7}>
-              <Trash2 color="#D95F4B" size={20} strokeWidth={1.5} />
+              <Trash2 color={theme.colors.status.danger} size={20} strokeWidth={1.5} />
             </TouchableOpacity>
           </View>
         </View>
@@ -158,7 +159,7 @@ const NoteDetailScreen: React.FC = () => {
           <TextInput
             style={styles.titleInput}
             placeholder="제목"
-            placeholderTextColor="#C49A6C"
+            placeholderTextColor={theme.colors.warm.lightOak}
             value={title}
             onChangeText={setTitle}
             multiline
@@ -171,7 +172,7 @@ const NoteDetailScreen: React.FC = () => {
             <TextInput
               style={styles.contentInput}
               placeholder="내용을 입력하세요..."
-              placeholderTextColor="#C49A6C"
+              placeholderTextColor={theme.colors.warm.lightOak}
               value={content}
               onChangeText={setContent}
               multiline
@@ -200,7 +201,7 @@ const NoteDetailScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#FDF6EC' },
+  safeArea: { flex: 1, backgroundColor: theme.colors.warm.cream },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -209,24 +210,24 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  backText: { fontSize: 17, color: '#8B5E3C', fontWeight: '600' },
+  backText: { fontSize: 17, color: theme.colors.brand, fontWeight: '600' },
   topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   saveBtn: { padding: 8 },
   deleteBtn: { padding: 8 },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 24, paddingBottom: 60 },
-  dateText: { fontSize: 12, color: '#A87850', marginBottom: 12, textAlign: 'center' },
+  dateText: { fontSize: 12, color: theme.colors.warm.oak, marginBottom: 12, textAlign: 'center' },
   titleInput: {
     fontSize: 22,
-    fontWeight: '800',
-    color: '#5C3D1E',
+    fontWeight: '700',
+    color: theme.colors.warm.dark,
     marginBottom: 12,
     lineHeight: 30,
   },
-  divider: { height: 1, backgroundColor: '#EDD9C0', marginBottom: 16 },
+  divider: { height: 1, backgroundColor: theme.colors.warm.edge, marginBottom: 16 },
   contentInput: {
     fontSize: 16,
-    color: '#5C3D1E',
+    color: theme.colors.warm.dark,
     lineHeight: 26,
     minHeight: 300,
   },
@@ -235,16 +236,16 @@ const styles = StyleSheet.create({
   },
   contentText: {
     fontSize: 16,
-    color: '#5C3D1E',
+    color: theme.colors.warm.dark,
     lineHeight: 26,
   },
   contentPlaceholder: {
     fontSize: 16,
-    color: '#C49A6C',
+    color: theme.colors.warm.lightOak,
     lineHeight: 26,
   },
   inlineLink: {
-    color: '#4A90D9',
+    color: theme.colors.link,
     textDecorationLine: 'underline',
   },
 });
