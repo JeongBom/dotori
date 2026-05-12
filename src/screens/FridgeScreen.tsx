@@ -10,20 +10,13 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Plus } from 'lucide-react-native';
-import Svg, { Path, Rect, Circle } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { FridgeItem } from '../types';
 import { RootTabParamList, RootStackParamList } from '../navigation';
 import { cancelExpiryNotification } from '../lib/notifications';
-
-// ── 디자인 토큰 ───────────────────────────────
-const C = {
-  brown:   '#8B5E3C', warmOak: '#A87850', lightOak: '#C49A6C',
-  ivory:   '#FFF8F0', cream:   '#FDF6EC', edge:     '#DEC8A8',
-  dark:    '#5C3D1E', deep:    '#6B4226',
-  danger:  '#D95F4B', warn:    '#E09B4B',
-};
+import { theme } from '../theme';
 
 type FridgeNav = CompositeNavigationProp<
   BottomTabNavigationProp<RootTabParamList, 'Fridge'>,
@@ -36,15 +29,15 @@ type SectionKey = '기한 지남' | '임박' | '여유' | '기한없음' | '먹�
 
 // ── D-day 계산 ────────────────────────────────
 function getDDay(expiryDate: string | null): { label: string; color: string; status: 'expired' | 'soon' | 'ok' | 'none' } {
-  if (!expiryDate) return { label: '기한없음', color: C.lightOak, status: 'none' };
+  if (!expiryDate) return { label: '기한없음', color: theme.colors.warm.lightOak, status: 'none' };
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const expiry = new Date(expiryDate); expiry.setHours(0, 0, 0, 0);
   const diff = Math.round((expiry.getTime() - today.getTime()) / 86400000);
-  if (diff < 0)  return { label: `D+${Math.abs(diff)}`, color: C.danger, status: 'expired' };
-  if (diff === 0) return { label: 'D-day', color: C.danger, status: 'soon' };
-  if (diff <= 3)  return { label: `D-${diff}`,  color: C.danger, status: 'soon' };
-  if (diff <= 7)  return { label: `D-${diff}`,  color: C.warn,   status: 'soon' };
-  return { label: `D-${diff}`, color: C.brown, status: 'ok' };
+  if (diff < 0)  return { label: `D+${Math.abs(diff)}`, color: theme.colors.status.danger, status: 'expired' };
+  if (diff === 0) return { label: 'D-day', color: theme.colors.status.danger, status: 'soon' };
+  if (diff <= 3)  return { label: `D-${diff}`,  color: theme.colors.status.danger, status: 'soon' };
+  if (diff <= 7)  return { label: `D-${diff}`,  color: theme.colors.status.warn,   status: 'soon' };
+  return { label: `D-${diff}`, color: theme.colors.brand, status: 'ok' };
 }
 
 function sortItems(items: FridgeItem[], sort: SortType): FridgeItem[] {
@@ -67,7 +60,7 @@ function IconBtn({ children, onPress }: { children: React.ReactNode; onPress?: (
   );
 }
 const ic = StyleSheet.create({
-  btn: { width: 36, height: 36, borderRadius: 12, backgroundColor: C.ivory, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.edge + '66' },
+  btn: { width: 36, height: 36, borderRadius: 12, backgroundColor: theme.colors.warm.ivory, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: `${theme.colors.warm.edge}66` },
 });
 
 // ── StatBlock ─────────────────────────────────
@@ -83,11 +76,11 @@ function StatBlock({ primary, label, sub, color }: { primary: string | number; l
   );
 }
 const sb = StyleSheet.create({
-  card:    { flex: 1, backgroundColor: C.ivory, borderRadius: 14, padding: 12, shadowColor: C.brown, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  card:    { flex: 1, backgroundColor: theme.colors.warm.ivory, borderRadius: 14, padding: 12, shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
   top:     { flexDirection: 'row', alignItems: 'baseline', gap: 4, marginBottom: 3 },
-  primary: { fontSize: 24, fontWeight: '800', letterSpacing: -0.5, lineHeight: 26 },
-  label:   { fontSize: 10, color: C.warmOak, fontWeight: '600' },
-  sub:     { fontSize: 10, color: C.lightOak, fontWeight: '500' },
+  primary: { fontSize: 24, fontWeight: '700', letterSpacing: -0.5, lineHeight: 26 },
+  label:   { fontSize: 10, color: theme.colors.warm.oak, fontWeight: '600' },
+  sub:     { fontSize: 10, color: theme.colors.warm.lightOak, fontWeight: '500' },
 });
 
 // ── 섹션 라벨 ────────────────────────────────
@@ -103,8 +96,8 @@ function SectionLabel({ label, count, color }: { label: string; count: number; c
 const sl = StyleSheet.create({
   row:   { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 },
   dot:   { width: 6, height: 6, borderRadius: 3 },
-  label: { fontSize: 10, fontWeight: '700', color: C.dark, letterSpacing: 0.3 },
-  count: { fontSize: 10, color: C.lightOak, fontWeight: '600' },
+  label: { fontSize: 10, fontWeight: '700', color: theme.colors.warm.dark, letterSpacing: 0.3 },
+  count: { fontSize: 10, color: theme.colors.warm.lightOak, fontWeight: '600' },
 });
 
 // ── 스와이프 삭제 ─────────────────────────────
@@ -114,7 +107,7 @@ const RightAction: React.FC<{ onDelete: () => void }> = ({ onDelete }) => (
   </TouchableOpacity>
 );
 const sw = StyleSheet.create({
-  btn:  { backgroundColor: C.danger, justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 8, borderTopRightRadius: 14, borderBottomRightRadius: 14 },
+  btn:  { backgroundColor: theme.colors.status.danger, justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 8, borderTopRightRadius: 14, borderBottomRightRadius: 14 },
   text: { color: '#fff', fontWeight: '700', fontSize: 14 },
 });
 
@@ -133,8 +126,11 @@ const FoodRow: React.FC<FoodRowProps> = React.memo(({ item, onToggle, onDelete, 
   const [editingQty, setEditingQty] = useState(false);
   const [qtyInput, setQtyInput] = useState(String(item.quantity ?? 1));
 
-  const storageBg = item.storage_type === '냉동' ? '#C8D8F0' : item.storage_type === '실온' ? '#F0E8D4' : '#EDD9C0';
-  const storageFg = item.storage_type === '냉동' ? '#5A7EC9' : item.storage_type === '실온' ? '#A07840' : C.brown;
+  const storageStyle = item.storage_type === '냉동'
+    ? theme.colors.storage.frozen
+    : item.storage_type === '실온'
+      ? theme.colors.storage.roomTemp
+      : theme.colors.storage.fridge;
 
   const handleDelete = () => {
     swipeRef.current?.close();
@@ -172,8 +168,8 @@ const FoodRow: React.FC<FoodRowProps> = React.memo(({ item, onToggle, onDelete, 
         <TouchableOpacity style={fr.info} onPress={() => onEdit(item)} activeOpacity={0.7}>
           <Text style={[fr.name, item.is_consumed && fr.nameDone]} numberOfLines={1}>{item.name}</Text>
           <View style={fr.meta}>
-            <View style={[fr.chip, { backgroundColor: storageBg }]}>
-              <Text style={[fr.chipText, { color: storageFg }]}>{item.storage_type}</Text>
+            <View style={[fr.chip, { backgroundColor: storageStyle.bg }]}>
+              <Text style={[fr.chipText, { color: storageStyle.fg }]}>{item.storage_type}</Text>
             </View>
             <Text style={fr.date}>넣은날 {item.stored_date.slice(5).replace('-', '.')}</Text>
           </View>
@@ -219,26 +215,26 @@ const FoodRow: React.FC<FoodRowProps> = React.memo(({ item, onToggle, onDelete, 
 });
 
 const fr = StyleSheet.create({
-  row:          { flexDirection: 'row', alignItems: 'center', backgroundColor: C.ivory, marginHorizontal: 16, marginBottom: 8, borderRadius: 14, padding: 12, shadowColor: C.brown, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  row:          { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.warm.ivory, marginHorizontal: 16, marginBottom: 8, borderRadius: 14, padding: 12, shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
   rowDone:      { opacity: 0.55 },
   checkbox:     { marginRight: 10 },
-  checkCircle:  { width: 22, height: 22, borderRadius: 11, borderWidth: 1.8, borderColor: C.edge, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
-  checkCircleDone: { backgroundColor: C.brown, borderColor: C.brown },
+  checkCircle:  { width: 22, height: 22, borderRadius: 11, borderWidth: 1.8, borderColor: theme.colors.warm.edge, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
+  checkCircleDone: { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
   info:         { flex: 1 },
-  name:         { fontSize: 13, fontWeight: '700', color: C.dark, marginBottom: 4 },
-  nameDone:     { color: C.lightOak, textDecorationLine: 'line-through' },
+  name:         { fontSize: 13, fontWeight: '700', color: theme.colors.warm.dark, marginBottom: 4 },
+  nameDone:     { color: theme.colors.warm.lightOak, textDecorationLine: 'line-through' },
   meta:         { flexDirection: 'row', alignItems: 'center', gap: 6 },
   chip:         { paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 },
   chipText:     { fontSize: 9, fontWeight: '700', lineHeight: 11 },
-  date:         { fontSize: 10, color: C.lightOak },
+  date:         { fontSize: 10, color: theme.colors.warm.lightOak },
   right:        { alignItems: 'flex-end', gap: 4 },
   qtyRow:       { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  qtyBtn:       { width: 18, height: 18, borderRadius: 9, backgroundColor: C.edge + '88', alignItems: 'center', justifyContent: 'center' },
-  qtyBtnText:   { fontSize: 11, fontWeight: '700', color: C.dark, lineHeight: 16 },
-  qtyNum:       { fontSize: 12, fontWeight: '700', color: C.dark, minWidth: 12, textAlign: 'center' },
-  qtyInput:     { fontSize: 12, fontWeight: '700', color: C.dark, textAlign: 'center', minWidth: 32, paddingHorizontal: 2, paddingVertical: 0, borderBottomWidth: 1.5, borderBottomColor: C.brown },
-  dday:         { fontSize: 12, fontWeight: '800', minWidth: 36, textAlign: 'right' },
-  consumedAt:   { fontSize: 11, color: C.lightOak },
+  qtyBtn:       { width: 18, height: 18, borderRadius: 9, backgroundColor: `${theme.colors.warm.edge}88`, alignItems: 'center', justifyContent: 'center' },
+  qtyBtnText:   { fontSize: 11, fontWeight: '700', color: theme.colors.warm.dark, lineHeight: 16 },
+  qtyNum:       { fontSize: 12, fontWeight: '700', color: theme.colors.warm.dark, minWidth: 12, textAlign: 'center' },
+  qtyInput:     { fontSize: 12, fontWeight: '700', color: theme.colors.warm.dark, textAlign: 'center', minWidth: 32, paddingHorizontal: 2, paddingVertical: 0, borderBottomWidth: 1.5, borderBottomColor: theme.colors.brand },
+  dday:         { fontSize: 12, fontWeight: '700', minWidth: 36, textAlign: 'right' },
+  consumedAt:   { fontSize: 11, color: theme.colors.warm.lightOak },
 });
 
 // ── 메인 화면 ─────────────────────────────────
@@ -341,14 +337,18 @@ const FridgeScreen: React.FC = () => {
   const totalDisplay = sections.reduce((s, sec) => s + sec.data.length, 0);
 
   const SECTION_COLORS: Record<SectionKey, string> = {
-    '기한 지남': C.danger, '임박': C.warn, '여유': C.brown, '기한없음': C.lightOak, '먹은 음식': C.lightOak,
+    '기한 지남': theme.colors.status.danger,
+    '임박':      theme.colors.status.warn,
+    '여유':      theme.colors.brand,
+    '기한없음':  theme.colors.warm.lightOak,
+    '먹은 음식': theme.colors.warm.lightOak,
   };
   const SORTS: SortType[] = ['유통기한', '이름', '넣은날짜'];
 
   if (loading) {
     return (
       <SafeAreaView style={s.centered}>
-        <ActivityIndicator size="large" color={C.brown} />
+        <ActivityIndicator size="large" color={theme.colors.brand} />
       </SafeAreaView>
     );
   }
@@ -364,7 +364,7 @@ const FridgeScreen: React.FC = () => {
         <View style={s.headerBtns}>
           <IconBtn onPress={() => setShowSortMenu(v => !v)}>
             <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-              <Path d="M3 6h18M6 12h12M9 18h6" stroke={C.dark} strokeWidth={1.8} strokeLinecap="round" />
+              <Path d="M3 6h18M6 12h12M9 18h6" stroke={theme.colors.warm.dark} strokeWidth={1.8} strokeLinecap="round" />
             </Svg>
           </IconBtn>
         </View>
@@ -372,9 +372,9 @@ const FridgeScreen: React.FC = () => {
 
       {/* ── StatBlock 3개 ── */}
       <View style={s.statRow}>
-        <StatBlock primary={activeItems.length} label="전체" sub="보관 중" color={C.brown} />
-        <StatBlock primary={soonCount} label="임박" sub="D-3 이내" color={C.warn} />
-        <StatBlock primary={expiredCount} label="초과" sub="D-day 넘음" color={C.danger} />
+        <StatBlock primary={activeItems.length} label="전체" sub="보관 중" color={theme.colors.brand} />
+        <StatBlock primary={soonCount} label="임박" sub="D-3 이내" color={theme.colors.status.warn} />
+        <StatBlock primary={expiredCount} label="초과" sub="D-day 넘음" color={theme.colors.status.danger} />
       </View>
 
       {/* ── 필터 탭 ── */}
@@ -411,7 +411,7 @@ const FridgeScreen: React.FC = () => {
         <Text style={s.sortCount}>{totalDisplay}개 · {sort}순</Text>
         <TouchableOpacity style={s.sortBtn} onPress={() => setShowSortMenu(v => !v)}>
           <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
-            <Path d="M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3" stroke={C.warmOak} strokeWidth={2} strokeLinecap="round" />
+            <Path d="M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3" stroke={theme.colors.warm.oak} strokeWidth={2} strokeLinecap="round" />
           </Svg>
           <Text style={s.sortBtnText}>{sort}순</Text>
         </TouchableOpacity>
@@ -469,38 +469,38 @@ const FridgeScreen: React.FC = () => {
 };
 
 const s = StyleSheet.create({
-  safe:    { flex: 1, backgroundColor: C.cream },
-  centered:{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.cream },
+  safe:     { flex: 1, backgroundColor: theme.colors.warm.cream },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.warm.cream },
 
-  header:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 6, paddingBottom: 14 },
-  subLabel:  { fontSize: 11, color: C.lightOak, fontWeight: '600' },
-  title:     { fontSize: 24, fontWeight: '800', color: C.dark, letterSpacing: -0.4, marginTop: 1 },
-  headerBtns:{ flexDirection: 'row', gap: 8 },
+  header:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 6, paddingBottom: 14 },
+  subLabel:   { fontSize: 11, color: theme.colors.warm.lightOak, fontWeight: '600' },
+  title:      { fontSize: 24, fontWeight: '700', color: theme.colors.warm.dark, letterSpacing: -0.4, marginTop: 1 },
+  headerBtns: { flexDirection: 'row', gap: 8 },
 
   statRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 14 },
 
   filterScrollWrapper: { height: 44 },
-  filterWrap:        { paddingLeft: 16, paddingRight: 8, gap: 6, alignItems: 'center' },
-  filterWrapTablet:  { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, height: 44 },
-  filterTab:   { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 14, backgroundColor: C.ivory, borderWidth: 1, borderColor: C.edge },
-  filterTabActive: { backgroundColor: C.brown, borderColor: C.brown },
-  filterText:  { fontSize: 11, fontWeight: '600', color: C.warmOak },
+  filterWrap:       { paddingLeft: 16, paddingRight: 8, gap: 6, alignItems: 'center' },
+  filterWrapTablet: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, height: 44 },
+  filterTab:        { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 14, backgroundColor: theme.colors.warm.ivory, borderWidth: 1, borderColor: theme.colors.warm.edge },
+  filterTabActive:  { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
+  filterText:       { fontSize: 11, fontWeight: '600', color: theme.colors.warm.oak },
   filterTextActive: { color: '#fff' },
 
-  sortBar:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 6, position: 'relative', zIndex: 10 },
-  sortCount:   { fontSize: 11, color: C.lightOak, fontWeight: '500' },
-  sortBtn:     { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  sortBtnText: { fontSize: 11, color: C.warmOak, fontWeight: '600' },
-  sortMenu:    { position: 'absolute', right: 16, top: 30, backgroundColor: C.ivory, borderRadius: 12, borderWidth: 1, borderColor: C.edge, shadowColor: C.brown, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 6, overflow: 'hidden' },
-  sortItem:    { paddingHorizontal: 20, paddingVertical: 12 },
-  sortItemActive: { backgroundColor: C.cream },
-  sortItemText:   { fontSize: 14, color: C.warmOak, fontWeight: '500' },
-  sortItemTextActive: { color: C.dark, fontWeight: '700' },
+  sortBar:         { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 6, position: 'relative', zIndex: 10 },
+  sortCount:       { fontSize: 11, color: theme.colors.warm.lightOak, fontWeight: '500' },
+  sortBtn:         { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  sortBtnText:     { fontSize: 11, color: theme.colors.warm.oak, fontWeight: '600' },
+  sortMenu:        { position: 'absolute', right: 16, top: 30, backgroundColor: theme.colors.warm.ivory, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.warm.edge, shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 6, overflow: 'hidden' },
+  sortItem:        { paddingHorizontal: 20, paddingVertical: 12 },
+  sortItemActive:  { backgroundColor: theme.colors.warm.cream },
+  sortItemText:    { fontSize: 14, color: theme.colors.warm.oak, fontWeight: '500' },
+  sortItemTextActive: { color: theme.colors.warm.dark, fontWeight: '700' },
 
   empty:     { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  emptyText: { fontSize: 15, color: C.lightOak, fontWeight: '500' },
+  emptyText: { fontSize: 15, color: theme.colors.warm.lightOak, fontWeight: '500' },
 
-  fab: { position: 'absolute', bottom: 24, right: 24, backgroundColor: C.brown, width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', shadowColor: C.deep, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6 },
+  fab: { position: 'absolute', bottom: 24, right: 24, backgroundColor: theme.colors.brand, width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', shadowColor: theme.colors.warm.deep, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6 },
 });
 
 export default FridgeScreen;

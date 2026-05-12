@@ -39,6 +39,13 @@ export const theme = {
       deep:     '#6B4226',  // 다크 강조
     },
 
+    // ── 보관 유형 칩 ──────────────────────────
+    storage: {
+      fridge:   { bg: '#EDD9C0', fg: '#8B5E3C' },  // 냉장
+      frozen:   { bg: '#C8D8F0', fg: '#5A7EC9' },  // 냉동
+      roomTemp: { bg: '#F0E8D4', fg: '#A07840' },  // 실온
+    },
+
     // ── 기타 ──────────────────────────────────
     purple:    '#9478C9',    // 아바타 등 보조 포인트 컬러
     neutral:   '#9EA8B0',    // 비활성 칩/뱃지 (cool gray)
