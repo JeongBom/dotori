@@ -21,6 +21,7 @@ import { ChevronLeft, Check } from 'lucide-react-native';
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { SupplyCategoryEntry } from '../types';
 import { RootStackParamList } from '../navigation';
+import { theme } from '../theme';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'AddSupply'>;
 type RouteType = RouteProp<RootStackParamList, 'AddSupply'>;
@@ -185,7 +186,7 @@ const AddSupplyScreen: React.FC = () => {
                 ref={nameInputRef}
                 style={s.input}
                 placeholder="예) 주방 세제, 샴푸, 두루마리 휴지"
-                placeholderTextColor="#C49A6C"
+                placeholderTextColor={theme.colors.warm.lightOak}
                 value={name}
                 onChangeText={setName}
                 autoCorrect={false}
@@ -205,7 +206,7 @@ const AddSupplyScreen: React.FC = () => {
 
           <Text style={s.label}>카테고리 <Text style={s.labelOptional}>(선택)</Text></Text>
           {catsLoading ? (
-            <ActivityIndicator size="small" color="#8B5E3C" style={{ alignSelf: 'flex-start', marginBottom: 16 }} />
+            <ActivityIndicator size="small" color={theme.colors.brand} style={{ alignSelf: 'flex-start', marginBottom: 16 }} />
           ) : categories.length === 0 ? (
             <Text style={s.noCatText}>생필품 화면에서 카테고리를 먼저 추가해주세요</Text>
           ) : (
@@ -300,7 +301,7 @@ const AddSupplyScreen: React.FC = () => {
             <TextInput
               style={[s.input, { minHeight: 100, textAlignVertical: 'top' }]}
               placeholder="제품명 또는 메모를 자유롭게 적어보세요"
-              placeholderTextColor="#C49A6C"
+              placeholderTextColor={theme.colors.warm.lightOak}
               value={note}
               onChangeText={setNote}
               multiline
@@ -326,7 +327,7 @@ const AddSupplyScreen: React.FC = () => {
           onPress={() => { if (step > 1) setStep(s => s - 1); else navigation.goBack(); }}
           style={s.backBtn}
         >
-          <ChevronLeft color="#5C3D1E" size={24} strokeWidth={2} />
+          <ChevronLeft color={theme.colors.warm.dark} size={24} strokeWidth={2} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>{isEditing ? '생필품 수정' : '생필품 추가'}</Text>
         <View style={s.headerRight} />
@@ -353,60 +354,60 @@ const AddSupplyScreen: React.FC = () => {
 };
 
 const s = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
+  safeArea: { flex: 1, backgroundColor: theme.colors.card },
 
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingVertical: 14,
   },
   backBtn: { width: 40, alignItems: 'flex-start' },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: '#5C3D1E' },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: theme.colors.warm.dark },
   headerRight: { width: 40 },
 
   progressRow: { flexDirection: 'row', paddingHorizontal: 20, gap: 6, marginBottom: 4 },
   progressSeg: { flex: 1, height: 4, borderRadius: 2 },
-  progressSegActive: { backgroundColor: '#8B5E3C' },
-  progressSegInactive: { backgroundColor: '#EDD9C0' },
+  progressSegActive: { backgroundColor: theme.colors.brand },
+  progressSegInactive: { backgroundColor: theme.colors.warm.edge },
 
   stepContent: { padding: 24, paddingBottom: 32 },
-  stepQuestion: { fontSize: 22, fontWeight: '800', color: '#5C3D1E', marginBottom: 32, lineHeight: 30 },
+  stepQuestion: { fontSize: 22, fontWeight: '700', color: theme.colors.warm.dark, marginBottom: 32, lineHeight: 30 },
 
-  label: { fontSize: 13, fontWeight: '600', color: '#8B5E3C', marginBottom: 10 },
-  labelOptional: { fontSize: 12, fontWeight: '400', color: '#C49A6C' },
-  subLabel: { fontSize: 12, color: '#C49A6C', marginBottom: 10, marginTop: -6 },
-  noCatText: { fontSize: 13, color: '#C49A6C', marginBottom: 16, fontStyle: 'italic' },
+  label: { fontSize: 13, fontWeight: '600', color: theme.colors.brand, marginBottom: 10 },
+  labelOptional: { fontSize: 12, fontWeight: '400', color: theme.colors.warm.lightOak },
+  subLabel: { fontSize: 12, color: theme.colors.warm.lightOak, marginBottom: 10, marginTop: -6 },
+  noCatText: { fontSize: 13, color: theme.colors.warm.lightOak, marginBottom: 16, fontStyle: 'italic' },
 
   inputBox: {
-    backgroundColor: '#FFF8F0', borderRadius: 14,
+    backgroundColor: theme.colors.warm.ivory, borderRadius: 14,
     paddingHorizontal: 16, paddingVertical: 14,
-    borderWidth: 1, borderColor: '#DEC8A8',
+    borderWidth: 1, borderColor: theme.colors.warm.edge,
   },
-  input: { fontSize: 17, color: '#5C3D1E', padding: 0 },
+  input: { fontSize: 17, color: theme.colors.warm.dark, padding: 0 },
 
   catChip: {
     paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20, marginRight: 8,
-    backgroundColor: '#FFF8F0', borderWidth: 1, borderColor: '#DEC8A8',
+    backgroundColor: theme.colors.warm.ivory, borderWidth: 1, borderColor: theme.colors.warm.edge,
   },
-  catChipGray: { backgroundColor: '#9EA8B0', borderColor: '#9EA8B0' },
-  catChipText: { fontSize: 13, color: '#8B5E3C', fontWeight: '500' },
+  catChipGray: { backgroundColor: theme.colors.neutral, borderColor: theme.colors.neutral },
+  catChipText: { fontSize: 13, color: theme.colors.brand, fontWeight: '500' },
   catChipTextWhite: { color: '#FFFFFF', fontWeight: '600' },
 
   qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 20 },
   qtyBtn: {
     width: 44, height: 44, borderRadius: 22,
-    backgroundColor: '#EDD9C0', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: theme.colors.warm.edge, alignItems: 'center', justifyContent: 'center',
   },
-  qtyBtnText: { fontSize: 22, fontWeight: '700', color: '#5C3D1E', lineHeight: 26 },
-  qtyNum: { fontSize: 28, fontWeight: '800', color: '#5C3D1E', minWidth: 40, textAlign: 'center' },
+  qtyBtnText: { fontSize: 22, fontWeight: '700', color: theme.colors.warm.dark, lineHeight: 26 },
+  qtyNum: { fontSize: 28, fontWeight: '700', color: theme.colors.warm.dark, minWidth: 40, textAlign: 'center' },
   qtyInput: {
-    fontSize: 28, fontWeight: '800', color: '#5C3D1E',
+    fontSize: 28, fontWeight: '700', color: theme.colors.warm.dark,
     minWidth: 60, textAlign: 'center',
-    borderBottomWidth: 2, borderBottomColor: '#8B5E3C', padding: 0,
+    borderBottomWidth: 2, borderBottomColor: theme.colors.brand, padding: 0,
   },
 
-  bottomBar: { paddingHorizontal: 24, paddingVertical: 16, backgroundColor: '#FFFFFF' },
+  bottomBar: { paddingHorizontal: 24, paddingVertical: 16, backgroundColor: theme.colors.card },
   ctaBtn: {
-    backgroundColor: '#8B5E3C', borderRadius: 16,
+    backgroundColor: theme.colors.brand, borderRadius: 16,
     paddingVertical: 18, alignItems: 'center',
   },
   ctaBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
@@ -414,13 +415,13 @@ const s = StyleSheet.create({
   doneWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   doneCircle: {
     width: 80, height: 80, borderRadius: 40,
-    backgroundColor: '#8B5E3C', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: theme.colors.brand, alignItems: 'center', justifyContent: 'center',
     marginBottom: 24,
   },
-  doneTitle: { fontSize: 24, fontWeight: '800', color: '#5C3D1E', marginBottom: 10 },
-  doneSub: { fontSize: 15, color: '#A87850', textAlign: 'center', lineHeight: 22, marginBottom: 48 },
+  doneTitle: { fontSize: 24, fontWeight: '700', color: theme.colors.warm.dark, marginBottom: 10 },
+  doneSub: { fontSize: 15, color: theme.colors.warm.oak, textAlign: 'center', lineHeight: 22, marginBottom: 48 },
   doneBtn: {
-    backgroundColor: '#8B5E3C', borderRadius: 16,
+    backgroundColor: theme.colors.brand, borderRadius: 16,
     paddingVertical: 16, paddingHorizontal: 48,
   },
   doneBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
