@@ -6,13 +6,10 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
   Alert,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -22,6 +19,8 @@ import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { supabase } from '../../lib/supabase';
 import { RootStackParamList } from '../../navigation';
 import { theme } from '../../theme';
+import TextField from '../../components/design-system/TextField';
+import PrimaryButton from '../../components/design-system/PrimaryButton';
 
 const AcornMark = ({ size = 48 }: { size?: number }) => (
   <Svg width={size} height={size} viewBox="0 0 52 60" fill="none">
@@ -89,19 +88,17 @@ const ProfileSetupScreen: React.FC = () => {
           <Text style={styles.title}>반가워요! 👋</Text>
           <Text style={styles.subtitle}>앱에서 사용할 닉네임을 설정해요</Text>
 
-          <Text style={styles.label}>닉네임</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="예: 도토리, 아내, 남편"
-            placeholderTextColor={theme.colors.warm.lightOak}
+          <TextField
+            label="닉네임"
+            labelHint={`${nickname.length} / 10자`}
             value={nickname}
             onChangeText={setNickname}
+            placeholder="예: 도토리, 아내, 남편"
             autoCorrect={false}
             maxLength={10}
             returnKeyType="done"
             autoFocus
           />
-          <Text style={styles.inputHint}>{nickname.length} / 10자</Text>
 
           <View style={styles.avatarWrap}>
             <View style={styles.avatarCircle}>
@@ -112,16 +109,13 @@ const ProfileSetupScreen: React.FC = () => {
             ) : null}
           </View>
 
-          <TouchableOpacity
-            style={[styles.nextBtn, saving && { opacity: 0.5 }]}
-            onPress={handleNext}
-            disabled={saving}
-          >
-            {saving
-              ? <ActivityIndicator color="#FFFFFF" />
-              : <Text style={styles.nextBtnText}>다음</Text>
-            }
-          </TouchableOpacity>
+          <View style={styles.btnWrap}>
+            <PrimaryButton
+              label="다음"
+              onPress={handleNext}
+              loading={saving}
+            />
+          </View>
 
         </View>
       </KeyboardAvoidingView>
@@ -130,44 +124,36 @@ const ProfileSetupScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: theme.colors.warm.cream },
-  content: { flex: 1, padding: 24, paddingTop: 48 },
+  safeArea: { flex: 1, backgroundColor: theme.colors.bg },
+  content: { flex: 1, padding: theme.spacing.screenHorizontal, paddingTop: 48 },
 
-  title: { fontSize: 28, fontWeight: '700', color: theme.colors.warm.dark, marginBottom: 6 },
-  subtitle: { fontSize: 15, color: theme.colors.brand, marginBottom: 36 },
-
-  label: { fontSize: 13, fontWeight: '600', color: theme.colors.brand, marginBottom: 10 },
-  input: {
-    backgroundColor: theme.colors.warm.ivory,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 18,
+  title: {
+    fontSize: theme.fontSize.xxl,
+    fontWeight: theme.fontWeight.bold,
     color: theme.colors.warm.dark,
-    fontWeight: '600',
-    borderWidth: 1,
-    borderColor: theme.colors.warm.edge,
+    marginBottom: theme.spacing.xs,
   },
-  inputHint: { fontSize: 12, color: theme.colors.warm.lightOak, textAlign: 'right', marginTop: 4 },
+  subtitle: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.text.secondary,
+    marginBottom: theme.spacing.xxl + theme.spacing.sm,
+  },
 
-  avatarWrap: { alignItems: 'center', marginTop: 28, marginBottom: 8 },
+  avatarWrap: { alignItems: 'center', marginTop: 28, marginBottom: theme.spacing.sm },
   avatarCircle: {
     width: 80, height: 80, borderRadius: 40,
-    backgroundColor: theme.colors.warm.cream,
+    backgroundColor: theme.colors.bg,
     borderWidth: 2, borderColor: theme.colors.warm.edge,
     justifyContent: 'center', alignItems: 'center',
   },
-  avatarName: { marginTop: 10, fontSize: 14, fontWeight: '700', color: theme.colors.brand },
-
-  nextBtn: {
-    backgroundColor: theme.colors.brand,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 'auto',
-    marginBottom: 8,
+  avatarName: {
+    marginTop: 10,
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.brand,
   },
-  nextBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+
+  btnWrap: { marginTop: 'auto', marginBottom: theme.spacing.sm },
 });
 
 export default ProfileSetupScreen;
