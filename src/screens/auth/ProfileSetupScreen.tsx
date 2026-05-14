@@ -67,11 +67,12 @@ const ProfileSetupScreen: React.FC = () => {
     try {
       const { error } = await supabase
         .from('user_profiles')
-        .insert({ id: userId, nickname: nickname.trim(), role: 'owner', family_id: null });
+        .upsert({ id: userId, nickname: nickname.trim(), role: 'owner', family_id: null });
 
       if (error) throw error;
 
-      navigation.navigate('FamilySetup', { userId });
+      // 조건부 렌더링 방식이므로 navigate 대신 세션 갱신 → onAuthStateChange → loadProfile → 자동 전환
+      await supabase.auth.refreshSession();
     } catch (e) {
       Alert.alert('오류', '프로필 저장에 실패했습니다.');
       console.error(e);
