@@ -2,9 +2,9 @@
 //
 // 인증 상태에 따라 두 가지 흐름으로 분기:
 //
-// ① 비로그인  → AuthScreen
-// ② 로그인 + 프로필 미완성 → ProfileSetup → FamilySetup
-// ③ 로그인 + 프로필 완성  → MainTabs (하단 탭)
+// ① 비로그인          → AuthScreen → FamilySetup
+// ② 로그인 + 가족 없음 → FamilySetup
+// ③ 로그인 완료        → MainTabs (하단 탭)
 //
 // Supabase onAuthStateChange가 세션 변경을 감지 → 자동 화면 전환
 
@@ -25,7 +25,6 @@ import AddSupplyScreen from '../screens/AddSupplyScreen';
 import NotesScreen from '../screens/NotesScreen';
 import NoteDetailScreen from '../screens/NoteDetailScreen';
 import AuthScreen from '../screens/auth/AuthScreen';
-import ProfileSetupScreen from '../screens/auth/ProfileSetupScreen';
 import FamilySetupScreen from '../screens/auth/FamilySetupScreen';
 import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
 import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
@@ -45,7 +44,6 @@ export type RootTabParamList = {
 export type RootStackParamList = {
   // 인증 플로우
   Auth: undefined;
-  ProfileSetup: { userId: string; email: string };
   FamilySetup: { userId: string };
   ForgotPassword: undefined;
   ResetPassword: undefined;
@@ -196,11 +194,16 @@ export default function AppNavigator({ navigationRef }: AppNavigatorProps) {
         const refreshToken = params.get('refresh_token');
 
         if (code) {
-          // PKCE flow (Supabase 신버전 이메일 인증/비밀번호 재설정)
+          // PKCE flow: onAuthStateChange('PASSWORD_RECOVERY')가 자동으로 발생
           await supabase.auth.exchangeCodeForSession(code);
-        } else if (accessToken && refreshToken && (type === 'recovery' || type === 'signup')) {
-          // 구버전 token flow
+        } else if (accessToken && refreshToken) {
+          // Implicit flow (auth-callback.html 경유)
           await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+          if (type === 'recovery') {
+            // setSession은 항상 SIGNED_IN을 발생시키므로 수동으로 recovery 상태 설정
+            setIsPasswordRecovery(true);
+            setInitializing(false);
+          }
         }
       } catch (e) {
         console.error('Deep link handling error:', e);
@@ -242,19 +245,12 @@ export default function AppNavigator({ navigationRef }: AppNavigatorProps) {
           // ── 비로그인: 인증 플로우 ──────────────────────
           <>
             <Stack.Screen name="Auth" component={AuthScreen} />
-            <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
             <Stack.Screen name="FamilySetup" component={FamilySetupScreen} />
             <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
           </>
         ) : !profile?.family_id ? (
-          // ── 로그인 + 프로필/가족 미완성 ────────────────
-          // family_id가 없으면 온보딩 플로우 계속
-          <>
-            {!profile
-              ? <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
-              : <Stack.Screen name="FamilySetup" component={FamilySetupScreen} />
-            }
-          </>
+          // ── 로그인 + 가족 미완성 ────────────────────────
+          <Stack.Screen name="FamilySetup" component={FamilySetupScreen} />
         ) : (
           // ── 로그인 완료: 메인 앱 ───────��────────────────
           <>

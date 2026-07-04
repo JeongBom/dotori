@@ -20,6 +20,7 @@ import { useRoute, RouteProp } from '@react-navigation/native';
 import { supabase, joinFamily } from '../../lib/supabase';
 import { RootStackParamList } from '../../navigation';
 import { theme } from '../../theme';
+import TextButton from '../../components/design-system/TextButton';
 
 type RouteType = RouteProp<RootStackParamList, 'FamilySetup'>;
 
@@ -42,7 +43,7 @@ const FamilySetupScreen: React.FC = () => {
   // family_id 설정 완료 → updateUser로 USER_UPDATED 이벤트 발생
   // → AppNavigator의 onAuthStateChange가 감지 → loadProfile → MainTabs 전환
   const handleDone = async () => {
-    await supabase.auth.updateUser({ data: { setup_complete: true } });
+    await supabase.auth.refreshSession();
   };
 
   return (
@@ -51,6 +52,9 @@ const FamilySetupScreen: React.FC = () => {
         ? <CreateFamily userId={userId} onDone={handleDone} onSwitchToJoin={() => setMode('join')} />
         : <JoinFamily userId={userId} onDone={handleDone} onSwitchToCreate={() => setMode('create')} />
       }
+      <View style={styles.logoutRow}>
+        <TextButton label="로그아웃" onPress={() => supabase.auth.signOut()} />
+      </View>
     </SafeAreaView>
   );
 };
@@ -75,6 +79,12 @@ const CreateFamily: React.FC<CreateFamilyProps> = ({ userId, onDone, onSwitchToJ
     }
     setSaving(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const currentUserId = session?.user?.id ?? userId;
+      console.log('[FamilySetup] userId state:', userId);
+      console.log('[FamilySetup] currentUserId from session:', currentUserId);
+      if (!currentUserId) throw new Error('로그인 정보를 확인해주세요.');
+
       const { data: family, error: familyError } = await supabase
         .from('families')
         .insert({ name: familyName.trim() })
@@ -82,12 +92,14 @@ const CreateFamily: React.FC<CreateFamilyProps> = ({ userId, onDone, onSwitchToJ
         .single();
 
       if (familyError) throw familyError;
+      console.log('[FamilySetup] family created:', family.id);
 
-      const { error: profileError } = await supabase
+      const { error: profileError, count } = await supabase
         .from('user_profiles')
         .update({ family_id: family.id, role: 'owner' })
-        .eq('id', userId);
+        .eq('id', currentUserId);
 
+      console.log('[FamilySetup] profile update error:', profileError, 'count:', count);
       if (profileError) throw profileError;
 
       setInviteCode(family.invite_code);
@@ -347,6 +359,11 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   startBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+
+  logoutRow: {
+    alignItems: 'center',
+    paddingBottom: 8,
+  },
 
   // 모드 전환 링크
   switchLink: {
