@@ -141,6 +141,7 @@ const AuthScreen: React.FC = () => {
       password,
       options: {
         emailRedirectTo: 'https://jeongbom.github.io/dotori/auth-callback.html',
+        data: { nickname: nickname.trim() },
       },
     });
 
@@ -165,10 +166,6 @@ const AuthScreen: React.FC = () => {
       Alert.alert('오류', '회원가입에 실패했습니다. 다시 시도해주세요.');
       return;
     }
-
-    await supabase
-      .from('user_profiles')
-      .insert({ id: data.user.id, nickname: nickname.trim(), role: 'owner', family_id: null });
 
     setLoading(false);
 
