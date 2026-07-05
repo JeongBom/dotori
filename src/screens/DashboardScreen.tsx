@@ -50,6 +50,7 @@ interface Member { id: string; nickname: string }
 interface UrgentItem { name: string; type: 'expired' | 'expiring' | 'lowstock'; dday?: string }
 interface StockItem { name: string; qty: number; min_qty: number }
 interface NoteItem { id: string; title: string }
+interface ShoppingLite { id: string; name: string; store_tag: string }
 interface ActivityItem {
   id: string;
   type: 'food' | 'supply' | 'note';
@@ -65,6 +66,8 @@ interface DashboardData {
   fridgeExpired: number;
   stockItems: StockItem[];
   lowStockCount: number;
+  shoppingTodo: ShoppingLite[];
+  shoppingTodoCount: number;
   recentNotes: NoteItem[];
   urgentItems: UrgentItem[];
   members: Member[];
@@ -79,7 +82,7 @@ async function fetchDashboard(familyId: string, notifyDays: number): Promise<Das
   const [
     fridgeTotalRes, fridgeExpiringRes, fridgeExpiredRes, fridgeExpItemsRes,
     suppliesRes, notesRes, membersRes,
-    recentFridgeRes,
+    recentFridgeRes, shoppingRes,
   ] = await Promise.all([
     supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false),
     supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false).gte('expiry_date', today).lte('expiry_date', sooner),
@@ -89,6 +92,7 @@ async function fetchDashboard(familyId: string, notifyDays: number): Promise<Das
     supabase.from('notes').select('id, title, updated_at').eq('family_id', familyId).order('updated_at', { ascending: false }).limit(4),
     supabase.from('user_profiles').select('id, nickname').eq('family_id', familyId).limit(4),
     supabase.from('fridge_items').select('id, food_name, created_at').eq('family_id', familyId).eq('is_consumed', false).order('created_at', { ascending: false }).limit(4),
+    supabase.from('shopping_items').select('id, name, store_tag', { count: 'exact' }).eq('family_id', familyId).eq('is_active', true).eq('is_checked', false).order('created_at', { ascending: false }).limit(3),
   ]);
 
   const stockItems: StockItem[] = (suppliesRes.data ?? []).map(s => ({
@@ -97,6 +101,12 @@ async function fetchDashboard(familyId: string, notifyDays: number): Promise<Das
     min_qty: s.low_stock_threshold ?? 1,
   }));
   const lowStockCount = stockItems.filter(s => s.qty <= s.min_qty).length;
+
+  const shoppingTodo: ShoppingLite[] = (shoppingRes.data ?? []).map(it => ({
+    id: it.id,
+    name: it.name,
+    store_tag: it.store_tag ?? '',
+  }));
 
   const recentNotes: NoteItem[] = (notesRes.data ?? []).map(n => ({
     id: n.id,
@@ -143,6 +153,7 @@ async function fetchDashboard(familyId: string, notifyDays: number): Promise<Das
     fridgeExpiring: fridgeExpiringRes.count ?? 0,
     fridgeExpired: fridgeExpiredRes.count ?? 0,
     stockItems, lowStockCount,
+    shoppingTodo, shoppingTodoCount: shoppingRes.count ?? 0,
     recentNotes, urgentItems, members, activities,
   };
 }
@@ -193,12 +204,13 @@ const pillStyles = StyleSheet.create({
 
 // 미니 위젯 (음식, 생필품 등)
 function MiniWidget({
-  accentColor, title, icon, children,
+  accentColor, title, icon, children, bodyStyle,
 }: {
   accentColor: string;
   title: string;
   icon: React.ReactNode;
   children: React.ReactNode;
+  bodyStyle?: object;   // 직사각형 위젯 등 높이/여백 변형용
 }) {
   return (
     <View style={widgetStyles.card}>
@@ -206,7 +218,7 @@ function MiniWidget({
         {icon}
         <Text style={widgetStyles.headerTitle}>{title}</Text>
       </View>
-      <View style={widgetStyles.body}>{children}</View>
+      <View style={[widgetStyles.body, bodyStyle]}>{children}</View>
     </View>
   );
 }
@@ -223,15 +235,15 @@ function StockBar({ item }: { item: StockItem }) {
   const level = Math.min(item.qty / maxLevel, 1);
   const critical = item.qty <= item.min_qty;
   return (
-    <View style={{ marginBottom: 5 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
-        <Text style={{ fontSize: 10, color: theme.colors.warm.dark, fontWeight: '500' }} numberOfLines={1}>{item.name}</Text>
-        <Text style={{ fontSize: 10, fontWeight: '700', color: critical ? theme.colors.status.danger : theme.colors.warm.oak }}>
+    <View style={{ marginBottom: 9 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+        <Text style={{ fontSize: 13, color: theme.colors.warm.dark, fontWeight: '600', lineHeight: 18, flex: 1 }} numberOfLines={1}>{item.name}</Text>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: critical ? theme.colors.status.danger : theme.colors.warm.oak }}>
           {item.qty === 0 ? '0' : `${item.qty}`}
         </Text>
       </View>
-      <View style={{ height: 3, backgroundColor: `${theme.colors.warm.edge}88`, borderRadius: 2 }}>
-        <View style={{ width: `${Math.max(level * 100, 4)}%`, height: 3, backgroundColor: critical ? theme.colors.status.danger : theme.colors.status.warn, borderRadius: 2 }} />
+      <View style={{ height: 4, backgroundColor: `${theme.colors.warm.edge}88`, borderRadius: 2 }}>
+        <View style={{ width: `${Math.max(level * 100, 4)}%`, height: 4, backgroundColor: critical ? theme.colors.status.danger : theme.colors.status.warn, borderRadius: 2 }} />
       </View>
     </View>
   );
@@ -423,7 +435,7 @@ const DashboardScreen: React.FC = () => {
         {/* ── 위젯 ── */}
         <View style={s.widgetRow}>
           {/* 음식 */}
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('Fridge')} activeOpacity={0.85}>
+          <TouchableOpacity style={s.squareWidget} onPress={() => navigation.navigate('Fridge')} activeOpacity={0.85}>
             <MiniWidget accentColor={theme.colors.brand} title="음식" icon={<Text style={{ fontSize: 13 }}>🥬</Text>}>
               <Text style={s.widgetBigNum}>{data?.fridgeTotal ?? 0}</Text>
               <View style={s.widgetRow2}>
@@ -437,9 +449,33 @@ const DashboardScreen: React.FC = () => {
             </MiniWidget>
           </TouchableOpacity>
 
-          {/* 생필품 */}
+          {/* 장보기 (정사각형) */}
+          <TouchableOpacity style={s.squareWidget} onPress={() => navigation.navigate('Shopping')} activeOpacity={0.85}>
+            <MiniWidget accentColor={theme.colors.warm.honey} title="장보기" icon={<Text style={{ fontSize: 13 }}>🛒</Text>}>
+              {(data?.shoppingTodo.length ?? 0) === 0 ? (
+                <Text style={s.widgetEmpty}>살 것 없음</Text>
+              ) : (
+                <>
+                  {data!.shoppingTodo.map(item => (
+                    <View key={item.id} style={s.noteRow}>
+                      <Text style={s.noteEmoji}>🛒</Text>
+                      <Text style={s.noteTitle} numberOfLines={1}>{item.name}</Text>
+                      {item.store_tag ? <Text style={s.shopTag}>{item.store_tag}</Text> : null}
+                    </View>
+                  ))}
+                  {data!.shoppingTodoCount > data!.shoppingTodo.length && (
+                    <Text style={s.shopMore}>외 {data!.shoppingTodoCount - data!.shoppingTodo.length}개 더 있어요</Text>
+                  )}
+                </>
+              )}
+            </MiniWidget>
+          </TouchableOpacity>
+        </View>
+
+        {/* ── 생필품 (직사각형, 메모 위) ── */}
+        <View style={[s.widgetRow, { marginTop: 10 }]}>
           <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('Supplies')} activeOpacity={0.85}>
-            <MiniWidget accentColor={theme.colors.warm.deep} title="생필품" icon={<Text style={{ fontSize: 13 }}>🧴</Text>}>
+            <MiniWidget accentColor={theme.colors.warm.deep} title="생필품" icon={<Text style={{ fontSize: 13 }}>🧴</Text>} bodyStyle={s.rectBody}>
               {(data?.stockItems.length ?? 0) === 0 ? (
                 <Text style={s.widgetEmpty}>항목 없음</Text>
               ) : (
@@ -452,7 +488,7 @@ const DashboardScreen: React.FC = () => {
         <View style={[s.widgetRow, { marginTop: 10 }]}>
           {/* 메모 */}
           <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('Notes')} activeOpacity={0.85}>
-            <MiniWidget accentColor={theme.colors.warm.oak} title="메모" icon={<Text style={{ fontSize: 13 }}>📝</Text>}>
+            <MiniWidget accentColor={theme.colors.warm.oak} title="메모" icon={<Text style={{ fontSize: 13 }}>📝</Text>} bodyStyle={s.rectBody}>
               {(data?.recentNotes.length ?? 0) === 0 ? (
                 <Text style={s.widgetEmpty}>메모 없음</Text>
               ) : (
@@ -532,17 +568,25 @@ const s = StyleSheet.create({
 
   // 위젯
   widgetRow:       { flexDirection: 'row', paddingHorizontal: 16, gap: 10 },
-  widgetBigNum:    { fontSize: 20, fontWeight: '700', color: theme.colors.warm.dark, lineHeight: 22, marginBottom: 4 },
-  widgetRow2:      { flexDirection: 'row', justifyContent: 'space-between' },
-  widgetStatLabel: { fontSize: 10, color: theme.colors.warm.oak },
-  widgetStatVal:   { fontSize: 10, fontWeight: '700', color: theme.colors.warm.dark },
+  squareWidget:    { flex: 1, aspectRatio: 1 },
+  widgetBigNum:    { fontSize: 24, fontWeight: '700', color: theme.colors.warm.dark, lineHeight: 28, marginBottom: 8 },
+  widgetRow2:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  widgetStatLabel: { fontSize: 13, fontWeight: '600', color: theme.colors.warm.oak, lineHeight: 18 },
+  widgetStatVal:   { fontSize: 15, fontWeight: '700', color: theme.colors.warm.dark, lineHeight: 20 },
   widgetEmpty:     { fontSize: 11, color: theme.colors.warm.lightOak, fontStyle: 'italic', marginTop: 4 },
 
+  // 직사각형 위젯 (장보기·메모) — 높이 키우고 행간 여유
+  rectBody:  { minHeight: 104, paddingVertical: 14, paddingHorizontal: 14 },
+
   // 메모 위젯
-  noteRow:   { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
-  noteEmoji: { fontSize: 11 },
-  noteTitle: { fontSize: 11, color: theme.colors.warm.dark, fontWeight: '500', flex: 1 },
+  noteRow:   { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 8 },
+  noteEmoji: { fontSize: 13 },
+  noteTitle: { fontSize: 13, color: theme.colors.warm.dark, fontWeight: '600', lineHeight: 19, flex: 1 },
   notePinned:{ fontSize: 8 },
+
+  // 장보기 위젯
+  shopTag:  { fontSize: 10, fontWeight: '400', color: theme.colors.warm.lightOak, flexShrink: 0 },
+  shopMore: { fontSize: 11, color: theme.colors.warm.lightOak, lineHeight: 16, marginTop: 2 },
 
   // 인사이트 카드
   insightCard: { marginHorizontal: 16, marginTop: 10, backgroundColor: theme.colors.warm.sand, borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: theme.colors.warm.edge, borderStyle: 'dashed' },
