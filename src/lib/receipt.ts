@@ -5,7 +5,7 @@
 //    (기존 품목은 수량 증가, 없던 품목은 새로 추가)
 
 import { supabase } from './supabase';
-import { ParsedReceiptItem, ReceiptReviewItem } from '../types';
+import { ParsedReceiptItem, ReceiptCategory, ReceiptReviewItem } from '../types';
 
 // ── ① 영수증 파싱 (Edge Function 호출) ─────────
 export async function parseReceipt(imageBase64: string, mimeType: string): Promise<ParsedReceiptItem[]> {
@@ -53,32 +53,47 @@ function isSameItem(a: string, b: string): boolean {
   return false;
 }
 
+// 이름 하나에 대한 매칭 계산
+// 확인 화면에서 이름을 수정할 때마다 다시 호출해서 매칭을 갱신한다
+// strictCategory: true면 지정한 분류 쪽 재고만 뒤진다 (사용자가 분류를 직접 바꾼 경우)
+export function matchSingleReceiptItem(
+  name: string,
+  preferredCategory: ReceiptCategory,
+  inventory: InventorySnapshot,
+  strictCategory = false,
+): { matched: ReceiptReviewItem['matched']; category: ReceiptCategory } {
+  const fridgeHit = inventory.fridge.find(f => isSameItem(f.name, name));
+  const supplyHit = inventory.supplies.find(s => isSameItem(s.name, name));
+
+  const fridgeMatch: ReceiptReviewItem['matched'] = fridgeHit
+    ? { table: 'fridge', id: fridgeHit.id, name: fridgeHit.name, quantity: fridgeHit.is_consumed ? 0 : fridgeHit.quantity }
+    : null;
+  const supplyMatch: ReceiptReviewItem['matched'] = supplyHit
+    ? { table: 'supplies', id: supplyHit.id, name: supplyHit.name, quantity: supplyHit.quantity }
+    : null;
+
+  // 선호 분류 쪽 매칭 우선, 없으면 (strict가 아닐 때만) 반대쪽 허용
+  const matched = preferredCategory === 'food'
+    ? fridgeMatch ?? (strictCategory ? null : supplyMatch)
+    : supplyMatch ?? (strictCategory ? null : fridgeMatch);
+
+  return {
+    matched,
+    category: matched ? (matched.table === 'fridge' ? 'food' : 'supply') : preferredCategory,
+  };
+}
+
 export function matchReceiptItems(
   parsed: ParsedReceiptItem[],
   inventory: InventorySnapshot,
 ): ReceiptReviewItem[] {
   return parsed.map((p, i) => {
-    const fridgeHit = inventory.fridge.find(f => isSameItem(f.name, p.name));
-    const supplyHit = inventory.supplies.find(s => isSameItem(s.name, p.name));
-
-    // AI 분류와 같은 쪽 매칭을 우선, 없으면 반대쪽도 허용
-    let matched: ReceiptReviewItem['matched'] = null;
-    if (p.category === 'food' && fridgeHit) {
-      matched = { table: 'fridge', id: fridgeHit.id, name: fridgeHit.name, quantity: fridgeHit.is_consumed ? 0 : fridgeHit.quantity };
-    } else if (p.category === 'supply' && supplyHit) {
-      matched = { table: 'supplies', id: supplyHit.id, name: supplyHit.name, quantity: supplyHit.quantity };
-    } else if (fridgeHit) {
-      matched = { table: 'fridge', id: fridgeHit.id, name: fridgeHit.name, quantity: fridgeHit.is_consumed ? 0 : fridgeHit.quantity };
-    } else if (supplyHit) {
-      matched = { table: 'supplies', id: supplyHit.id, name: supplyHit.name, quantity: supplyHit.quantity };
-    }
-
+    const { matched, category } = matchSingleReceiptItem(p.name, p.category, inventory);
     return {
       key: `receipt-${i}`,
       name: p.name,
       quantity: p.quantity,
-      // 매칭됐으면 매칭된 테이블 기준으로 분류 고정
-      category: matched ? (matched.table === 'fridge' ? 'food' : 'supply') : p.category,
+      category,
       matched,
       excluded: false,
     };

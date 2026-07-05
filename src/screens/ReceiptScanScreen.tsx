@@ -15,8 +15,11 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 
 import { getOrCreateFamilyId } from '../lib/supabase';
-import { parseReceipt, loadInventoryForMatching, matchReceiptItems, applyReceiptItems } from '../lib/receipt';
-import { ReceiptReviewItem } from '../types';
+import {
+  parseReceipt, loadInventoryForMatching, matchReceiptItems,
+  matchSingleReceiptItem, applyReceiptItems, InventorySnapshot,
+} from '../lib/receipt';
+import { ReceiptCategory, ReceiptReviewItem } from '../types';
 import { RootStackParamList } from '../navigation';
 import { theme } from '../theme';
 
@@ -28,6 +31,7 @@ const ReceiptScanScreen: React.FC = () => {
 
   const [phase, setPhase] = useState<Phase>('pick');
   const [rows, setRows] = useState<ReceiptReviewItem[]>([]);
+  const [inventory, setInventory] = useState<InventorySnapshot | null>(null);
   const [familyId, setFamilyId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [saving, setSaving] = useState(false);
@@ -47,8 +51,9 @@ const ReceiptScanScreen: React.FC = () => {
         setPhase('error');
         return;
       }
-      const inventory = await loadInventoryForMatching(fid);
-      setRows(matchReceiptItems(parsed, inventory));
+      const inv = await loadInventoryForMatching(fid);
+      setInventory(inv);
+      setRows(matchReceiptItems(parsed, inv));
       setPhase('review');
     } catch (e) {
       const msg = e instanceof Error ? e.message : '알 수 없는 오류';
@@ -166,21 +171,32 @@ const ReceiptScanScreen: React.FC = () => {
 
   const renderReviewRow = ({ item }: { item: ReceiptReviewItem }) => (
     <View style={[r.card, item.excluded && r.cardExcluded]}>
-      {/* 분류 칩 — 신규 품목만 토글 가능 */}
+      {/* 분류 칩 — 탭하면 음식↔생필품 전환 (전환한 분류 쪽에서 다시 매칭) */}
       <TouchableOpacity
         style={[r.catChip, item.category === 'supply' && r.catChipSupply]}
-        disabled={!!item.matched || item.excluded}
-        onPress={() => updateRow(item.key, { category: item.category === 'food' ? 'supply' : 'food' })}
+        disabled={item.excluded}
+        onPress={() => {
+          const nextCat: ReceiptCategory = item.category === 'food' ? 'supply' : 'food';
+          const res = inventory
+            ? matchSingleReceiptItem(item.name, nextCat, inventory, true)
+            : { matched: null, category: nextCat };
+          updateRow(item.key, res);
+        }}
       >
         <Text style={r.catChipText}>{item.category === 'food' ? '음식' : '생필품'}</Text>
       </TouchableOpacity>
 
-      {/* 이름 + 매칭 정보 */}
+      {/* 이름 + 매칭 정보 — 이름을 고치면 매칭도 다시 계산됨 */}
       <View style={r.body}>
         <TextInput
           style={r.nameInput}
           value={item.name}
-          onChangeText={t => updateRow(item.key, { name: t })}
+          onChangeText={t => {
+            const res = inventory
+              ? matchSingleReceiptItem(t, item.category, inventory)
+              : { matched: item.matched, category: item.category };
+            updateRow(item.key, { name: t, ...res });
+          }}
           editable={!item.excluded}
           maxLength={30}
         />
