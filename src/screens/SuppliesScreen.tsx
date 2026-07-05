@@ -19,6 +19,9 @@ import { Supply, SupplyCategoryEntry } from '../types';
 import { RootTabParamList, RootStackParamList } from '../navigation';
 import { sendLowStockNotification } from '../lib/notifications';
 import { theme } from '../theme';
+import IconBtn from '../components/IconBtn';
+import SectionLabel from '../components/SectionLabel';
+import SwipeDeleteAction from '../components/SwipeDeleteAction';
 
 type SuppliesNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<RootTabParamList, 'Supplies'>,
@@ -82,51 +85,6 @@ function sortItems(items: Supply[], sort: SortType): Supply[] {
   });
 }
 
-// ── 아이콘 버튼 ──────────────────────────────
-function IconBtn({ onPress, children }: { onPress?: () => void; children: React.ReactNode }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={iconBtnStyle} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-      {children}
-    </TouchableOpacity>
-  );
-}
-const iconBtnStyle: object = {
-  width: 36, height: 36, borderRadius: 18,
-  backgroundColor: theme.colors.warm.ivory, borderWidth: 1, borderColor: theme.colors.warm.edge,
-  justifyContent: 'center', alignItems: 'center',
-};
-
-// ── 섹션 라벨 ────────────────────────────────
-function SectionLabel({ label, count, color }: { label: string; count: number; color: string }) {
-  return (
-    <View style={sl.wrap}>
-      <View style={[sl.dot, { backgroundColor: color }]} />
-      <Text style={[sl.label, { color }]}>{label}</Text>
-      <Text style={sl.count}>{count}</Text>
-    </View>
-  );
-}
-const sl = StyleSheet.create({
-  wrap:  { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 6 },
-  dot:   { width: 6, height: 6, borderRadius: 3 },
-  label: { fontSize: 12, fontWeight: '700' },
-  count: { fontSize: 11, color: theme.colors.warm.lightOak, fontWeight: '500' },
-});
-
-// ── 스와이프 삭제 ─────────────────────────────
-const RightAction: React.FC<{ onDelete: () => void }> = ({ onDelete }) => (
-  <TouchableOpacity style={swipe.btn} onPress={onDelete}>
-    <Text style={swipe.text}>삭제</Text>
-  </TouchableOpacity>
-);
-const swipe = StyleSheet.create({
-  btn: {
-    backgroundColor: theme.colors.status.danger, justifyContent: 'center', alignItems: 'center',
-    width: 80, marginBottom: 8, borderTopRightRadius: 14, borderBottomRightRadius: 14,
-  },
-  text: { color: '#fff', fontWeight: '700', fontSize: 14 },
-});
-
 // ── 생필품 행 ─────────────────────────────────
 interface SupplyRowProps {
   item: Supply;
@@ -167,7 +125,7 @@ const SupplyRow: React.FC<SupplyRowProps> = React.memo(({ item, onDelete, onQuan
   const emoji = getSupplyEmoji(item.name, item.category);
 
   return (
-    <Swipeable ref={swipeRef} renderRightActions={() => <RightAction onDelete={handleDelete} />} overshootRight={false}>
+    <Swipeable ref={swipeRef} renderRightActions={() => <SwipeDeleteAction onDelete={handleDelete} />} overshootRight={false}>
       <TouchableOpacity
         style={[row.card, isLow && row.cardLow]}
         onPress={() => onEdit(item)}
