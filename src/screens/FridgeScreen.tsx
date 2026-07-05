@@ -9,7 +9,7 @@ import { useNavigation, useIsFocused, CompositeNavigationProp } from '@react-nav
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Swipeable } from 'react-native-gesture-handler';
-import { Plus, ReceiptText } from 'lucide-react-native';
+import { Plus, ReceiptText, ListChecks } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
@@ -20,6 +20,7 @@ import { autoAddToShopping } from '../lib/shopping';
 import IconBtn from '../components/IconBtn';
 import SectionLabel from '../components/SectionLabel';
 import SwipeDeleteAction from '../components/SwipeDeleteAction';
+import SelectionBar from '../components/SelectionBar';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
 const REALTIME_TABLES = ['fridge_items'] as const;
@@ -85,9 +86,13 @@ interface FoodRowProps {
   onDelete: (item: FridgeItem) => void;
   onQtyChange: (item: FridgeItem, delta: number) => void;
   onEdit: (item: FridgeItem) => void;
+  // 다중 선택 모드
+  selectMode?: boolean;
+  selected?: boolean;
+  onSelect?: (item: FridgeItem) => void;
 }
 
-const FoodRow: React.FC<FoodRowProps> = React.memo(({ item, onToggle, onDelete, onQtyChange, onEdit }) => {
+const FoodRow: React.FC<FoodRowProps> = React.memo(({ item, onToggle, onDelete, onQtyChange, onEdit, selectMode, selected, onSelect }) => {
   const swipeRef = useRef<Swipeable>(null);
   const dday = getDDay(item.expiry_date);
   const [editingQty, setEditingQty] = useState(false);
@@ -118,9 +123,9 @@ const FoodRow: React.FC<FoodRowProps> = React.memo(({ item, onToggle, onDelete, 
   };
 
   return (
-    <Swipeable ref={swipeRef} renderRightActions={() => <SwipeDeleteAction onDelete={handleDelete} />} overshootRight={false}>
+    <Swipeable ref={swipeRef} enabled={!selectMode} renderRightActions={() => <SwipeDeleteAction onDelete={handleDelete} />} overshootRight={false}>
       <TouchableOpacity
-        style={[fr.card, item.is_consumed && fr.cardDone]}
+        style={[fr.card, item.is_consumed && fr.cardDone, selected && fr.cardSelected]}
         onPress={() => onEdit(item)}
         activeOpacity={0.8}
       >
@@ -189,6 +194,11 @@ const FoodRow: React.FC<FoodRowProps> = React.memo(({ item, onToggle, onDelete, 
             </TouchableOpacity>
           </Pressable>
         )}
+
+        {/* 선택 모드: 카드 전체 터치를 선택 토글로 가로챔 */}
+        {selectMode && (
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => onSelect?.(item)} />
+        )}
       </TouchableOpacity>
     </Swipeable>
   );
@@ -203,6 +213,7 @@ const fr = StyleSheet.create({
     shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
   },
   cardDone: { opacity: 0.55 },
+  cardSelected: { borderWidth: 1.5, borderColor: theme.colors.brand },
   checkBox: {
     width: 30, height: 30, borderRadius: 9, backgroundColor: theme.colors.warm.cream,
     borderWidth: 1, borderColor: theme.colors.warm.edge,
@@ -250,6 +261,8 @@ const FridgeScreen: React.FC = () => {
   const [filter, setFilter] = useState<FilterType>('전체');
   const [sort, setSort] = useState<SortType>('유통기한');
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const loadItems = useCallback(async () => {
     try {
@@ -352,6 +365,35 @@ const FridgeScreen: React.FC = () => {
   }, [items, filter, sort]);
 
   const totalDisplay = sections.reduce((s, sec) => s + sec.data.length, 0);
+  const visibleItems = useMemo(() => sections.flatMap(sec => sec.data), [sections]);
+
+  // ── 다중 선택 ─────────────────────────────────
+  const exitSelectMode = useCallback(() => { setSelectMode(false); setSelectedIds([]); }, []);
+
+  const handleSelect = useCallback((item: FridgeItem) => {
+    setSelectedIds(prev => prev.includes(item.id) ? prev.filter(id => id !== item.id) : [...prev, item.id]);
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    setSelectedIds(prev => prev.length === visibleItems.length ? [] : visibleItems.map(i => i.id));
+  }, [visibleItems]);
+
+  const handleBulkDelete = useCallback(() => {
+    if (selectedIds.length === 0) return;
+    Alert.alert('선택 삭제', `${selectedIds.length}개 항목을 삭제할까요?`, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제', style: 'destructive',
+        onPress: async () => {
+          const { error } = await supabase.from('fridge_items').delete().in('id', selectedIds);
+          if (error) { Alert.alert('오류', `삭제에 실패했습니다.\n(${error.message})`); return; }
+          await Promise.all(selectedIds.map(id => cancelExpiryNotification(id)));
+          setItems(prev => prev.filter(i => !selectedIds.includes(i.id)));
+          exitSelectMode();
+        },
+      },
+    ]);
+  }, [selectedIds, exitSelectMode]);
 
   const SECTION_COLORS: Record<SectionKey, string> = {
     '기한 지남': theme.colors.status.danger,
@@ -379,6 +421,9 @@ const FridgeScreen: React.FC = () => {
           <Text style={s.title}>음식</Text>
         </View>
         <View style={s.headerBtns}>
+          <IconBtn onPress={() => selectMode ? exitSelectMode() : setSelectMode(true)}>
+            <ListChecks color={selectMode ? theme.colors.brand : theme.colors.warm.dark} size={18} strokeWidth={1.5} />
+          </IconBtn>
           <IconBtn onPress={() => navigation.navigate('ReceiptScan')}>
             <ReceiptText color={theme.colors.warm.dark} size={18} strokeWidth={1.5} />
           </IconBtn>
@@ -467,6 +512,9 @@ const FridgeScreen: React.FC = () => {
               onDelete={handleDelete}
               onQtyChange={handleQtyChange}
               onEdit={handleEdit}
+              selectMode={selectMode}
+              selected={selectedIds.includes(item.id)}
+              onSelect={handleSelect}
             />
           )}
           contentContainerStyle={{ paddingTop: 4, paddingBottom: 100 }}
@@ -476,14 +524,26 @@ const FridgeScreen: React.FC = () => {
         />
       )}
 
-      {/* ── FAB ── */}
-      <TouchableOpacity
-        style={s.fab}
-        onPress={() => navigation.navigate('AddFridgeItem', { familyId: familyId ?? undefined })}
-        activeOpacity={0.85}
-      >
-        <Plus color="#fff" size={24} strokeWidth={2.5} />
-      </TouchableOpacity>
+      {/* ── FAB (선택 모드에선 숨김) ── */}
+      {!selectMode && (
+        <TouchableOpacity
+          style={s.fab}
+          onPress={() => navigation.navigate('AddFridgeItem', { familyId: familyId ?? undefined })}
+          activeOpacity={0.85}
+        >
+          <Plus color="#fff" size={24} strokeWidth={2.5} />
+        </TouchableOpacity>
+      )}
+
+      {/* 다중 선택 하단 바 */}
+      {selectMode && (
+        <SelectionBar
+          count={selectedIds.length}
+          allSelected={visibleItems.length > 0 && selectedIds.length === visibleItems.length}
+          onSelectAll={handleSelectAll}
+          onDelete={handleBulkDelete}
+        />
+      )}
     </SafeAreaView>
   );
 };

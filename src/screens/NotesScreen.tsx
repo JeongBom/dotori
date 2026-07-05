@@ -3,7 +3,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
-  TextInput, ActivityIndicator, ListRenderItemInfo,
+  TextInput, ActivityIndicator, ListRenderItemInfo, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -16,6 +16,8 @@ import { Note } from '../types';
 import { RootStackParamList } from '../navigation';
 import { theme } from '../theme';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import SelectionBar from '../components/SelectionBar';
+import { ListChecks } from 'lucide-react-native';
 
 const REALTIME_TABLES = ['notes'] as const;
 
@@ -60,14 +62,19 @@ interface NoteCardProps {
   note: Note;
   index: number;
   onPress: () => void;
+  selected?: boolean; // 다중 선택 모드에서 선택됨
 }
 
-const NoteCard: React.FC<NoteCardProps> = ({ note, index, onPress }) => {
+const NoteCard: React.FC<NoteCardProps> = ({ note, index, onPress, selected }) => {
   const bg = theme.colors.noteCards[index % theme.colors.noteCards.length];
   const preview = note.content.replace(/https?:\/\/[^\s]+/g, '🔗').slice(0, 80);
 
   return (
-    <TouchableOpacity style={[card.wrap, { backgroundColor: bg }]} onPress={onPress} activeOpacity={0.75}>
+    <TouchableOpacity
+      style={[card.wrap, { backgroundColor: bg }, selected && card.wrapSelected]}
+      onPress={onPress}
+      activeOpacity={0.75}
+    >
       <Text style={card.title} numberOfLines={2}>{note.title || '제목 없음'}</Text>
       {preview ? <Text style={card.body} numberOfLines={5}>{preview}</Text> : null}
       <Text style={card.date}>{formatDate(note.updated_at)}</Text>
@@ -88,6 +95,7 @@ const card = StyleSheet.create({
     shadowRadius: 4,
     elevation: 1,
   },
+  wrapSelected: { borderWidth: 1.5, borderColor: theme.colors.brand },
   title: { fontSize: 13, fontWeight: '700', color: theme.colors.warm.dark, letterSpacing: -0.2, marginBottom: 5 },
   body: { fontSize: 11, color: theme.colors.warm.oak, lineHeight: 16, marginBottom: 8 },
   date: { fontSize: 10, color: theme.colors.warm.lightOak, fontWeight: '500' },
@@ -104,6 +112,8 @@ const NotesScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const loadNotes = useCallback(async () => {
     const familyId = await getOrCreateFamilyId();
@@ -129,6 +139,33 @@ const NotesScreen: React.FC = () => {
     n.content.toLowerCase().includes(search.toLowerCase())
   );
 
+  // ── 다중 선택 ─────────────────────────────────
+  const exitSelectMode = () => { setSelectMode(false); setSelectedIds([]); };
+
+  const handleSelect = (note: Note) => {
+    setSelectedIds(prev => prev.includes(note.id) ? prev.filter(id => id !== note.id) : [...prev, note.id]);
+  };
+
+  const handleSelectAll = () => {
+    setSelectedIds(prev => prev.length === filtered.length ? [] : filtered.map(n => n.id));
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.length === 0) return;
+    Alert.alert('선택 삭제', `${selectedIds.length}개 메모를 삭제할까요?`, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제', style: 'destructive',
+        onPress: async () => {
+          const { error } = await supabase.from('notes').delete().in('id', selectedIds);
+          if (error) { Alert.alert('오류', `삭제에 실패했습니다.\n(${error.message})`); return; }
+          setNotes(prev => prev.filter(n => !selectedIds.includes(n.id)));
+          exitSelectMode();
+        },
+      },
+    ]);
+  };
+
   const handleNew = async () => {
     const familyId = await getOrCreateFamilyId();
     if (!familyId) return;
@@ -144,7 +181,8 @@ const NotesScreen: React.FC = () => {
     <NoteCard
       note={item}
       index={index}
-      onPress={() => navigation.navigate('NoteDetail', { noteId: item.id })}
+      selected={selectedIds.includes(item.id)}
+      onPress={() => selectMode ? handleSelect(item) : navigation.navigate('NoteDetail', { noteId: item.id })}
     />
   );
 
@@ -156,12 +194,20 @@ const NotesScreen: React.FC = () => {
           <Text style={s.subLabel}>가족 공유</Text>
           <Text style={s.title}>메모</Text>
         </View>
-        <TouchableOpacity
-          onPress={() => { setShowSearch(v => !v); if (showSearch) setSearch(''); }}
-          style={[s.iconBtn, showSearch && s.iconBtnActive]}
-        >
-          <SvgSearch active={showSearch} />
-        </TouchableOpacity>
+        <View style={s.headerBtns}>
+          <TouchableOpacity
+            onPress={() => selectMode ? exitSelectMode() : setSelectMode(true)}
+            style={[s.iconBtn, selectMode && s.iconBtnActive]}
+          >
+            <ListChecks color={selectMode ? theme.colors.brand : theme.colors.warm.dark} size={18} strokeWidth={1.5} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => { setShowSearch(v => !v); if (showSearch) setSearch(''); }}
+            style={[s.iconBtn, showSearch && s.iconBtnActive]}
+          >
+            <SvgSearch active={showSearch} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* 검색 */}
@@ -199,10 +245,22 @@ const NotesScreen: React.FC = () => {
         />
       )}
 
-      {/* FAB */}
-      <TouchableOpacity style={s.fab} onPress={handleNew} activeOpacity={0.85}>
-        <SvgPencil />
-      </TouchableOpacity>
+      {/* FAB (선택 모드에선 숨김) */}
+      {!selectMode && (
+        <TouchableOpacity style={s.fab} onPress={handleNew} activeOpacity={0.85}>
+          <SvgPencil />
+        </TouchableOpacity>
+      )}
+
+      {/* 다중 선택 하단 바 */}
+      {selectMode && (
+        <SelectionBar
+          count={selectedIds.length}
+          allSelected={filtered.length > 0 && selectedIds.length === filtered.length}
+          onSelectAll={handleSelectAll}
+          onDelete={handleBulkDelete}
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -219,6 +277,7 @@ const s = StyleSheet.create({
   },
   subLabel: { fontSize: 12, color: theme.colors.warm.lightOak, fontWeight: '600', marginBottom: 2 },
   title: { fontSize: 26, fontWeight: '700', color: theme.colors.warm.dark, letterSpacing: -0.5 },
+  headerBtns: { flexDirection: 'row', gap: 8 },
   iconBtn: {
     width: 36, height: 36, borderRadius: 18,
     backgroundColor: theme.colors.warm.ivory,

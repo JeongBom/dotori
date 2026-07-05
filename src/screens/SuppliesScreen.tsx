@@ -10,7 +10,7 @@ import { useNavigation, useIsFocused, CompositeNavigationProp } from '@react-nav
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Svg, { Path } from 'react-native-svg';
-import { ReceiptText } from 'lucide-react-native';
+import { ReceiptText, ListChecks } from 'lucide-react-native';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { Supply, SupplyCategoryEntry } from '../types';
@@ -22,6 +22,7 @@ import IconBtn from '../components/IconBtn';
 import SectionLabel from '../components/SectionLabel';
 import SupplyRow from '../components/SupplyRow';
 import SupplyCategoryModal from '../components/SupplyCategoryModal';
+import SelectionBar from '../components/SelectionBar';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
 const REALTIME_TABLES = ['supplies', 'supply_categories'] as const;
@@ -61,6 +62,8 @@ const SuppliesScreen: React.FC = () => {
   const [sort, setSort]             = useState<SortType>('추가순');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [categoryModal, setCategoryModal] = useState<{ visible: boolean; editing: SupplyCategoryEntry | null }>({ visible: false, editing: null });
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const loadData = useCallback(async () => {
     try {
@@ -138,6 +141,33 @@ const SuppliesScreen: React.FC = () => {
     items.filter(item => filter === '전체' || item.category === filter), sort,
   ), [items, filter, sort]);
 
+  // ── 다중 선택 ─────────────────────────────────
+  const exitSelectMode = useCallback(() => { setSelectMode(false); setSelectedIds([]); }, []);
+
+  const handleSelect = useCallback((item: Supply) => {
+    setSelectedIds(prev => prev.includes(item.id) ? prev.filter(id => id !== item.id) : [...prev, item.id]);
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    setSelectedIds(prev => prev.length === filtered.length ? [] : filtered.map(i => i.id));
+  }, [filtered]);
+
+  const handleBulkDelete = useCallback(() => {
+    if (selectedIds.length === 0) return;
+    Alert.alert('선택 삭제', `${selectedIds.length}개 항목을 삭제할까요?`, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제', style: 'destructive',
+        onPress: async () => {
+          const { error } = await supabase.from('supplies').update({ is_active: false }).in('id', selectedIds);
+          if (error) { Alert.alert('오류', `삭제에 실패했습니다.\n(${error.message})`); return; }
+          setItems(prev => prev.filter(i => !selectedIds.includes(i.id)));
+          exitSelectMode();
+        },
+      },
+    ]);
+  }, [selectedIds, exitSelectMode]);
+
   const lowItems      = useMemo(() => filtered.filter(i => i.quantity <= i.low_stock_threshold), [filtered]);
   const okItems       = useMemo(() => filtered.filter(i => i.quantity > i.low_stock_threshold), [filtered]);
   const lowStockCount = useMemo(() => items.filter(i => i.quantity <= i.low_stock_threshold).length, [items]);
@@ -170,6 +200,9 @@ const SuppliesScreen: React.FC = () => {
           <Text style={s.title}>생필품</Text>
         </View>
         <View style={s.headerRight}>
+          <IconBtn onPress={() => selectMode ? exitSelectMode() : setSelectMode(true)}>
+            <ListChecks color={selectMode ? theme.colors.brand : theme.colors.warm.dark} size={18} strokeWidth={1.5} />
+          </IconBtn>
           <IconBtn onPress={() => navigation.navigate('ReceiptScan')}>
             <ReceiptText color={theme.colors.warm.dark} size={18} strokeWidth={1.5} />
           </IconBtn>
@@ -272,6 +305,9 @@ const SuppliesScreen: React.FC = () => {
               onDelete={handleDelete}
               onQuantityChange={handleQuantityChange}
               onEdit={handleEdit}
+              selectMode={selectMode}
+              selected={selectedIds.includes(item.id)}
+              onSelect={handleSelect}
             />
           )}
           contentContainerStyle={{ paddingBottom: 100 }}
@@ -281,16 +317,28 @@ const SuppliesScreen: React.FC = () => {
         />
       )}
 
-      {/* FAB */}
-      <TouchableOpacity
-        style={s.fab}
-        onPress={() => navigation.navigate('AddSupply', { familyId: familyId ?? undefined })}
-        activeOpacity={0.85}
-      >
-        <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-          <Path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth={2.5} strokeLinecap="round" />
-        </Svg>
-      </TouchableOpacity>
+      {/* FAB (선택 모드에선 숨김) */}
+      {!selectMode && (
+        <TouchableOpacity
+          style={s.fab}
+          onPress={() => navigation.navigate('AddSupply', { familyId: familyId ?? undefined })}
+          activeOpacity={0.85}
+        >
+          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+            <Path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth={2.5} strokeLinecap="round" />
+          </Svg>
+        </TouchableOpacity>
+      )}
+
+      {/* 다중 선택 하단 바 */}
+      {selectMode && (
+        <SelectionBar
+          count={selectedIds.length}
+          allSelected={filtered.length > 0 && selectedIds.length === filtered.length}
+          onSelectAll={handleSelectAll}
+          onDelete={handleBulkDelete}
+        />
+      )}
 
       <SupplyCategoryModal
         visible={categoryModal.visible}

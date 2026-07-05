@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, FlatList, SectionList, StyleSheet,
-  TouchableOpacity, ActivityIndicator, Alert,
+  TouchableOpacity, Pressable, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useIsFocused, CompositeNavigationProp } from '@react-navigation/native';
@@ -12,6 +12,7 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Swipeable } from 'react-native-gesture-handler';
 import Svg, { Path } from 'react-native-svg';
+import { ListChecks } from 'lucide-react-native';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { ShoppingItem } from '../types';
@@ -20,6 +21,7 @@ import { theme } from '../theme';
 import IconBtn from '../components/IconBtn';
 import SectionLabel from '../components/SectionLabel';
 import SwipeDeleteAction from '../components/SwipeDeleteAction';
+import SelectionBar from '../components/SelectionBar';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
 const REALTIME_TABLES = ['shopping_items'] as const;
@@ -40,11 +42,15 @@ interface ShoppingRowProps {
   onToggle: (item: ShoppingItem) => void;
   onDelete: (item: ShoppingItem) => void;
   onEdit: (item: ShoppingItem) => void;
+  // 다중 선택 모드
+  selectMode?: boolean;
+  selected?: boolean;
+  onSelect?: (item: ShoppingItem) => void;
 }
 
 const SOURCE_LABEL: Record<string, string> = { fridge: '음식 연동', supplies: '생필품 연동' };
 
-const ShoppingRow: React.FC<ShoppingRowProps> = React.memo(({ item, onToggle, onDelete, onEdit }) => {
+const ShoppingRow: React.FC<ShoppingRowProps> = React.memo(({ item, onToggle, onDelete, onEdit, selectMode, selected, onSelect }) => {
   const swipeRef = useRef<Swipeable>(null);
 
   const handleDelete = () => {
@@ -60,6 +66,7 @@ const ShoppingRow: React.FC<ShoppingRowProps> = React.memo(({ item, onToggle, on
   return (
     <Swipeable
       ref={swipeRef}
+      enabled={!selectMode}
       renderRightActions={() => (
         <SwipeDeleteAction
           onDelete={handleDelete}
@@ -69,7 +76,7 @@ const ShoppingRow: React.FC<ShoppingRowProps> = React.memo(({ item, onToggle, on
       overshootRight={false}
     >
       <TouchableOpacity
-        style={[row.card, item.is_checked && row.cardChecked]}
+        style={[row.card, item.is_checked && row.cardChecked, selected && row.cardSelected]}
         onPress={() => onEdit(item)}
         activeOpacity={0.8}
       >
@@ -98,6 +105,11 @@ const ShoppingRow: React.FC<ShoppingRowProps> = React.memo(({ item, onToggle, on
             <Text style={row.tagText}>{item.store_tag}</Text>
           </View>
         ) : null}
+
+        {/* 선택 모드: 카드 전체 터치를 선택 토글로 가로챔 */}
+        {selectMode && (
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => onSelect?.(item)} />
+        )}
       </TouchableOpacity>
     </Swipeable>
   );
@@ -112,6 +124,7 @@ const row = StyleSheet.create({
     shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
   },
   cardChecked: { opacity: 0.55 },
+  cardSelected: { borderWidth: 1.5, borderColor: theme.colors.brand },
   checkbox: {
     width: 30, height: 30, borderRadius: 9, backgroundColor: theme.colors.warm.cream,
     borderWidth: 1, borderColor: theme.colors.warm.edge,
@@ -139,6 +152,8 @@ const ShoppingScreen: React.FC = () => {
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState<FilterType>('전체');
   const [statusTab, setStatusTab] = useState<StatusTab>('전체');
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const loadData = useCallback(async () => {
     try {
@@ -227,6 +242,33 @@ const ShoppingScreen: React.FC = () => {
   const todoItems = useMemo(() => filtered.filter(i => !i.is_checked), [filtered]);
   const doneItems = useMemo(() => filtered.filter(i => i.is_checked), [filtered]);
 
+  // ── 다중 선택 ─────────────────────────────────
+  const exitSelectMode = useCallback(() => { setSelectMode(false); setSelectedIds([]); }, []);
+
+  const handleSelect = useCallback((item: ShoppingItem) => {
+    setSelectedIds(prev => prev.includes(item.id) ? prev.filter(id => id !== item.id) : [...prev, item.id]);
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    setSelectedIds(prev => prev.length === filtered.length ? [] : filtered.map(i => i.id));
+  }, [filtered]);
+
+  const handleBulkDelete = useCallback(() => {
+    if (selectedIds.length === 0) return;
+    Alert.alert('선택 삭제', `${selectedIds.length}개 항목을 삭제할까요?`, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제', style: 'destructive',
+        onPress: async () => {
+          const { error } = await supabase.from('shopping_items').update({ is_active: false }).in('id', selectedIds);
+          if (error) { Alert.alert('오류', `삭제에 실패했습니다.\n(${error.message})`); return; }
+          setItems(prev => prev.filter(i => !selectedIds.includes(i.id)));
+          exitSelectMode();
+        },
+      },
+    ]);
+  }, [selectedIds, exitSelectMode]);
+
   const tagCounts = useMemo(() => {
     const map: Record<string, number> = { '전체': items.length };
     storeTags.forEach(t => { map[t] = items.filter(i => i.store_tag === t).length; });
@@ -255,6 +297,9 @@ const ShoppingScreen: React.FC = () => {
           <Text style={s.title}>장보기</Text>
         </View>
         <View style={s.headerRight}>
+          <IconBtn onPress={() => selectMode ? exitSelectMode() : setSelectMode(true)}>
+            <ListChecks color={selectMode ? theme.colors.brand : theme.colors.warm.dark} size={18} strokeWidth={1.5} />
+          </IconBtn>
           {doneItems.length > 0 && (
             <IconBtn onPress={handleClearChecked}>
               <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
@@ -331,6 +376,9 @@ const ShoppingScreen: React.FC = () => {
               onToggle={handleToggle}
               onDelete={handleDelete}
               onEdit={goEdit}
+              selectMode={selectMode}
+              selected={selectedIds.includes(item.id)}
+              onSelect={handleSelect}
             />
           )}
           contentContainerStyle={{ paddingBottom: 100 }}
@@ -340,12 +388,24 @@ const ShoppingScreen: React.FC = () => {
         />
       )}
 
-      {/* FAB */}
-      <TouchableOpacity style={s.fab} onPress={goAdd} activeOpacity={0.85}>
-        <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-          <Path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth={2.5} strokeLinecap="round" />
-        </Svg>
-      </TouchableOpacity>
+      {/* FAB (선택 모드에선 숨김) */}
+      {!selectMode && (
+        <TouchableOpacity style={s.fab} onPress={goAdd} activeOpacity={0.85}>
+          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+            <Path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth={2.5} strokeLinecap="round" />
+          </Svg>
+        </TouchableOpacity>
+      )}
+
+      {/* 다중 선택 하단 바 */}
+      {selectMode && (
+        <SelectionBar
+          count={selectedIds.length}
+          allSelected={filtered.length > 0 && selectedIds.length === filtered.length}
+          onSelectAll={handleSelectAll}
+          onDelete={handleBulkDelete}
+        />
+      )}
     </SafeAreaView>
   );
 };

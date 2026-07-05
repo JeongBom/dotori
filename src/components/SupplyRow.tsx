@@ -59,9 +59,13 @@ interface SupplyRowProps {
   onDelete: (item: Supply) => void;
   onQuantityChange: (item: Supply, delta: number) => void;
   onEdit: (item: Supply) => void;
+  // 다중 선택 모드
+  selectMode?: boolean;
+  selected?: boolean;
+  onSelect?: (item: Supply) => void;
 }
 
-const SupplyRow: React.FC<SupplyRowProps> = React.memo(({ item, onDelete, onQuantityChange, onEdit }) => {
+const SupplyRow: React.FC<SupplyRowProps> = React.memo(({ item, onDelete, onQuantityChange, onEdit, selectMode, selected, onSelect }) => {
   const swipeRef = useRef<Swipeable>(null);
   const isLow = item.quantity <= item.low_stock_threshold;
   const [editingQty, setEditingQty] = useState(false);
@@ -94,9 +98,9 @@ const SupplyRow: React.FC<SupplyRowProps> = React.memo(({ item, onDelete, onQuan
   const barWidth: DimensionValue = `${Math.max(level * 100, 3)}%`;
 
   return (
-    <Swipeable ref={swipeRef} renderRightActions={() => <SwipeDeleteAction onDelete={handleDelete} />} overshootRight={false}>
+    <Swipeable ref={swipeRef} enabled={!selectMode} renderRightActions={() => <SwipeDeleteAction onDelete={handleDelete} />} overshootRight={false}>
       <TouchableOpacity
-        style={[row.card, isLow && row.cardLow]}
+        style={[row.card, isLow && row.cardLow, selected && row.cardSelected]}
         onPress={() => onEdit(item)}
         activeOpacity={0.8}
       >
@@ -165,6 +169,11 @@ const SupplyRow: React.FC<SupplyRowProps> = React.memo(({ item, onDelete, onQuan
             <Text style={row.stepPlusText}>+</Text>
           </TouchableOpacity>
         </Pressable>
+
+        {/* 선택 모드: 카드 전체 터치를 선택 토글로 가로챔 */}
+        {selectMode && (
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => onSelect?.(item)} />
+        )}
       </TouchableOpacity>
     </Swipeable>
   );
@@ -178,6 +187,7 @@ const row = StyleSheet.create({
     shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
   },
   cardLow: { borderWidth: 1, borderColor: theme.colors.alert.dangerBorder },
+  cardSelected: { borderWidth: 1.5, borderColor: theme.colors.brand },
   iconBox: {
     width: 30, height: 30, borderRadius: 9, backgroundColor: theme.colors.warm.cream,
     justifyContent: 'center', alignItems: 'center', flexShrink: 0,
