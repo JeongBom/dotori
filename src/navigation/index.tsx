@@ -22,6 +22,7 @@ import SuppliesScreen from '../screens/SuppliesScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import AddFridgeItemScreen from '../screens/AddFridgeItemScreen';
 import AddSupplyScreen from '../screens/AddSupplyScreen';
+import ShoppingScreen from '../screens/ShoppingScreen';
 import NotesScreen from '../screens/NotesScreen';
 import NoteDetailScreen from '../screens/NoteDetailScreen';
 import AuthScreen from '../screens/auth/AuthScreen';
@@ -38,6 +39,7 @@ export type RootTabParamList = {
   Home: undefined;
   Fridge: undefined;
   Supplies: undefined;
+  Shopping: undefined;
   Notes: undefined;
 };
 
@@ -72,17 +74,19 @@ function TabIcon({ name, color }: { name: string; color: string }) {
     return <Svg {...s} viewBox="0 0 24 24" fill="none"><Path d="M5 8h14l-1.5 11a2 2 0 0 1-2 1.7h-7a2 2 0 0 1-2-1.7z" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"/><Path d="M9 8V6a3 3 0 0 1 6 0v2M9 12v5M15 12v5" stroke={color} strokeWidth={1.6} strokeLinecap="round"/></Svg>;
   if (name === 'wallet')
     return <Svg {...s} viewBox="0 0 24 24" fill="none"><Path d="M3 7a2 2 0 0 1 2-2h14v4H5a2 2 0 0 0-2 2z" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"/><Path d="M3 7v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9H5" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"/><Circle cx="16" cy="14" r="1.3" fill={color}/></Svg>;
+  if (name === 'cart')
+    return <Svg {...s} viewBox="0 0 24 24" fill="none"><Path d="M3 4h2l2.4 12.2a1.5 1.5 0 0 0 1.5 1.2h8.6a1.5 1.5 0 0 0 1.5-1.2L21 8H6" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"/><Circle cx="9.5" cy="20.5" r="1.3" fill={color}/><Circle cx="16.5" cy="20.5" r="1.3" fill={color}/></Svg>;
   if (name === 'note')
     return <Svg {...s} viewBox="0 0 24 24" fill="none"><Path d="M5 4h11l4 4v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"/><Path d="M15 4v5h5M8 13h8M8 17h5" stroke={color} strokeWidth={1.6} strokeLinecap="round"/></Svg>;
   return null;
 }
 
 const TAB_ICON_NAMES: Partial<Record<keyof RootTabParamList, string>> = {
-  Home: 'home', Fridge: 'fridge', Supplies: 'basket', Notes: 'note',
+  Home: 'home', Fridge: 'fridge', Supplies: 'basket', Shopping: 'cart', Notes: 'note',
 };
 
 const TAB_LABELS: Partial<Record<keyof RootTabParamList, string>> = {
-  Home: '홈', Fridge: '음식', Supplies: '생필품', Notes: '메모',
+  Home: '홈', Fridge: '음식', Supplies: '생필품', Shopping: '장보기', Notes: '메모',
 };
 
 // ---- 하단 탭 ----
@@ -113,6 +117,7 @@ function MainTabs() {
       <Tab.Screen name="Home" component={DashboardScreen} />
       <Tab.Screen name="Fridge"   component={FridgeScreen} />
       <Tab.Screen name="Supplies" component={SuppliesScreen} />
+      <Tab.Screen name="Shopping" component={ShoppingScreen} />
       <Tab.Screen name="Notes"    component={NotesScreen} />
     </Tab.Navigator>
   );

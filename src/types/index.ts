@@ -123,6 +123,25 @@ export interface Supply {
 
 export type NewSupply = Omit<Supply, 'id' | 'created_at' | 'updated_at'>;
 
+// ---- 장보기 ----
+
+export type ShoppingSourceType = 'fridge' | 'supplies' | 'manual';
+
+export interface ShoppingItem {
+  id: string;
+  family_id: string;
+  name: string;
+  source_type: ShoppingSourceType;   // 자동 연동 출처 (fridge/supplies) 또는 직접 추가 (manual)
+  source_id: string | null;          // 자동 연동된 원본 아이템 id
+  store_tag: string;                 // 구입처 태그: 이마트 / 쿠팡 / 동네마트 등
+  is_checked: boolean;
+  is_active: boolean;
+  created_at: string;
+  checked_at: string | null;
+}
+
+export type NewShoppingItem = Omit<ShoppingItem, 'id' | 'created_at' | 'checked_at'>;
+
 // ---- 메모 ----
 
 export interface Note {
