@@ -14,15 +14,18 @@ export async function autoAddToShopping(
 ): Promise<void> {
   try {
     // 이미 장보기에 미완료로 올라가 있으면 스킵
+    // — 같은 원본(source_id)뿐 아니라, 직접 추가한 같은 이름(공백 무시)도 중복으로 간주
     const { data: existing } = await supabase
       .from('shopping_items')
-      .select('id')
+      .select('id, name, source_id')
       .eq('family_id', familyId)
-      .eq('source_id', sourceId)
       .eq('is_active', true)
-      .eq('is_checked', false)
-      .limit(1);
-    if (existing && existing.length > 0) return;
+      .eq('is_checked', false);
+    const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, '');
+    const isDuplicate = (existing ?? []).some(
+      e => e.source_id === sourceId || normalize(e.name) === normalize(name),
+    );
+    if (isDuplicate) return;
 
     await supabase.from('shopping_items').insert({
       family_id: familyId,
