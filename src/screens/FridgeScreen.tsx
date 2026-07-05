@@ -16,6 +16,7 @@ import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { FridgeItem } from '../types';
 import { RootTabParamList, RootStackParamList } from '../navigation';
 import { cancelExpiryNotification } from '../lib/notifications';
+import { autoAddToShopping } from '../lib/shopping';
 import { theme } from '../theme';
 
 type FridgeNav = CompositeNavigationProp<
@@ -24,7 +25,7 @@ type FridgeNav = CompositeNavigationProp<
 >;
 
 type FilterType = '전체' | '냉장' | '냉동' | '실온' | '먹은 음식';
-type SortType   = '유통기한' | '이름' | '넣은날짜';
+type SortType   = '유통기한' | '이름' | '구입날짜';
 type SectionKey = '기한 지남' | '임박' | '여유' | '기한없음' | '먹은 음식';
 
 // ── D-day 계산 ────────────────────────────────
@@ -43,7 +44,7 @@ function getDDay(expiryDate: string | null): { label: string; color: string; sta
 function sortItems(items: FridgeItem[], sort: SortType): FridgeItem[] {
   return [...items].sort((a, b) => {
     if (sort === '이름') return a.name.localeCompare(b.name, 'ko');
-    if (sort === '넣은날짜') return b.stored_date.localeCompare(a.stored_date);
+    if (sort === '구입날짜') return b.stored_date.localeCompare(a.stored_date);
     if (!a.expiry_date && !b.expiry_date) return 0;
     if (!a.expiry_date) return 1;
     if (!b.expiry_date) return -1;
@@ -171,7 +172,7 @@ const FoodRow: React.FC<FoodRowProps> = React.memo(({ item, onToggle, onDelete, 
             <View style={[fr.chip, { backgroundColor: storageStyle.bg }]}>
               <Text style={[fr.chipText, { color: storageStyle.fg }]}>{item.storage_type}</Text>
             </View>
-            <Text style={fr.date}>넣은날 {item.stored_date.slice(5).replace('-', '.')}</Text>
+            <Text style={fr.date}>구입일 {item.stored_date.slice(5).replace('-', '.')}</Text>
           </View>
         </TouchableOpacity>
 
@@ -274,7 +275,13 @@ const FridgeScreen: React.FC = () => {
     if (!next) payload.quantity = 1;
     await supabase.from('fridge_items').update(payload).eq('id', item.id);
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, is_consumed: next, consumed_at: next ? today : null, quantity: next ? i.quantity : 1 } : i));
-    if (next) await cancelExpiryNotification(item.id);
+    if (next) {
+      await cancelExpiryNotification(item.id);
+      // 다 먹음 처리 시 장보기 자동 추가 (품목 설정이 켜져 있을 때만)
+      if (item.auto_add_to_shopping ?? true) {
+        await autoAddToShopping(item.family_id, item.name, 'fridge', item.id, item.default_store_tag ?? '');
+      }
+    }
   }, []);
 
   const handleQtyChange = useCallback(async (item: FridgeItem, delta: number) => {
@@ -284,9 +291,18 @@ const FridgeScreen: React.FC = () => {
       setItems(prev => prev.map(i => i.id === item.id ? { ...i, quantity: 0, is_consumed: true, consumed_at: today } : i));
       await supabase.from('fridge_items').update({ quantity: 0, is_consumed: true, consumed_at: today }).eq('id', item.id);
       await cancelExpiryNotification(item.id);
+      // 수량 0 도달 시 장보기 자동 추가 (품목 설정이 켜져 있을 때만)
+      if (item.auto_add_to_shopping ?? true) {
+        await autoAddToShopping(item.family_id, item.name, 'fridge', item.id, item.default_store_tag ?? '');
+      }
     } else {
       setItems(prev => prev.map(i => i.id === item.id ? { ...i, quantity: next } : i));
       await supabase.from('fridge_items').update({ quantity: next }).eq('id', item.id);
+      // 기준 수량 이하로 떨어지는 순간 장보기 자동 추가 (0이면 위 0 도달 분기에서 처리)
+      const th = item.low_stock_threshold ?? 0;
+      if (th > 0 && next <= th && (item.quantity ?? 1) > th && (item.auto_add_to_shopping ?? true)) {
+        await autoAddToShopping(item.family_id, item.name, 'fridge', item.id, item.default_store_tag ?? '');
+      }
     }
   }, []);
 
@@ -343,7 +359,7 @@ const FridgeScreen: React.FC = () => {
     '기한없음':  theme.colors.warm.lightOak,
     '먹은 음식': theme.colors.warm.lightOak,
   };
-  const SORTS: SortType[] = ['유통기한', '이름', '넣은날짜'];
+  const SORTS: SortType[] = ['유통기한', '이름', '구입날짜'];
 
   if (loading) {
     return (

@@ -13,6 +13,7 @@ import {
   Keyboard,
   Dimensions,
   Animated,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
@@ -191,6 +192,10 @@ const AddFridgeItemScreen: React.FC = () => {
   const [quantity, setQuantity] = useState(1);
   const [storedDate, setStoredDate] = useState(todayStr());
   const [expiryDate, setExpiryDate] = useState('');
+  const [autoAdd, setAutoAdd] = useState(true);       // 다 쓰면 장보기 자동 추가
+  const [threshold, setThreshold] = useState(0);      // 장보기 기준 수량 (0 = 다 쓰면)
+  const [storeTag, setStoreTag] = useState('');       // 기본 구입처 태그 (선택)
+  const [storeTagOptions, setStoreTagOptions] = useState<string[]>([]); // 기존 태그 제안
   const [saving, setSaving] = useState(false);
   const [familyId, setFamilyId] = useState<string | null>(route.params?.familyId ?? null);
 
@@ -252,6 +257,9 @@ const AddFridgeItemScreen: React.FC = () => {
       setQuantity(data.quantity ?? 1);
       setStoredDate(data.stored_date);
       setExpiryDate(data.expiry_date ?? '');
+      setAutoAdd(data.auto_add_to_shopping ?? true);
+      setThreshold(data.low_stock_threshold ?? 0);
+      setStoreTag(data.default_store_tag ?? '');
       setFamilyId(data.family_id);
     })();
   }, [itemId]);
@@ -262,6 +270,20 @@ const AddFridgeItemScreen: React.FC = () => {
       if (data) setFoodDb(data as FoodEntry[]);
     })();
   }, []);
+
+  // 기존 구입처 태그 목록 (기본 구입처 제안 칩용)
+  useEffect(() => {
+    (async () => {
+      const fid = familyId ?? await getOrCreateFamilyId();
+      if (!fid) return;
+      const { data } = await supabase
+        .from('shopping_items')
+        .select('store_tag')
+        .eq('family_id', fid)
+        .eq('is_active', true);
+      if (data) setStoreTagOptions([...new Set(data.map(t => t.store_tag).filter(Boolean))]);
+    })();
+  }, [familyId]);
 
   const onNameChange = useCallback((text: string) => {
     setName(text);
@@ -306,6 +328,9 @@ const AddFridgeItemScreen: React.FC = () => {
         quantity,
         stored_date: storedDate,
         expiry_date: expiryDate || null,
+        auto_add_to_shopping: autoAdd,
+        default_store_tag: storeTag.trim(),
+        low_stock_threshold: threshold,
       };
 
       if (isEditing && itemId) {
@@ -544,9 +569,9 @@ const AddFridgeItemScreen: React.FC = () => {
     // step 3
     return (
       <ScrollView contentContainerStyle={s.stepContent} showsVerticalScrollIndicator={false}>
-        <Text style={s.stepQuestion}>언제 넣었나요?</Text>
+        <Text style={s.stepQuestion}>언제 구입했나요?</Text>
 
-        <Text style={s.label}>넣은 날짜</Text>
+        <Text style={s.label}>구입 날짜</Text>
         <TouchableOpacity style={s.dateRow} onPress={() => setShowStoredPicker(true)}>
           <Text style={s.dateText}>{formatDisplayDate(storedDate)}</Text>
           <ChevronDown color={theme.colors.brand} size={18} strokeWidth={2} />
@@ -576,6 +601,63 @@ const AddFridgeItemScreen: React.FC = () => {
             </TouchableOpacity>
           ) : null}
         </View>
+
+        {/* 장보기 자동 추가 토글 */}
+        <View style={s.autoAddRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.label}>다 쓰면 장보기에 자동 추가</Text>
+            <Text style={s.toggleSub}>수량이 0이 되면 장보기에 올려요</Text>
+          </View>
+          <Switch
+            value={autoAdd}
+            onValueChange={setAutoAdd}
+            trackColor={{ false: theme.colors.warm.edge, true: theme.colors.brand }}
+            thumbColor="#fff"
+          />
+        </View>
+
+        {/* 기본 구입처 (자동 추가 켜져 있을 때만) */}
+        {autoAdd && (
+          <>
+            <Text style={[s.label, { marginTop: 20 }]}>장보기 기준 수량</Text>
+            <Text style={s.thresholdSub}>이 수량 이하가 되면 장보기에 올려요 (0 = 다 쓰면)</Text>
+            <View style={s.qtyRow}>
+              <TouchableOpacity style={s.qtyBtn} onPress={() => setThreshold(t => Math.max(0, t - 1))}>
+                <Text style={s.qtyBtnText}>−</Text>
+              </TouchableOpacity>
+              <Text style={s.qtyNum}>{threshold}</Text>
+              <TouchableOpacity style={s.qtyBtn} onPress={() => setThreshold(t => t + 1)}>
+                <Text style={s.qtyBtnText}>+</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[s.label, { marginTop: 20 }]}>기본 구입처 <Text style={s.labelOptional}>(선택)</Text></Text>
+            <View style={s.tagInputBox}>
+              <TextInput
+                style={s.tagInput}
+                placeholder="예) 이마트, 쿠팡, 동네마트"
+                placeholderTextColor={theme.colors.warm.lightOak}
+                value={storeTag}
+                onChangeText={setStoreTag}
+                maxLength={12}
+                keyboardAppearance="light"
+              />
+            </View>
+            {storeTagOptions.length > 0 && (
+              <View style={s.tagSuggestRow}>
+                {storeTagOptions.map(t => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[s.tagChip, storeTag === t && s.tagChipActive]}
+                    onPress={() => setStoreTag(storeTag === t ? '' : t)}
+                  >
+                    <Text style={[s.tagChipText, storeTag === t && s.tagChipTextActive]}>{t}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </>
+        )}
       </ScrollView>
     );
   };
@@ -621,7 +703,7 @@ const AddFridgeItemScreen: React.FC = () => {
       <DatePickerModal
         visible={showStoredPicker}
         value={storedDate}
-        title="넣은 날짜 선택"
+        title="구입 날짜 선택"
         onConfirm={d => { setStoredDate(d); setShowStoredPicker(false); }}
         onCancel={() => setShowStoredPicker(false)}
       />
@@ -723,6 +805,25 @@ const s = StyleSheet.create({
     backgroundColor: theme.colors.warm.ivory, borderWidth: 1, borderColor: theme.colors.warm.edge,
   },
   quickBtnClearText: { fontSize: 12, color: theme.colors.warm.lightOak },
+
+  // 장보기 자동 추가 토글 + 기본 구입처
+  autoAddRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 32 },
+  toggleSub: { fontSize: 12, color: theme.colors.warm.lightOak, marginTop: -4 },
+  thresholdSub: { fontSize: 12, color: theme.colors.warm.lightOak, marginTop: -6, marginBottom: 12 },
+  tagInputBox: {
+    backgroundColor: theme.colors.warm.ivory, borderRadius: 14,
+    paddingHorizontal: 16, paddingVertical: 13,
+    borderWidth: 1, borderColor: theme.colors.warm.edge,
+  },
+  tagInput: { fontSize: 16, color: theme.colors.warm.dark, padding: 0 },
+  tagSuggestRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  tagChip: {
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20,
+    backgroundColor: theme.colors.warm.ivory, borderWidth: 1, borderColor: theme.colors.warm.edge,
+  },
+  tagChipActive: { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
+  tagChipText: { fontSize: 13, color: theme.colors.brand, fontWeight: '500' },
+  tagChipTextActive: { color: '#FFFFFF', fontWeight: '600' },
 
   bottomBar: {
     paddingHorizontal: 24, paddingVertical: 16,

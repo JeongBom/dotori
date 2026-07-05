@@ -18,6 +18,7 @@ import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { Supply, SupplyCategoryEntry } from '../types';
 import { RootTabParamList, RootStackParamList } from '../navigation';
 import { sendLowStockNotification } from '../lib/notifications';
+import { autoAddToShopping } from '../lib/shopping';
 import { theme } from '../theme';
 import IconBtn from '../components/IconBtn';
 import SectionLabel from '../components/SectionLabel';
@@ -162,9 +163,13 @@ const SupplyRow: React.FC<SupplyRowProps> = React.memo(({ item, onDelete, onQuan
           </View>
         </View>
 
-        {/* 수량 스텝퍼 */}
-        <View style={row.stepper}>
-          <TouchableOpacity onPress={() => onQuantityChange(item, 1)} style={row.stepBtnPlus}>
+        {/* 수량 스텝퍼 — 이 영역 터치는 수정으로 안 빠지고 +/-만 동작 */}
+        <Pressable style={row.stepper} onPress={() => {}}>
+          <TouchableOpacity
+            onPress={() => onQuantityChange(item, 1)}
+            style={row.stepBtnPlus}
+            hitSlop={{ top: 12, bottom: 3, left: 14, right: 14 }}
+          >
             <Text style={row.stepPlusText}>+</Text>
           </TouchableOpacity>
           {editingQty ? (
@@ -184,10 +189,14 @@ const SupplyRow: React.FC<SupplyRowProps> = React.memo(({ item, onDelete, onQuan
               <Text style={[row.qtyNum, isLow && row.qtyNumLow]}>{item.quantity}</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity onPress={() => onQuantityChange(item, -1)} style={row.stepBtnMinus}>
+          <TouchableOpacity
+            onPress={() => onQuantityChange(item, -1)}
+            style={row.stepBtnMinus}
+            hitSlop={{ top: 3, bottom: 12, left: 14, right: 14 }}
+          >
             <Text style={row.stepMinusText}>−</Text>
           </TouchableOpacity>
-        </View>
+        </Pressable>
       </TouchableOpacity>
     </Swipeable>
   );
@@ -217,17 +226,17 @@ const row = StyleSheet.create({
   note: { fontSize: 10, color: theme.colors.warm.lightOak, flex: 1 },
   threshold: { fontSize: 10, color: theme.colors.warm.lightOak },
   lowLabel: { fontSize: 10, fontWeight: '700', color: theme.colors.status.danger },
-  stepper: { alignItems: 'center', gap: 2, flexShrink: 0 },
+  stepper: { alignItems: 'center', gap: 3, flexShrink: 0, paddingLeft: 10, paddingVertical: 2 },
   stepBtnPlus: {
-    width: 22, height: 22, borderRadius: 11,
+    width: 26, height: 26, borderRadius: 13,
     backgroundColor: theme.colors.brand, justifyContent: 'center', alignItems: 'center',
   },
-  stepPlusText: { fontSize: 13, fontWeight: '700', color: '#fff', lineHeight: 16 },
+  stepPlusText: { fontSize: 15, fontWeight: '700', color: '#fff', lineHeight: 18 },
   stepBtnMinus: {
-    width: 22, height: 22, borderRadius: 11,
+    width: 26, height: 26, borderRadius: 13,
     backgroundColor: theme.colors.warm.edge, justifyContent: 'center', alignItems: 'center',
   },
-  stepMinusText: { fontSize: 13, fontWeight: '700', color: theme.colors.warm.dark, lineHeight: 16 },
+  stepMinusText: { fontSize: 15, fontWeight: '700', color: theme.colors.warm.dark, lineHeight: 18 },
   qtyNum: { fontSize: 15, fontWeight: '700', color: theme.colors.warm.dark, minWidth: 20, textAlign: 'center' },
   qtyNumLow: { color: theme.colors.status.danger },
   qtyInput: {
@@ -370,6 +379,10 @@ const SuppliesScreen: React.FC = () => {
     await supabase.from('supplies').update({ quantity: next }).eq('id', item.id);
     if (next <= item.low_stock_threshold && item.quantity > item.low_stock_threshold) {
       await sendLowStockNotification(item.id, item.name, next);
+      // 임계점 이하로 떨어지는 순간 장보기 자동 추가 (품목 설정이 켜져 있을 때만)
+      if (item.auto_add_to_shopping ?? true) {
+        await autoAddToShopping(item.family_id, item.name, 'supplies', item.id, item.default_store_tag ?? '');
+      }
     }
   }, []);
 

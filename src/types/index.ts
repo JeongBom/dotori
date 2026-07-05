@@ -54,6 +54,9 @@ export interface FridgeItem {
   expiry_date: string | null; // "YYYY-MM-DD" or null
   is_consumed: boolean;
   consumed_at: string | null; // "YYYY-MM-DD" or null
+  auto_add_to_shopping: boolean; // 다 쓰면 장보기 자동 추가 여부
+  default_store_tag: string;     // 자동 추가 시 기본 구입처 태그 ('' = 미분류)
+  low_stock_threshold: number;   // 이 수량 이하면 장보기 자동 추가 (0 = 다 쓰면)
   created_at: string;
   updated_at: string;
 }
@@ -116,6 +119,8 @@ export interface Supply {
   low_stock_threshold: number;
   category: string; // supply_categories.name 참조
   note: string | null;
+  auto_add_to_shopping: boolean; // 다 쓰면 장보기 자동 추가 여부
+  default_store_tag: string;     // 자동 추가 시 기본 구입처 태그 ('' = 미분류)
   is_active: boolean;
   created_at: string;
   updated_at: string;

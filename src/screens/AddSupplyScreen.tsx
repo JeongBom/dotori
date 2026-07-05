@@ -12,6 +12,7 @@ import {
   Keyboard,
   ActivityIndicator,
   Animated,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
@@ -59,6 +60,9 @@ const AddSupplyScreen: React.FC = () => {
   const [quantity, setQuantity] = useState(1);
   const [threshold, setThreshold] = useState(1);
   const [note, setNote] = useState('');
+  const [autoAdd, setAutoAdd] = useState(true);       // 다 쓰면 장보기 자동 추가
+  const [storeTag, setStoreTag] = useState('');       // 기본 구입처 태그 (선택)
+  const [storeTagOptions, setStoreTagOptions] = useState<string[]>([]); // 기존 태그 제안
   const [saving, setSaving] = useState(false);
 
   const [editingQty, setEditingQty] = useState(false);
@@ -72,13 +76,15 @@ const AddSupplyScreen: React.FC = () => {
       if (!fid) return;
       if (!familyId) setFamilyId(fid);
 
-      const { data } = await supabase
-        .from('supply_categories')
-        .select('*')
-        .eq('family_id', fid)
-        .order('created_at', { ascending: true });
+      const [catsRes, tagsRes] = await Promise.all([
+        supabase.from('supply_categories').select('*').eq('family_id', fid).order('created_at', { ascending: true }),
+        supabase.from('shopping_items').select('store_tag').eq('family_id', fid).eq('is_active', true),
+      ]);
 
-      if (data) setCategories(data as SupplyCategoryEntry[]);
+      if (catsRes.data) setCategories(catsRes.data as SupplyCategoryEntry[]);
+      if (tagsRes.data) {
+        setStoreTagOptions([...new Set(tagsRes.data.map(t => t.store_tag).filter(Boolean))]);
+      }
       setCatsLoading(false);
     };
     init();
@@ -94,6 +100,8 @@ const AddSupplyScreen: React.FC = () => {
       setQuantity(data.quantity);
       setThreshold(data.low_stock_threshold ?? 1);
       setNote(data.note ?? '');
+      setAutoAdd(data.auto_add_to_shopping ?? true);
+      setStoreTag(data.default_store_tag ?? '');
       setFamilyId(data.family_id);
     })();
   }, [supplyId]);
@@ -120,6 +128,8 @@ const AddSupplyScreen: React.FC = () => {
         quantity,
         low_stock_threshold: threshold,
         note: note.trim() || null,
+        auto_add_to_shopping: autoAdd,
+        default_store_tag: storeTag.trim(),
       };
 
       if (isEditing && supplyId) {
@@ -309,6 +319,51 @@ const AddSupplyScreen: React.FC = () => {
               keyboardAppearance="light"
             />
           </View>
+
+          {/* 장보기 자동 추가 토글 */}
+          <View style={s.toggleRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.label}>다 쓰면 장보기에 자동 추가</Text>
+              <Text style={s.subLabel}>알림 기준 수량 이하로 떨어지면 장보기에 올려요</Text>
+            </View>
+            <Switch
+              value={autoAdd}
+              onValueChange={setAutoAdd}
+              trackColor={{ false: theme.colors.warm.edge, true: theme.colors.brand }}
+              thumbColor="#fff"
+            />
+          </View>
+
+          {/* 기본 구입처 (자동 추가 켜져 있을 때만) */}
+          {autoAdd && (
+            <>
+              <Text style={[s.label, { marginTop: 20 }]}>기본 구입처 <Text style={s.labelOptional}>(선택)</Text></Text>
+              <View style={s.inputBox}>
+                <TextInput
+                  style={s.input}
+                  placeholder="예) 이마트, 쿠팡, 동네마트"
+                  placeholderTextColor={theme.colors.warm.lightOak}
+                  value={storeTag}
+                  onChangeText={setStoreTag}
+                  maxLength={12}
+                  keyboardAppearance="light"
+                />
+              </View>
+              {storeTagOptions.length > 0 && (
+                <View style={s.tagSuggestRow}>
+                  {storeTagOptions.map(t => (
+                    <TouchableOpacity
+                      key={t}
+                      style={[s.catChip, storeTag === t && s.catChipGray]}
+                      onPress={() => setStoreTag(storeTag === t ? '' : t)}
+                    >
+                      <Text style={[s.catChipText, storeTag === t && s.catChipTextWhite]}>{t}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -391,6 +446,9 @@ const s = StyleSheet.create({
   catChipGray: { backgroundColor: theme.colors.neutral, borderColor: theme.colors.neutral },
   catChipText: { fontSize: 13, color: theme.colors.brand, fontWeight: '500' },
   catChipTextWhite: { color: '#FFFFFF', fontWeight: '600' },
+
+  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 28 },
+  tagSuggestRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10, rowGap: 8 },
 
   qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 20 },
   qtyBtn: {
