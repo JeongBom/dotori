@@ -158,19 +158,24 @@ export interface ParsedReceiptItem {
   category: ReceiptCategory;
 }
 
+// 기존 재고 매칭 대상
+export interface ReceiptMatch {
+  table: 'fridge' | 'supplies';
+  id: string;
+  name: string;
+  quantity: number;  // 반영 전 현재 수량
+  similar: boolean;  // true = 이름이 완전히 같진 않고 비슷함 (추천 매칭)
+}
+
 // 확인 화면의 행 (기존 재고 매칭 결과 포함)
 export interface ReceiptReviewItem {
   key: string;
   name: string;
   quantity: number;
-  category: ReceiptCategory; // 신규 품목일 때만 토글 가능 (매칭되면 매칭된 쪽 고정)
-  matched: {
-    table: 'fridge' | 'supplies';
-    id: string;
-    name: string;
-    quantity: number; // 반영 전 현재 수량
-  } | null;
-  excluded: boolean; // 스와이프로 제외한 행
+  category: ReceiptCategory;
+  matched: ReceiptMatch | null;    // 실제 적용될 매칭 (null = 새로 추가)
+  suggestion: ReceiptMatch | null; // 추천 매칭 (거부했다가 다시 합칠 수 있게 보관)
+  excluded: boolean;               // 제외한 행
 }
 
 // ---- 메모 ----

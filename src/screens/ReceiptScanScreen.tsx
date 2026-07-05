@@ -179,7 +179,7 @@ const ReceiptScanScreen: React.FC = () => {
           const nextCat: ReceiptCategory = item.category === 'food' ? 'supply' : 'food';
           const res = inventory
             ? matchSingleReceiptItem(item.name, nextCat, inventory, true)
-            : { matched: null, category: nextCat };
+            : { matched: null, suggestion: null, category: nextCat };
           updateRow(item.key, res);
         }}
       >
@@ -201,11 +201,31 @@ const ReceiptScanScreen: React.FC = () => {
           maxLength={30}
         />
         {item.matched ? (
-          <Text style={r.matchedText}>
-            기존 '{item.matched.name}' {item.matched.quantity} → {item.matched.quantity + item.quantity}
-          </Text>
+          <View style={r.matchRow}>
+            <Text style={r.matchedText} numberOfLines={1}>
+              기존 '{item.matched.name}' {item.matched.quantity} → {item.matched.quantity + item.quantity}
+            </Text>
+            {/* 합침 거부 → 새 품목으로 */}
+            <TouchableOpacity onPress={() => updateRow(item.key, { matched: null })} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+              <Text style={r.matchAction}>따로 추가</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
-          <Text style={r.newText}>새로 추가</Text>
+          <View style={r.matchRow}>
+            <Text style={r.newText}>새로 추가</Text>
+            {/* 비슷한 품목 추천 → 탭하면 합치기 */}
+            {item.suggestion && (
+              <TouchableOpacity
+                onPress={() => updateRow(item.key, {
+                  matched: item.suggestion,
+                  category: item.suggestion!.table === 'fridge' ? 'food' : 'supply',
+                })}
+                hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+              >
+                <Text style={r.matchAction}>'{item.suggestion.name}'에 합치기</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         )}
       </View>
 
@@ -365,8 +385,10 @@ const r = StyleSheet.create({
     padding: 0, borderBottomWidth: 1, borderBottomColor: `${theme.colors.warm.edge}88`,
     paddingBottom: 2,
   },
-  matchedText: { fontSize: 11, color: theme.colors.status.safe, fontWeight: '600', marginTop: 3 },
-  newText: { fontSize: 11, color: theme.colors.brand, fontWeight: '600', marginTop: 3 },
+  matchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 },
+  matchedText: { fontSize: 11, color: theme.colors.status.safe, fontWeight: '600', flexShrink: 1 },
+  newText: { fontSize: 11, color: theme.colors.brand, fontWeight: '600' },
+  matchAction: { fontSize: 11, color: theme.colors.warm.oak, fontWeight: '600', textDecorationLine: 'underline' },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
   stepBtn: {
     width: 24, height: 24, borderRadius: 12,

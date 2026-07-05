@@ -5,7 +5,7 @@
 //    (기존 품목은 수량 증가, 없던 품목은 새로 추가)
 
 import { supabase } from './supabase';
-import { ParsedReceiptItem, ReceiptCategory, ReceiptReviewItem } from '../types';
+import { ParsedReceiptItem, ReceiptCategory, ReceiptMatch, ReceiptReviewItem } from '../types';
 
 // ── ① 영수증 파싱 (Edge Function 호출) ─────────
 export async function parseReceipt(imageBase64: string, mimeType: string): Promise<ParsedReceiptItem[]> {
@@ -18,23 +18,22 @@ export async function parseReceipt(imageBase64: string, mimeType: string): Promi
 }
 
 // ── 매칭용 기존 재고 로드 ───────────────────────
-interface FridgeLite { id: string; name: string; quantity: number; is_consumed: boolean }
-interface SupplyLite { id: string; name: string; quantity: number }
+interface ItemLite { id: string; name: string; quantity: number }
 
 export interface InventorySnapshot {
-  fridge: FridgeLite[];
-  supplies: SupplyLite[];
+  fridge: ItemLite[];
+  supplies: ItemLite[];
 }
 
 export async function loadInventoryForMatching(familyId: string): Promise<InventorySnapshot> {
   const [fridgeRes, suppliesRes] = await Promise.all([
-    // 소진된(is_consumed) 음식도 포함 — 다 먹은 걸 다시 사오는 경우가 흔해서 부활 대상
-    supabase.from('fridge_items').select('id, name, quantity, is_consumed').eq('family_id', familyId),
+    // 먹은 음식(is_consumed)은 매칭 대상에서 제외 — 새로 산 건 새 항목으로 (구입일/유통기한이 다름)
+    supabase.from('fridge_items').select('id, name, quantity').eq('family_id', familyId).eq('is_consumed', false),
     supabase.from('supplies').select('id, name, quantity').eq('family_id', familyId).eq('is_active', true),
   ]);
   return {
-    fridge: (fridgeRes.data ?? []) as FridgeLite[],
-    supplies: (suppliesRes.data ?? []) as SupplyLite[],
+    fridge: (fridgeRes.data ?? []) as ItemLite[],
+    supplies: (suppliesRes.data ?? []) as ItemLite[],
   };
 }
 
@@ -43,8 +42,7 @@ function normalizeName(name: string): string {
   return name.toLowerCase().replace(/\s+/g, '');
 }
 
-// 공백만 무시하고 완전히 같은 이름일 때만 같은 품목으로 간주
-// (포함 매칭 금지: '락토프리 우유' ≠ '우유', '구운계란' ≠ '계란')
+// 공백만 무시하고 완전히 같은 이름 = 같은 품목 (자동 합침)
 function isSameItem(a: string, b: string): boolean {
   const na = normalizeName(a);
   const nb = normalizeName(b);
@@ -52,33 +50,47 @@ function isSameItem(a: string, b: string): boolean {
   return na === nb;
 }
 
+// 한쪽이 다른 쪽을 포함(2자 이상) = 비슷한 품목 (추천만, 사용자가 거부 가능)
+// 예: '락토프리 우유' ~ '우유', '구운계란' ~ '계란'
+function isSimilarItem(a: string, b: string): boolean {
+  const na = normalizeName(a);
+  const nb = normalizeName(b);
+  if (!na || !nb || na === nb) return false;
+  return na.length >= 2 && nb.length >= 2 && (na.includes(nb) || nb.includes(na));
+}
+
+// 풀에서 매칭 찾기: 완전 일치 우선, 없으면 비슷한 이름을 추천으로
+function findMatch(pool: ItemLite[], table: 'fridge' | 'supplies', name: string): ReceiptMatch | null {
+  const exact = pool.find(p => isSameItem(p.name, name));
+  if (exact) return { table, id: exact.id, name: exact.name, quantity: exact.quantity, similar: false };
+  const similar = pool.find(p => isSimilarItem(p.name, name));
+  if (similar) return { table, id: similar.id, name: similar.name, quantity: similar.quantity, similar: true };
+  return null;
+}
+
 // 이름 하나에 대한 매칭 계산
-// 확인 화면에서 이름을 수정할 때마다 다시 호출해서 매칭을 갱신한다
+// - 완전 일치: 자동 합침 (matched = suggestion)
+// - 비슷한 이름: 새로 추가가 기본이되, 합치기 추천 표시 (matched = null, suggestion 有)
 // strictCategory: true면 지정한 분류 쪽 재고만 뒤진다 (사용자가 분류를 직접 바꾼 경우)
 export function matchSingleReceiptItem(
   name: string,
   preferredCategory: ReceiptCategory,
   inventory: InventorySnapshot,
   strictCategory = false,
-): { matched: ReceiptReviewItem['matched']; category: ReceiptCategory } {
-  const fridgeHit = inventory.fridge.find(f => isSameItem(f.name, name));
-  const supplyHit = inventory.supplies.find(s => isSameItem(s.name, name));
-
-  const fridgeMatch: ReceiptReviewItem['matched'] = fridgeHit
-    ? { table: 'fridge', id: fridgeHit.id, name: fridgeHit.name, quantity: fridgeHit.is_consumed ? 0 : fridgeHit.quantity }
-    : null;
-  const supplyMatch: ReceiptReviewItem['matched'] = supplyHit
-    ? { table: 'supplies', id: supplyHit.id, name: supplyHit.name, quantity: supplyHit.quantity }
-    : null;
+): { matched: ReceiptMatch | null; suggestion: ReceiptMatch | null; category: ReceiptCategory } {
+  const fridgeMatch = findMatch(inventory.fridge, 'fridge', name);
+  const supplyMatch = findMatch(inventory.supplies, 'supplies', name);
 
   // 선호 분류 쪽 매칭 우선, 없으면 (strict가 아닐 때만) 반대쪽 허용
-  const matched = preferredCategory === 'food'
+  const suggestion = preferredCategory === 'food'
     ? fridgeMatch ?? (strictCategory ? null : supplyMatch)
     : supplyMatch ?? (strictCategory ? null : fridgeMatch);
 
   return {
-    matched,
-    category: matched ? (matched.table === 'fridge' ? 'food' : 'supply') : preferredCategory,
+    // 완전 일치만 자동 합침, 비슷한 이름은 추천으로만
+    matched: suggestion && !suggestion.similar ? suggestion : null,
+    suggestion,
+    category: suggestion ? (suggestion.table === 'fridge' ? 'food' : 'supply') : preferredCategory,
   };
 }
 
@@ -87,13 +99,14 @@ export function matchReceiptItems(
   inventory: InventorySnapshot,
 ): ReceiptReviewItem[] {
   return parsed.map((p, i) => {
-    const { matched, category } = matchSingleReceiptItem(p.name, p.category, inventory);
+    const { matched, suggestion, category } = matchSingleReceiptItem(p.name, p.category, inventory);
     return {
       key: `receipt-${i}`,
       name: p.name,
       quantity: p.quantity,
       category,
       matched,
+      suggestion,
       excluded: false,
     };
   });
@@ -117,11 +130,9 @@ export async function applyReceiptItems(familyId: string, items: ReceiptReviewIt
     if (item.excluded || !item.name.trim()) continue;
     try {
       if (item.matched?.table === 'fridge') {
-        // 기존 음식: 수량 증가 + 소진 상태였다면 부활
+        // 기존 음식: 수량 증가 (매칭 대상은 먹지 않은 항목뿐)
         const { error } = await supabase.from('fridge_items').update({
           quantity: item.matched.quantity + item.quantity,
-          is_consumed: false,
-          consumed_at: null,
           stored_date: todayStr(),
         }).eq('id', item.matched.id);
         if (error) throw error;
