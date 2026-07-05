@@ -1,7 +1,7 @@
 // 음식 화면 — 새 디자인 (도토리 v2)
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
-  View, Text, SectionList, StyleSheet, TouchableOpacity,
+  View, Text, SectionList, StyleSheet, TouchableOpacity, Pressable,
   ActivityIndicator, Alert, ScrollView, TextInput, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -119,89 +119,123 @@ const FoodRow: React.FC<FoodRowProps> = React.memo(({ item, onToggle, onDelete, 
 
   return (
     <Swipeable ref={swipeRef} renderRightActions={() => <SwipeDeleteAction onDelete={handleDelete} />} overshootRight={false}>
-      <View style={[fr.row, item.is_consumed && fr.rowDone]}>
-        {/* 체크박스 */}
-        <TouchableOpacity onPress={() => onToggle(item)} style={fr.checkbox} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <View style={[fr.checkCircle, item.is_consumed && fr.checkCircleDone]}>
-            {item.is_consumed && (
-              <Svg width={11} height={11} viewBox="0 0 24 24" fill="none">
-                <Path d="M5 12l5 5 10-11" stroke="#fff" strokeWidth={3} strokeLinecap="round" />
-              </Svg>
-            )}
-          </View>
+      <TouchableOpacity
+        style={[fr.card, item.is_consumed && fr.cardDone]}
+        onPress={() => onEdit(item)}
+        activeOpacity={0.8}
+      >
+        {/* 체크박스 (생필품의 이모지 자리) — 다 먹음 토글 */}
+        <TouchableOpacity
+          style={[fr.checkBox, item.is_consumed && fr.checkBoxDone]}
+          onPress={() => onToggle(item)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 6 }}
+        >
+          {item.is_consumed && (
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+              <Path d="M5 13l4 4L19 7" stroke="#fff" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+            </Svg>
+          )}
         </TouchableOpacity>
 
-        {/* 음식 정보 */}
-        <TouchableOpacity style={fr.info} onPress={() => onEdit(item)} activeOpacity={0.7}>
-          <Text style={[fr.name, item.is_consumed && fr.nameDone]} numberOfLines={1}>{item.name}</Text>
-          <View style={fr.meta}>
+        {/* 정보 */}
+        <View style={fr.body}>
+          <View style={fr.nameRow}>
+            <Text style={[fr.name, item.is_consumed && fr.nameDone]} numberOfLines={1}>{item.name}</Text>
             <View style={[fr.chip, { backgroundColor: storageStyle.bg }]}>
               <Text style={[fr.chipText, { color: storageStyle.fg }]}>{item.storage_type}</Text>
             </View>
+          </View>
+          <View style={fr.bottomRow}>
             <Text style={fr.date}>구입일 {item.stored_date.slice(5).replace('-', '.')}</Text>
+            {item.is_consumed
+              ? <Text style={fr.consumedAt}>{item.consumed_at?.slice(5).replace('-', '.') ?? ''} 먹음</Text>
+              : <Text style={[fr.dday, { color: dday.color }]}>{dday.label}</Text>}
           </View>
-        </TouchableOpacity>
+        </View>
 
-        {/* 수량 + D-day */}
+        {/* 수량 스텝퍼 — 이 영역 터치는 수정으로 안 빠지고 +/-만 동작 */}
         {!item.is_consumed && (
-          <View style={fr.right}>
-            <View style={fr.qtyRow}>
-              <TouchableOpacity onPress={() => onQtyChange(item, -1)} style={fr.qtyBtn}>
-                <Text style={fr.qtyBtnText}>−</Text>
+          <Pressable style={fr.stepper} onPress={() => {}}>
+            <TouchableOpacity
+              onPress={() => onQtyChange(item, 1)}
+              style={fr.stepBtnPlus}
+              hitSlop={{ top: 12, bottom: 3, left: 14, right: 14 }}
+            >
+              <Text style={fr.stepPlusText}>+</Text>
+            </TouchableOpacity>
+            {editingQty ? (
+              <TextInput
+                style={fr.qtyInput}
+                value={qtyInput}
+                onChangeText={setQtyInput}
+                keyboardType="number-pad"
+                onBlur={commitQty}
+                onSubmitEditing={commitQty}
+                autoFocus
+                selectTextOnFocus
+                maxLength={4}
+              />
+            ) : (
+              <TouchableOpacity onPress={() => { setQtyInput(String(item.quantity ?? 1)); setEditingQty(true); }}>
+                <Text style={fr.qtyNum}>{item.quantity ?? 1}</Text>
               </TouchableOpacity>
-              {editingQty ? (
-                <TextInput
-                  style={fr.qtyInput}
-                  value={qtyInput}
-                  onChangeText={setQtyInput}
-                  keyboardType="number-pad"
-                  onBlur={commitQty}
-                  onSubmitEditing={commitQty}
-                  autoFocus
-                  selectTextOnFocus
-                  maxLength={4}
-                />
-              ) : (
-                <TouchableOpacity onPress={() => { setQtyInput(String(item.quantity ?? 1)); setEditingQty(true); }}>
-                  <Text style={fr.qtyNum}>{item.quantity ?? 1}</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity onPress={() => onQtyChange(item, 1)} style={fr.qtyBtn}>
-                <Text style={fr.qtyBtnText}>+</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={[fr.dday, { color: dday.color }]}>{dday.label}</Text>
-          </View>
+            )}
+            <TouchableOpacity
+              onPress={() => onQtyChange(item, -1)}
+              style={fr.stepBtnMinus}
+              hitSlop={{ top: 3, bottom: 12, left: 14, right: 14 }}
+            >
+              <Text style={fr.stepMinusText}>−</Text>
+            </TouchableOpacity>
+          </Pressable>
         )}
-        {item.is_consumed && (
-          <Text style={fr.consumedAt}>{item.consumed_at?.slice(5).replace('-', '.') ?? ''}</Text>
-        )}
-      </View>
+      </TouchableOpacity>
     </Swipeable>
   );
 });
 
+// 생필품 행(SupplyRow)과 동일한 규격
 const fr = StyleSheet.create({
-  row:          { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.warm.ivory, marginHorizontal: 16, marginBottom: 8, borderRadius: 14, padding: 12, shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
-  rowDone:      { opacity: 0.55 },
-  checkbox:     { marginRight: 10 },
-  checkCircle:  { width: 22, height: 22, borderRadius: 11, borderWidth: 1.8, borderColor: theme.colors.warm.edge, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
-  checkCircleDone: { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
-  info:         { flex: 1 },
-  name:         { fontSize: 13, fontWeight: '700', color: theme.colors.warm.dark, marginBottom: 4 },
-  nameDone:     { color: theme.colors.warm.lightOak, textDecorationLine: 'line-through' },
-  meta:         { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  chip:         { paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 },
-  chipText:     { fontSize: 9, fontWeight: '700', lineHeight: 11 },
-  date:         { fontSize: 10, color: theme.colors.warm.lightOak },
-  right:        { alignItems: 'flex-end', gap: 4 },
-  qtyRow:       { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  qtyBtn:       { width: 18, height: 18, borderRadius: 9, backgroundColor: `${theme.colors.warm.edge}88`, alignItems: 'center', justifyContent: 'center' },
-  qtyBtnText:   { fontSize: 11, fontWeight: '700', color: theme.colors.warm.dark, lineHeight: 16 },
-  qtyNum:       { fontSize: 12, fontWeight: '700', color: theme.colors.warm.dark, minWidth: 12, textAlign: 'center' },
-  qtyInput:     { fontSize: 12, fontWeight: '700', color: theme.colors.warm.dark, textAlign: 'center', minWidth: 32, paddingHorizontal: 2, paddingVertical: 0, borderBottomWidth: 1.5, borderBottomColor: theme.colors.brand },
-  dday:         { fontSize: 12, fontWeight: '700', minWidth: 36, textAlign: 'right' },
-  consumedAt:   { fontSize: 11, color: theme.colors.warm.lightOak },
+  card: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: theme.colors.warm.ivory, marginHorizontal: 16, marginBottom: 8,
+    borderRadius: 14, padding: 10,
+    shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+  },
+  cardDone: { opacity: 0.55 },
+  checkBox: {
+    width: 36, height: 36, borderRadius: 10, backgroundColor: theme.colors.warm.cream,
+    borderWidth: 1, borderColor: theme.colors.warm.edge,
+    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+  },
+  checkBoxDone: { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
+  body: { flex: 1, minWidth: 0 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  name: { fontSize: 13, fontWeight: '700', color: theme.colors.warm.dark, flex: 1 },
+  nameDone: { color: theme.colors.warm.lightOak, textDecorationLine: 'line-through' },
+  chip: { borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 },
+  chipText: { fontSize: 9, fontWeight: '700', lineHeight: 12 },
+  bottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  date: { fontSize: 10, color: theme.colors.warm.lightOak },
+  dday: { fontSize: 10, fontWeight: '700' },
+  consumedAt: { fontSize: 10, color: theme.colors.warm.lightOak },
+  stepper: { alignItems: 'center', gap: 3, flexShrink: 0, paddingLeft: 10, paddingVertical: 2 },
+  stepBtnPlus: {
+    width: 26, height: 26, borderRadius: 13,
+    backgroundColor: theme.colors.brand, justifyContent: 'center', alignItems: 'center',
+  },
+  stepPlusText: { fontSize: 15, fontWeight: '700', color: '#fff', lineHeight: 18 },
+  stepBtnMinus: {
+    width: 26, height: 26, borderRadius: 13,
+    backgroundColor: theme.colors.warm.edge, justifyContent: 'center', alignItems: 'center',
+  },
+  stepMinusText: { fontSize: 15, fontWeight: '700', color: theme.colors.warm.dark, lineHeight: 18 },
+  qtyNum: { fontSize: 15, fontWeight: '700', color: theme.colors.warm.dark, minWidth: 20, textAlign: 'center' },
+  qtyInput: {
+    fontSize: 14, fontWeight: '700', color: theme.colors.warm.dark, textAlign: 'center',
+    minWidth: 28, borderBottomWidth: 1.5, borderBottomColor: theme.colors.brand,
+    paddingHorizontal: 2, paddingVertical: 0,
+  },
 });
 
 // ── 메인 화면 ─────────────────────────────────

@@ -73,14 +73,14 @@ const ShoppingRow: React.FC<ShoppingRowProps> = React.memo(({ item, onToggle, on
         onPress={() => onEdit(item)}
         activeOpacity={0.8}
       >
-        {/* 체크박스 — 여기 눌렀을 때만 체크 토글 */}
+        {/* 체크박스 (생필품의 이모지 자리) — 여기 눌렀을 때만 체크 토글 */}
         <TouchableOpacity
           style={[row.checkbox, item.is_checked && row.checkboxChecked]}
           onPress={() => onToggle(item)}
-          hitSlop={{ top: 14, bottom: 14, left: 14, right: 10 }}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 6 }}
         >
           {item.is_checked && (
-            <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
               <Path d="M5 13l4 4L19 7" stroke="#fff" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
             </Svg>
           )}
@@ -103,28 +103,30 @@ const ShoppingRow: React.FC<ShoppingRowProps> = React.memo(({ item, onToggle, on
   );
 });
 
+// 생필품 행(SupplyRow)과 동일한 규격
 const row = StyleSheet.create({
   card: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: theme.colors.warm.ivory, marginHorizontal: 16, marginBottom: 8,
-    borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
+    borderRadius: 14, padding: 10,
     shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
   },
   cardChecked: { opacity: 0.55 },
   checkbox: {
-    width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: theme.colors.warm.edge,
-    backgroundColor: theme.colors.warm.cream, justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+    width: 36, height: 36, borderRadius: 10, backgroundColor: theme.colors.warm.cream,
+    borderWidth: 1, borderColor: theme.colors.warm.edge,
+    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
   },
   checkboxChecked: { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
   body: { flex: 1, minWidth: 0 },
-  name: { fontSize: 14, fontWeight: '600', color: theme.colors.warm.dark },
+  name: { fontSize: 13, fontWeight: '700', color: theme.colors.warm.dark },
   nameChecked: { textDecorationLine: 'line-through', color: theme.colors.warm.lightOak },
-  source: { fontSize: 10, color: theme.colors.warm.lightOak, marginTop: 2 },
+  source: { fontSize: 10, color: theme.colors.warm.lightOak, marginTop: 3 },
   tagChip: {
     backgroundColor: theme.colors.warm.cream, borderRadius: 4,
-    paddingHorizontal: 6, paddingVertical: 2, flexShrink: 0,
+    paddingHorizontal: 5, paddingVertical: 1, flexShrink: 0,
   },
-  tagText: { fontSize: 10, fontWeight: '600', color: theme.colors.warm.oak },
+  tagText: { fontSize: 9, fontWeight: '600', color: theme.colors.warm.lightOak },
 });
 
 // ── 메인 화면 ─────────────────────────────────
