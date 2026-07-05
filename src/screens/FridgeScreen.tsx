@@ -131,7 +131,7 @@ const FoodRow: React.FC<FoodRowProps> = React.memo(({ item, onToggle, onDelete, 
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 6 }}
         >
           {item.is_consumed && (
-            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+            <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
               <Path d="M5 13l4 4L19 7" stroke="#fff" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
             </Svg>
           )}
@@ -153,15 +153,15 @@ const FoodRow: React.FC<FoodRowProps> = React.memo(({ item, onToggle, onDelete, 
           </View>
         </View>
 
-        {/* 수량 스텝퍼 — 이 영역 터치는 수정으로 안 빠지고 +/-만 동작 */}
+        {/* 수량 스텝퍼(가로) — 이 영역 터치는 수정으로 안 빠지고 +/-만 동작 */}
         {!item.is_consumed && (
           <Pressable style={fr.stepper} onPress={() => {}}>
             <TouchableOpacity
-              onPress={() => onQtyChange(item, 1)}
-              style={fr.stepBtnPlus}
-              hitSlop={{ top: 12, bottom: 3, left: 14, right: 14 }}
+              onPress={() => onQtyChange(item, -1)}
+              style={fr.stepBtnMinus}
+              hitSlop={{ top: 12, bottom: 12, left: 10, right: 4 }}
             >
-              <Text style={fr.stepPlusText}>+</Text>
+              <Text style={fr.stepMinusText}>−</Text>
             </TouchableOpacity>
             {editingQty ? (
               <TextInput
@@ -181,11 +181,11 @@ const FoodRow: React.FC<FoodRowProps> = React.memo(({ item, onToggle, onDelete, 
               </TouchableOpacity>
             )}
             <TouchableOpacity
-              onPress={() => onQtyChange(item, -1)}
-              style={fr.stepBtnMinus}
-              hitSlop={{ top: 3, bottom: 12, left: 14, right: 14 }}
+              onPress={() => onQtyChange(item, 1)}
+              style={fr.stepBtnPlus}
+              hitSlop={{ top: 12, bottom: 12, left: 4, right: 10 }}
             >
-              <Text style={fr.stepMinusText}>−</Text>
+              <Text style={fr.stepPlusText}>+</Text>
             </TouchableOpacity>
           </Pressable>
         )}
@@ -198,19 +198,19 @@ const FoodRow: React.FC<FoodRowProps> = React.memo(({ item, onToggle, onDelete, 
 const fr = StyleSheet.create({
   card: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: theme.colors.warm.ivory, marginHorizontal: 16, marginBottom: 8,
-    borderRadius: 14, padding: 10,
+    backgroundColor: theme.colors.warm.ivory, marginHorizontal: 16, marginBottom: 6,
+    borderRadius: 14, paddingHorizontal: 10, paddingVertical: 8,
     shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
   },
   cardDone: { opacity: 0.55 },
   checkBox: {
-    width: 36, height: 36, borderRadius: 10, backgroundColor: theme.colors.warm.cream,
+    width: 30, height: 30, borderRadius: 9, backgroundColor: theme.colors.warm.cream,
     borderWidth: 1, borderColor: theme.colors.warm.edge,
     justifyContent: 'center', alignItems: 'center', flexShrink: 0,
   },
   checkBoxDone: { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
   body: { flex: 1, minWidth: 0 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 },
   name: { fontSize: 13, fontWeight: '700', color: theme.colors.warm.dark, flex: 1 },
   nameDone: { color: theme.colors.warm.lightOak, textDecorationLine: 'line-through' },
   chip: { borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 },
@@ -219,18 +219,18 @@ const fr = StyleSheet.create({
   date: { fontSize: 10, color: theme.colors.warm.lightOak },
   dday: { fontSize: 10, fontWeight: '700' },
   consumedAt: { fontSize: 10, color: theme.colors.warm.lightOak },
-  stepper: { alignItems: 'center', gap: 3, flexShrink: 0, paddingLeft: 10, paddingVertical: 2 },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0, paddingLeft: 8 },
   stepBtnPlus: {
-    width: 26, height: 26, borderRadius: 13,
+    width: 24, height: 24, borderRadius: 12,
     backgroundColor: theme.colors.brand, justifyContent: 'center', alignItems: 'center',
   },
-  stepPlusText: { fontSize: 15, fontWeight: '700', color: '#fff', lineHeight: 18 },
+  stepPlusText: { fontSize: 14, fontWeight: '700', color: '#fff', lineHeight: 17 },
   stepBtnMinus: {
-    width: 26, height: 26, borderRadius: 13,
+    width: 24, height: 24, borderRadius: 12,
     backgroundColor: theme.colors.warm.edge, justifyContent: 'center', alignItems: 'center',
   },
-  stepMinusText: { fontSize: 15, fontWeight: '700', color: theme.colors.warm.dark, lineHeight: 18 },
-  qtyNum: { fontSize: 15, fontWeight: '700', color: theme.colors.warm.dark, minWidth: 20, textAlign: 'center' },
+  stepMinusText: { fontSize: 14, fontWeight: '700', color: theme.colors.warm.dark, lineHeight: 17 },
+  qtyNum: { fontSize: 14, fontWeight: '700', color: theme.colors.warm.dark, minWidth: 18, textAlign: 'center' },
   qtyInput: {
     fontSize: 14, fontWeight: '700', color: theme.colors.warm.dark, textAlign: 'center',
     minWidth: 28, borderBottomWidth: 1.5, borderBottomColor: theme.colors.brand,

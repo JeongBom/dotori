@@ -80,7 +80,7 @@ const ShoppingRow: React.FC<ShoppingRowProps> = React.memo(({ item, onToggle, on
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 6 }}
         >
           {item.is_checked && (
-            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+            <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
               <Path d="M5 13l4 4L19 7" stroke="#fff" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
             </Svg>
           )}
@@ -107,13 +107,13 @@ const ShoppingRow: React.FC<ShoppingRowProps> = React.memo(({ item, onToggle, on
 const row = StyleSheet.create({
   card: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: theme.colors.warm.ivory, marginHorizontal: 16, marginBottom: 8,
-    borderRadius: 14, padding: 10,
+    backgroundColor: theme.colors.warm.ivory, marginHorizontal: 16, marginBottom: 6,
+    borderRadius: 14, paddingHorizontal: 10, paddingVertical: 8,
     shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
   },
   cardChecked: { opacity: 0.55 },
   checkbox: {
-    width: 36, height: 36, borderRadius: 10, backgroundColor: theme.colors.warm.cream,
+    width: 30, height: 30, borderRadius: 9, backgroundColor: theme.colors.warm.cream,
     borderWidth: 1, borderColor: theme.colors.warm.edge,
     justifyContent: 'center', alignItems: 'center', flexShrink: 0,
   },

@@ -131,14 +131,14 @@ const SupplyRow: React.FC<SupplyRowProps> = React.memo(({ item, onDelete, onQuan
           </View>
         </View>
 
-        {/* 수량 스텝퍼 — 이 영역 터치는 수정으로 안 빠지고 +/-만 동작 */}
+        {/* 수량 스텝퍼(가로) — 이 영역 터치는 수정으로 안 빠지고 +/-만 동작 */}
         <Pressable style={row.stepper} onPress={() => {}}>
           <TouchableOpacity
-            onPress={() => onQuantityChange(item, 1)}
-            style={row.stepBtnPlus}
-            hitSlop={{ top: 12, bottom: 3, left: 14, right: 14 }}
+            onPress={() => onQuantityChange(item, -1)}
+            style={row.stepBtnMinus}
+            hitSlop={{ top: 12, bottom: 12, left: 10, right: 4 }}
           >
-            <Text style={row.stepPlusText}>+</Text>
+            <Text style={row.stepMinusText}>−</Text>
           </TouchableOpacity>
           {editingQty ? (
             <TextInput
@@ -158,11 +158,11 @@ const SupplyRow: React.FC<SupplyRowProps> = React.memo(({ item, onDelete, onQuan
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            onPress={() => onQuantityChange(item, -1)}
-            style={row.stepBtnMinus}
-            hitSlop={{ top: 3, bottom: 12, left: 14, right: 14 }}
+            onPress={() => onQuantityChange(item, 1)}
+            style={row.stepBtnPlus}
+            hitSlop={{ top: 12, bottom: 12, left: 4, right: 10 }}
           >
-            <Text style={row.stepMinusText}>−</Text>
+            <Text style={row.stepPlusText}>+</Text>
           </TouchableOpacity>
         </Pressable>
       </TouchableOpacity>
@@ -173,39 +173,39 @@ const SupplyRow: React.FC<SupplyRowProps> = React.memo(({ item, onDelete, onQuan
 const row = StyleSheet.create({
   card: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: theme.colors.warm.ivory, marginHorizontal: 16, marginBottom: 8,
-    borderRadius: 14, padding: 10,
+    backgroundColor: theme.colors.warm.ivory, marginHorizontal: 16, marginBottom: 6,
+    borderRadius: 14, paddingHorizontal: 10, paddingVertical: 8,
     shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
   },
   cardLow: { borderWidth: 1, borderColor: theme.colors.alert.dangerBorder },
   iconBox: {
-    width: 36, height: 36, borderRadius: 10, backgroundColor: theme.colors.warm.cream,
+    width: 30, height: 30, borderRadius: 9, backgroundColor: theme.colors.warm.cream,
     justifyContent: 'center', alignItems: 'center', flexShrink: 0,
   },
-  iconEmoji: { fontSize: 18 },
+  iconEmoji: { fontSize: 15 },
   body: { flex: 1, minWidth: 0 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 },
   name: { fontSize: 13, fontWeight: '700', color: theme.colors.warm.dark, flex: 1 },
   catChip: { backgroundColor: theme.colors.warm.cream, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 },
   catText: { fontSize: 9, fontWeight: '600', color: theme.colors.warm.lightOak },
-  barTrack: { height: 4, backgroundColor: `${theme.colors.warm.edge}66`, borderRadius: 2, marginBottom: 4, overflow: 'hidden' },
+  barTrack: { height: 4, backgroundColor: `${theme.colors.warm.edge}66`, borderRadius: 2, marginBottom: 3, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 2 },
   bottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   note: { fontSize: 10, color: theme.colors.warm.lightOak, flex: 1 },
   threshold: { fontSize: 10, color: theme.colors.warm.lightOak },
   lowLabel: { fontSize: 10, fontWeight: '700', color: theme.colors.status.danger },
-  stepper: { alignItems: 'center', gap: 3, flexShrink: 0, paddingLeft: 10, paddingVertical: 2 },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0, paddingLeft: 8 },
   stepBtnPlus: {
-    width: 26, height: 26, borderRadius: 13,
+    width: 24, height: 24, borderRadius: 12,
     backgroundColor: theme.colors.brand, justifyContent: 'center', alignItems: 'center',
   },
-  stepPlusText: { fontSize: 15, fontWeight: '700', color: '#fff', lineHeight: 18 },
+  stepPlusText: { fontSize: 14, fontWeight: '700', color: '#fff', lineHeight: 17 },
   stepBtnMinus: {
-    width: 26, height: 26, borderRadius: 13,
+    width: 24, height: 24, borderRadius: 12,
     backgroundColor: theme.colors.warm.edge, justifyContent: 'center', alignItems: 'center',
   },
-  stepMinusText: { fontSize: 15, fontWeight: '700', color: theme.colors.warm.dark, lineHeight: 18 },
-  qtyNum: { fontSize: 15, fontWeight: '700', color: theme.colors.warm.dark, minWidth: 20, textAlign: 'center' },
+  stepMinusText: { fontSize: 14, fontWeight: '700', color: theme.colors.warm.dark, lineHeight: 17 },
+  qtyNum: { fontSize: 14, fontWeight: '700', color: theme.colors.warm.dark, minWidth: 18, textAlign: 'center' },
   qtyNumLow: { color: theme.colors.status.danger },
   qtyInput: {
     fontSize: 14, fontWeight: '700', color: theme.colors.warm.dark, textAlign: 'center',
