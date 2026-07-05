@@ -10,6 +10,7 @@ import { useNavigation, useIsFocused, CompositeNavigationProp } from '@react-nav
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Svg, { Path } from 'react-native-svg';
+import { ReceiptText } from 'lucide-react-native';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { Supply, SupplyCategoryEntry } from '../types';
@@ -169,6 +170,9 @@ const SuppliesScreen: React.FC = () => {
           <Text style={s.title}>생필품</Text>
         </View>
         <View style={s.headerRight}>
+          <IconBtn onPress={() => navigation.navigate('ReceiptScan')}>
+            <ReceiptText color={theme.colors.warm.dark} size={18} strokeWidth={1.5} />
+          </IconBtn>
           <IconBtn onPress={() => setShowSortMenu(v => !v)}>
             <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
               <Path d="M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3" stroke={theme.colors.warm.dark} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />

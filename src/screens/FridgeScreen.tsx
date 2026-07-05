@@ -9,7 +9,7 @@ import { useNavigation, useIsFocused, CompositeNavigationProp } from '@react-nav
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Swipeable } from 'react-native-gesture-handler';
-import { Plus } from 'lucide-react-native';
+import { Plus, ReceiptText } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
@@ -345,6 +345,9 @@ const FridgeScreen: React.FC = () => {
           <Text style={s.title}>음식</Text>
         </View>
         <View style={s.headerBtns}>
+          <IconBtn onPress={() => navigation.navigate('ReceiptScan')}>
+            <ReceiptText color={theme.colors.warm.dark} size={18} strokeWidth={1.5} />
+          </IconBtn>
           <IconBtn onPress={() => setShowSortMenu(v => !v)}>
             <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
               <Path d="M3 6h18M6 12h12M9 18h6" stroke={theme.colors.warm.dark} strokeWidth={1.8} strokeLinecap="round" />

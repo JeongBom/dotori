@@ -147,6 +147,32 @@ export interface ShoppingItem {
 
 export type NewShoppingItem = Omit<ShoppingItem, 'id' | 'created_at' | 'checked_at'>;
 
+// ---- 영수증 스캔 ----
+
+export type ReceiptCategory = 'food' | 'supply';
+
+// Edge Function(parse-receipt)이 반환하는 품목
+export interface ParsedReceiptItem {
+  name: string;
+  quantity: number;
+  category: ReceiptCategory;
+}
+
+// 확인 화면의 행 (기존 재고 매칭 결과 포함)
+export interface ReceiptReviewItem {
+  key: string;
+  name: string;
+  quantity: number;
+  category: ReceiptCategory; // 신규 품목일 때만 토글 가능 (매칭되면 매칭된 쪽 고정)
+  matched: {
+    table: 'fridge' | 'supplies';
+    id: string;
+    name: string;
+    quantity: number; // 반영 전 현재 수량
+  } | null;
+  excluded: boolean; // 스와이프로 제외한 행
+}
+
 // ---- 메모 ----
 
 export interface Note {

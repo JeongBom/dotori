@@ -24,6 +24,7 @@ import AddFridgeItemScreen from '../screens/AddFridgeItemScreen';
 import AddSupplyScreen from '../screens/AddSupplyScreen';
 import ShoppingScreen from '../screens/ShoppingScreen';
 import AddShoppingItemScreen from '../screens/AddShoppingItemScreen';
+import ReceiptScanScreen from '../screens/ReceiptScanScreen';
 import NotesScreen from '../screens/NotesScreen';
 import NoteDetailScreen from '../screens/NoteDetailScreen';
 import AuthScreen from '../screens/auth/AuthScreen';
@@ -56,6 +57,7 @@ export type RootStackParamList = {
   AddFridgeItem: { familyId?: string; itemId?: string };
   AddSupply: { familyId?: string; supplyId?: string };
   AddShoppingItem: { familyId?: string; itemId?: string };
+  ReceiptScan: undefined;
   NoteDetail: { noteId: string };
 };
 
@@ -266,6 +268,7 @@ export default function AppNavigator({ navigationRef }: AppNavigatorProps) {
             <Stack.Screen name="AddFridgeItem" component={AddFridgeItemScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
             <Stack.Screen name="AddSupply" component={AddSupplyScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
             <Stack.Screen name="AddShoppingItem" component={AddShoppingItemScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
+            <Stack.Screen name="ReceiptScan" component={ReceiptScanScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
             <Stack.Screen name="NoteDetail" component={NoteDetailScreen} />
           </>
         )}
