@@ -31,7 +31,14 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "영수증을 촬영해 재고를 등록하기 위해 카메라를 사용합니다.",
+          "photosPermission": "영수증 사진을 선택하기 위해 앨범에 접근합니다."
+        }
+      ]
     ],
     "owner": "bbom16",
     "extra": {
