@@ -43,14 +43,13 @@ function normalizeName(name: string): string {
   return name.toLowerCase().replace(/\s+/g, '');
 }
 
-// 정규화 후 동일하거나, 한쪽이 다른 쪽을 포함(2자 이상)하면 같은 품목으로 간주
+// 공백만 무시하고 완전히 같은 이름일 때만 같은 품목으로 간주
+// (포함 매칭 금지: '락토프리 우유' ≠ '우유', '구운계란' ≠ '계란')
 function isSameItem(a: string, b: string): boolean {
   const na = normalizeName(a);
   const nb = normalizeName(b);
   if (!na || !nb) return false;
-  if (na === nb) return true;
-  if (na.length >= 2 && nb.length >= 2 && (na.includes(nb) || nb.includes(na))) return true;
-  return false;
+  return na === nb;
 }
 
 // 이름 하나에 대한 매칭 계산
