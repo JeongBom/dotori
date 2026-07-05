@@ -45,14 +45,17 @@ const ReceiptScanScreen: React.FC = () => {
       if (!fid) throw new Error('가족 정보를 찾을 수 없습니다');
       setFamilyId(fid);
 
-      const parsed = await parseReceipt(base64, mimeType);
+      // 재고를 먼저 읽어서 품목명을 AI 오독 교정 힌트로 전달
+      const inv = await loadInventoryForMatching(fid);
+      setInventory(inv);
+      const knownNames = [...inv.fridge, ...inv.supplies].map(i => i.name);
+
+      const parsed = await parseReceipt(base64, mimeType, knownNames);
       if (parsed.length === 0) {
         setErrorMsg('영수증에서 품목을 찾지 못했어요.\n영수증이 잘 보이게 다시 찍어주세요.');
         setPhase('error');
         return;
       }
-      const inv = await loadInventoryForMatching(fid);
-      setInventory(inv);
       setRows(matchReceiptItems(parsed, inv));
       setPhase('review');
     } catch (e) {
@@ -81,10 +84,10 @@ const ReceiptScanScreen: React.FC = () => {
     if (result.canceled || !asset?.uri) return;
 
     // 카메라 원본은 수 MB라 API 이미지 한도(5MB)를 넘을 수 있음
-    // → 가로 1280px로 줄이고 압축해서 전송 (영수증 글자는 충분히 판독됨)
+    // → 가로 1600px로 줄이고 압축해서 전송 (잔글씨 판독과 용량의 균형점)
     const resized = await ImageManipulator.manipulateAsync(
       asset.uri,
-      [{ resize: { width: 1280 } }],
+      [{ resize: { width: 1600 } }],
       { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true },
     );
     if (!resized.base64) {

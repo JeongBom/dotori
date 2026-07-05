@@ -18,6 +18,10 @@ const SYSTEM_PROMPT = `당신은 한국 마트/편의점 영수증에서 구매 
 4. category: 먹는 것(식재료, 음료, 간식 포함)이면 "food", 생활용품(세제, 휴지, 위생용품 등)이면 "supply".
    음식도 생활용품도 아닌 것(봉투 등)은 제외합니다.
 5. 같은 품목이 여러 줄이면 수량을 합쳐 한 항목으로 만듭니다.
+6. 영수증 인쇄가 흐릿해 글자가 애매하면, 실제로 존재하는 흔한 상품명으로 교정합니다.
+   (예: "유지"처럼 상품명으로 어색한 단어 → "휴지")
+7. "기존 재고 목록"이 함께 주어지면: 영수증 품목이 목록의 품목과 같은 것으로 보이면
+   반드시 목록의 표기를 그대로 사용합니다. 애매한 글자 교정에도 이 목록을 최우선 참고합니다.
 
 반드시 아래 형식의 JSON 배열만 출력합니다. 다른 텍스트 금지:
 [{"name":"우유","quantity":1,"category":"food"}]
@@ -30,10 +34,17 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { image, mimeType } = await req.json();
+    const { image, mimeType, knownNames } = await req.json();
     if (!image || typeof image !== 'string') {
       return new Response(JSON.stringify({ error: 'image (base64) is required' }), { status: 400 });
     }
+
+    // 기존 재고 품목명 (오독 교정 힌트). 과도한 입력 방지를 위해 정제
+    const names: string[] = (Array.isArray(knownNames) ? knownNames : [])
+      .filter((n): n is string => typeof n === 'string' && n.trim().length > 0)
+      .map(n => n.trim().slice(0, 30))
+      .slice(0, 100);
+    const hint = names.length > 0 ? `\n\n기존 재고 목록: ${names.join(', ')}` : '';
 
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
     if (!apiKey) {
@@ -58,7 +69,7 @@ Deno.serve(async (req: Request) => {
               type: 'image',
               source: { type: 'base64', media_type: mimeType ?? 'image/jpeg', data: image },
             },
-            { type: 'text', text: '이 영수증의 구매 품목을 JSON 배열로 추출해주세요.' },
+            { type: 'text', text: `이 영수증의 구매 품목을 JSON 배열로 추출해주세요.${hint}` },
           ],
         }],
       }),

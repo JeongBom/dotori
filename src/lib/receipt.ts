@@ -8,9 +8,14 @@ import { supabase } from './supabase';
 import { ParsedReceiptItem, ReceiptCategory, ReceiptMatch, ReceiptReviewItem } from '../types';
 
 // ── ① 영수증 파싱 (Edge Function 호출) ─────────
-export async function parseReceipt(imageBase64: string, mimeType: string): Promise<ParsedReceiptItem[]> {
+// knownNames: 기존 재고 품목명 — AI가 흐릿한 글자를 읽을 때 교정 힌트로 사용
+export async function parseReceipt(
+  imageBase64: string,
+  mimeType: string,
+  knownNames: string[] = [],
+): Promise<ParsedReceiptItem[]> {
   const { data, error } = await supabase.functions.invoke('parse-receipt', {
-    body: { image: imageBase64, mimeType },
+    body: { image: imageBase64, mimeType, knownNames },
   });
   if (error) throw new Error(error.message ?? '영수증 분석 요청에 실패했습니다');
   if (data?.error) throw new Error(data.error);
