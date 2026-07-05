@@ -45,7 +45,13 @@ const ForgotPasswordScreen: React.FC = () => {
     setLoading(false);
 
     if (error) {
-      Alert.alert('오류', '메일 발송에 실패했습니다. 이메일을 확인해주세요.');
+      // Supabase 실제 에러를 구분해서 안내 (원인 숨기지 않기)
+      const msg = error.status === 429 || /rate limit/i.test(error.message)
+        ? '메일 발송 한도에 걸렸어요.\n1시간 뒤에 다시 시도해주세요.'
+        : /security purposes|seconds/i.test(error.message)
+          ? '요청이 너무 잦아요.\n1분 뒤에 다시 시도해주세요.'
+          : `메일 발송에 실패했습니다.\n(${error.message})`;
+      Alert.alert('오류', msg);
       return;
     }
 

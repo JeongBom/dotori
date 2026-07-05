@@ -6,7 +6,6 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   Alert,
@@ -18,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { supabase } from '../../lib/supabase';
 import { theme } from '../../theme';
+import TextField from '../../components/design-system/TextField';
 
 interface ResetPasswordScreenProps {
   onDone: () => void;
@@ -47,7 +47,13 @@ const ResetPasswordScreen: React.FC<ResetPasswordScreenProps> = ({ onDone }) => 
     setLoading(false);
 
     if (error) {
-      Alert.alert('오류', '비밀번호 변경에 실패했습니다.');
+      // Supabase 실제 에러를 구분해서 안내 (원인 숨기지 않기)
+      const msg = /different from the old/i.test(error.message)
+        ? '기존 비밀번호와 다른 비밀번호를 입력해주세요.'
+        : /session|jwt|token|expired/i.test(error.message)
+          ? '링크가 만료됐어요.\n재설정 메일을 다시 요청해주세요.'
+          : `비밀번호 변경에 실패했습니다.\n(${error.message})`;
+      Alert.alert('오류', msg);
       return;
     }
 
@@ -65,29 +71,27 @@ const ResetPasswordScreen: React.FC<ResetPasswordScreenProps> = ({ onDone }) => 
           <Text style={styles.title}>새 비밀번호 설정</Text>
           <Text style={styles.desc}>6자 이상의 새 비밀번호를 입력해주세요.</Text>
 
-          <Text style={styles.label}>새 비밀번호</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="6자 이상"
-            placeholderTextColor={theme.colors.warm.lightOak}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoFocus
-            returnKeyType="next"
-          />
+          <View style={{ gap: theme.spacing.cardGap }}>
+            <TextField
+              label="새 비밀번호"
+              value={password}
+              onChangeText={setPassword}
+              placeholder="6자 이상"
+              secureTextEntry
+              autoFocus
+              returnKeyType="next"
+            />
 
-          <Text style={[styles.label, { marginTop: 16 }]}>비밀번호 확인</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="비밀번호를 다시 입력하세요"
-            placeholderTextColor={theme.colors.warm.lightOak}
-            value={passwordConfirm}
-            onChangeText={setPasswordConfirm}
-            secureTextEntry
-            returnKeyType="done"
-            onSubmitEditing={handleReset}
-          />
+            <TextField
+              label="비밀번호 확인"
+              value={passwordConfirm}
+              onChangeText={setPasswordConfirm}
+              placeholder="비밀번호를 다시 입력하세요"
+              secureTextEntry
+              returnKeyType="done"
+              onSubmitEditing={handleReset}
+            />
+          </View>
 
           <TouchableOpacity
             style={[styles.submitBtn, loading && { opacity: 0.5 }]}
@@ -113,18 +117,6 @@ const styles = StyleSheet.create({
   emoji: { fontSize: 48, marginBottom: 16 },
   title: { fontSize: 26, fontWeight: '700', color: theme.colors.warm.dark, marginBottom: 8 },
   desc: { fontSize: 14, color: theme.colors.brand, lineHeight: 22, marginBottom: 32 },
-
-  label: { fontSize: 13, fontWeight: '600', color: theme.colors.brand, marginBottom: 8 },
-  input: {
-    backgroundColor: theme.colors.warm.ivory,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: theme.colors.warm.dark,
-    borderWidth: 1,
-    borderColor: theme.colors.warm.edge,
-  },
 
   submitBtn: {
     backgroundColor: theme.colors.brand,

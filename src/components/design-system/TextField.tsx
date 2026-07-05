@@ -3,9 +3,11 @@ import {
   View,
   Text,
   TextInput,
+  TouchableOpacity,
   StyleSheet,
   TextInputProps,
 } from 'react-native';
+import { Eye, EyeOff } from 'lucide-react-native';
 import { theme } from '../../theme';
 
 interface TextFieldProps extends Pick<TextInputProps,
@@ -47,6 +49,7 @@ const TextField: React.FC<TextFieldProps> = ({
   autoFocus,
 }) => {
   const [focused, setFocused] = useState(false);
+  const [secureVisible, setSecureVisible] = useState(false);
 
   return (
     <View style={s.wrap}>
@@ -57,24 +60,43 @@ const TextField: React.FC<TextFieldProps> = ({
         </View>
       )}
 
-      <TextInput
-        style={[s.input, focused && s.inputFocused, !!error && s.inputError]}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={theme.colors.warm.lightOak}
-        secureTextEntry={secureTextEntry}
-        keyboardType={keyboardType}
-        autoCapitalize={autoCapitalize}
-        autoCorrect={autoCorrect}
-        returnKeyType={returnKeyType}
-        onSubmitEditing={onSubmitEditing}
-        maxLength={maxLength}
-        keyboardAppearance={keyboardAppearance}
-        autoFocus={autoFocus}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-      />
+      <View style={s.inputWrap}>
+        <TextInput
+          style={[
+            s.input,
+            secureTextEntry && s.inputSecure,
+            focused && s.inputFocused,
+            !!error && s.inputError,
+          ]}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={theme.colors.warm.lightOak}
+          secureTextEntry={secureTextEntry && !secureVisible}
+          keyboardType={keyboardType}
+          autoCapitalize={secureTextEntry ? 'none' : autoCapitalize}
+          autoCorrect={secureTextEntry ? false : autoCorrect}
+          returnKeyType={returnKeyType}
+          onSubmitEditing={onSubmitEditing}
+          maxLength={maxLength}
+          keyboardAppearance={keyboardAppearance}
+          autoFocus={autoFocus}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+        />
+        {secureTextEntry && (
+          <TouchableOpacity
+            style={s.eyeBtn}
+            onPress={() => setSecureVisible(v => !v)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            {secureVisible
+              ? <EyeOff size={20} strokeWidth={1.5} color={theme.colors.warm.lightOak} />
+              : <Eye size={20} strokeWidth={1.5} color={theme.colors.warm.lightOak} />
+            }
+          </TouchableOpacity>
+        )}
+      </View>
 
       {(error || hint) && (
         <Text style={error ? s.error : s.hint} numberOfLines={2}>
@@ -105,6 +127,10 @@ const s = StyleSheet.create({
     color: theme.colors.warm.lightOak,
   },
 
+  inputWrap: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
   input: {
     backgroundColor: theme.colors.card,
     borderRadius: theme.radius.card,
@@ -114,6 +140,13 @@ const s = StyleSheet.create({
     color: theme.colors.text.primary,
     borderWidth: 1,
     borderColor: theme.colors.divider,
+  },
+  inputSecure: {
+    paddingRight: 44,
+  },
+  eyeBtn: {
+    position: 'absolute',
+    right: 14,
   },
   inputFocused: {
     borderColor: theme.colors.brand,
