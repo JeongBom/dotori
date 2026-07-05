@@ -12,6 +12,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChevronLeft, Camera, Image as ImageIcon, Check, X, RotateCcw, ReceiptText } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 
 import { getOrCreateFamilyId } from '../lib/supabase';
 import { parseReceipt, loadInventoryForMatching, matchReceiptItems, applyReceiptItems } from '../lib/receipt';
@@ -66,15 +67,26 @@ const ReceiptScanScreen: React.FC = () => {
     }
     const options: ImagePicker.ImagePickerOptions = {
       mediaTypes: ['images'],
-      quality: 0.6,
-      base64: true,
+      quality: 1,
     };
     const result = fromCamera
       ? await ImagePicker.launchCameraAsync(options)
       : await ImagePicker.launchImageLibraryAsync(options);
     const asset = result.assets?.[0];
-    if (result.canceled || !asset?.base64) return;
-    analyze(asset.base64, asset.mimeType ?? 'image/jpeg');
+    if (result.canceled || !asset?.uri) return;
+
+    // 카메라 원본은 수 MB라 API 이미지 한도(5MB)를 넘을 수 있음
+    // → 가로 1280px로 줄이고 압축해서 전송 (영수증 글자는 충분히 판독됨)
+    const resized = await ImageManipulator.manipulateAsync(
+      asset.uri,
+      [{ resize: { width: 1280 } }],
+      { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+    );
+    if (!resized.base64) {
+      Alert.alert('오류', '이미지 처리에 실패했습니다. 다시 시도해주세요.');
+      return;
+    }
+    analyze(resized.base64, 'image/jpeg');
   }, [analyze]);
 
   // ── 확인 화면 행 조작 ─────────────────────────
