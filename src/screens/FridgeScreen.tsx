@@ -20,6 +20,9 @@ import { autoAddToShopping } from '../lib/shopping';
 import IconBtn from '../components/IconBtn';
 import SectionLabel from '../components/SectionLabel';
 import SwipeDeleteAction from '../components/SwipeDeleteAction';
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+
+const REALTIME_TABLES = ['fridge_items'] as const;
 import { theme } from '../theme';
 
 type FridgeNav = CompositeNavigationProp<
@@ -230,6 +233,7 @@ const FridgeScreen: React.FC = () => {
 
   useEffect(() => { loadItems(); }, [loadItems]);
   useEffect(() => { if (isFocused) loadItems(); }, [isFocused, loadItems]);
+  useRealtimeRefresh(REALTIME_TABLES, loadItems); // 가족이 바꾸면 즉시 갱신
 
   const handleToggle = useCallback(async (item: FridgeItem) => {
     const next = !item.is_consumed;

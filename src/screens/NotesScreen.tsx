@@ -15,6 +15,9 @@ import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { Note } from '../types';
 import { RootStackParamList } from '../navigation';
 import { theme } from '../theme';
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+
+const REALTIME_TABLES = ['notes'] as const;
 
 // ── 날짜 포맷 ──────────────────────────────────
 
@@ -118,6 +121,8 @@ const NotesScreen: React.FC = () => {
     setLoading(true);
     loadNotes();
   }, [loadNotes]));
+
+  useRealtimeRefresh(REALTIME_TABLES, loadNotes); // 가족이 바꾸면 즉시 갱신
 
   const filtered = notes.filter(n =>
     n.title.toLowerCase().includes(search.toLowerCase()) ||

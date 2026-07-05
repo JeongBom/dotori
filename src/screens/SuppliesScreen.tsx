@@ -21,6 +21,9 @@ import IconBtn from '../components/IconBtn';
 import SectionLabel from '../components/SectionLabel';
 import SupplyRow from '../components/SupplyRow';
 import SupplyCategoryModal from '../components/SupplyCategoryModal';
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+
+const REALTIME_TABLES = ['supplies', 'supply_categories'] as const;
 
 type SuppliesNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<RootTabParamList, 'Supplies'>,
@@ -78,6 +81,7 @@ const SuppliesScreen: React.FC = () => {
 
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { if (isFocused) { setFilter('전체'); loadData(); } }, [isFocused, loadData]);
+  useRealtimeRefresh(REALTIME_TABLES, loadData); // 가족이 바꾸면 즉시 갱신
 
   const handleQuantityChange = useCallback(async (item: Supply, delta: number) => {
     const next = Math.max(0, item.quantity + delta);

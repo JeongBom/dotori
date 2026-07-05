@@ -20,6 +20,9 @@ import { theme } from '../theme';
 import IconBtn from '../components/IconBtn';
 import SectionLabel from '../components/SectionLabel';
 import SwipeDeleteAction from '../components/SwipeDeleteAction';
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+
+const REALTIME_TABLES = ['shopping_items'] as const;
 
 type ShoppingNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<RootTabParamList, 'Shopping'>,
@@ -156,6 +159,7 @@ const ShoppingScreen: React.FC = () => {
 
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { if (isFocused) loadData(); }, [isFocused, loadData]);
+  useRealtimeRefresh(REALTIME_TABLES, loadData); // 가족이 바꾸면 즉시 갱신
 
   // 체크 토글 (낙관적 업데이트, 실패 시 원복)
   const handleToggle = useCallback(async (item: ShoppingItem) => {

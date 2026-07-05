@@ -18,6 +18,9 @@ import { RootTabParamList, RootStackParamList } from '../navigation';
 import { STORAGE_KEY_FAMILY_NAME, STORAGE_KEY_NICKNAME, STORAGE_KEY_NOTIFY_DAYS } from './SettingsScreen';
 import { theme } from '../theme';
 import { fetchDashboard, DashboardData, UrgentItem, StockItem, ActivityItem } from '../lib/dashboard';
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+
+const REALTIME_TABLES = ['fridge_items', 'supplies', 'shopping_items', 'notes'] as const;
 
 type DashboardNav = CompositeNavigationProp<
   BottomTabNavigationProp<RootTabParamList, 'Home'>,
@@ -228,6 +231,7 @@ const DashboardScreen: React.FC = () => {
   }, []);
 
   useEffect(() => { if (isFocused) loadData(); }, [isFocused, loadData]);
+  useRealtimeRefresh(REALTIME_TABLES, loadData); // 가족이 바꾸면 즉시 갱신
 
   const onRefresh = useCallback(() => { setRefreshing(true); loadData(); }, [loadData]);
 
