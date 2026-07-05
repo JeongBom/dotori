@@ -23,6 +23,7 @@ import SettingsScreen from '../screens/SettingsScreen';
 import AddFridgeItemScreen from '../screens/AddFridgeItemScreen';
 import AddSupplyScreen from '../screens/AddSupplyScreen';
 import ShoppingScreen from '../screens/ShoppingScreen';
+import AddShoppingItemScreen from '../screens/AddShoppingItemScreen';
 import NotesScreen from '../screens/NotesScreen';
 import NoteDetailScreen from '../screens/NoteDetailScreen';
 import AuthScreen from '../screens/auth/AuthScreen';
@@ -54,6 +55,7 @@ export type RootStackParamList = {
   Settings: undefined;
   AddFridgeItem: { familyId?: string; itemId?: string };
   AddSupply: { familyId?: string; supplyId?: string };
+  AddShoppingItem: { familyId?: string; itemId?: string };
   NoteDetail: { noteId: string };
 };
 
@@ -263,6 +265,7 @@ export default function AppNavigator({ navigationRef }: AppNavigatorProps) {
             <Stack.Screen name="Settings" component={SettingsScreen} options={{ presentation: 'modal' }} />
             <Stack.Screen name="AddFridgeItem" component={AddFridgeItemScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
             <Stack.Screen name="AddSupply" component={AddSupplyScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
+            <Stack.Screen name="AddShoppingItem" component={AddShoppingItemScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
             <Stack.Screen name="NoteDetail" component={NoteDetailScreen} />
           </>
         )}
