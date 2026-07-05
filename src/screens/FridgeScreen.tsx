@@ -17,6 +17,9 @@ import { FridgeItem } from '../types';
 import { RootTabParamList, RootStackParamList } from '../navigation';
 import { cancelExpiryNotification } from '../lib/notifications';
 import { autoAddToShopping } from '../lib/shopping';
+import IconBtn from '../components/IconBtn';
+import SectionLabel from '../components/SectionLabel';
+import SwipeDeleteAction from '../components/SwipeDeleteAction';
 import { theme } from '../theme';
 
 type FridgeNav = CompositeNavigationProp<
@@ -52,18 +55,6 @@ function sortItems(items: FridgeItem[], sort: SortType): FridgeItem[] {
   });
 }
 
-// ── 아이콘 버튼 ───────────────────────────────
-function IconBtn({ children, onPress }: { children: React.ReactNode; onPress?: () => void }) {
-  return (
-    <TouchableOpacity style={ic.btn} onPress={onPress} activeOpacity={0.7}>
-      {children}
-    </TouchableOpacity>
-  );
-}
-const ic = StyleSheet.create({
-  btn: { width: 36, height: 36, borderRadius: 12, backgroundColor: theme.colors.warm.ivory, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: `${theme.colors.warm.edge}66` },
-});
-
 // ── StatBlock ─────────────────────────────────
 function StatBlock({ primary, label, sub, color }: { primary: string | number; label: string; sub: string; color: string }) {
   return (
@@ -82,34 +73,6 @@ const sb = StyleSheet.create({
   primary: { fontSize: 24, fontWeight: '700', letterSpacing: -0.5, lineHeight: 26 },
   label:   { fontSize: 10, color: theme.colors.warm.oak, fontWeight: '600' },
   sub:     { fontSize: 10, color: theme.colors.warm.lightOak, fontWeight: '500' },
-});
-
-// ── 섹션 라벨 ────────────────────────────────
-function SectionLabel({ label, count, color }: { label: string; count: number; color: string }) {
-  return (
-    <View style={sl.row}>
-      <View style={[sl.dot, { backgroundColor: color }]} />
-      <Text style={sl.label}>{label}</Text>
-      <Text style={sl.count}>{count}</Text>
-    </View>
-  );
-}
-const sl = StyleSheet.create({
-  row:   { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 },
-  dot:   { width: 6, height: 6, borderRadius: 3 },
-  label: { fontSize: 10, fontWeight: '700', color: theme.colors.warm.dark, letterSpacing: 0.3 },
-  count: { fontSize: 10, color: theme.colors.warm.lightOak, fontWeight: '600' },
-});
-
-// ── 스와이프 삭제 ─────────────────────────────
-const RightAction: React.FC<{ onDelete: () => void }> = ({ onDelete }) => (
-  <TouchableOpacity style={sw.btn} onPress={onDelete}>
-    <Text style={sw.text}>삭제</Text>
-  </TouchableOpacity>
-);
-const sw = StyleSheet.create({
-  btn:  { backgroundColor: theme.colors.status.danger, justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 8, borderTopRightRadius: 14, borderBottomRightRadius: 14 },
-  text: { color: '#fff', fontWeight: '700', fontSize: 14 },
 });
 
 // ── FoodRow ───────────────────────────────────
@@ -152,7 +115,7 @@ const FoodRow: React.FC<FoodRowProps> = React.memo(({ item, onToggle, onDelete, 
   };
 
   return (
-    <Swipeable ref={swipeRef} renderRightActions={() => <RightAction onDelete={handleDelete} />} overshootRight={false}>
+    <Swipeable ref={swipeRef} renderRightActions={() => <SwipeDeleteAction onDelete={handleDelete} />} overshootRight={false}>
       <View style={[fr.row, item.is_consumed && fr.rowDone]}>
         {/* 체크박스 */}
         <TouchableOpacity onPress={() => onToggle(item)} style={fr.checkbox} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
