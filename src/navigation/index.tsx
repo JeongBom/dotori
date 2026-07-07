@@ -138,6 +138,9 @@ const loadingStyles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FDF6EC' },
 });
 
+// 웹 브라우저 탭 제목 고정 (라우트명 노출 방지)
+const DOC_TITLE = { formatter: (): string => '도토리' };
+
 // ---- 루트 네비게이터 ----
 
 interface AppNavigatorProps {
@@ -234,7 +237,7 @@ export default function AppNavigator({ navigationRef }: AppNavigatorProps) {
   // 앱 초기 로딩 중
   if (initializing) {
     return (
-      <NavigationContainer ref={navigationRef}>
+      <NavigationContainer ref={navigationRef} documentTitle={DOC_TITLE}>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Auth" component={LoadingScreen} />
         </Stack.Navigator>
@@ -243,7 +246,7 @@ export default function AppNavigator({ navigationRef }: AppNavigatorProps) {
   }
 
   return (
-    <NavigationContainer ref={navigationRef}>
+    <NavigationContainer ref={navigationRef} documentTitle={DOC_TITLE}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {isPasswordRecovery ? (
           // ── 비밀번호 재설정 (이메일 링크 클릭 후) ──────

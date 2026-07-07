@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Platform } from 'react-native';
+import { Platform, View, StyleSheet } from 'react-native';
+import { theme } from './src/theme';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
@@ -41,12 +42,26 @@ export default function App() {
   }, []);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={s.root}>
       <StatusBar style="dark" />
-      <AppNavigator navigationRef={navigationRef} />
-      {showSplash && (
-        <SplashScreen onFinish={() => setShowSplash(false)} />
-      )}
+      {/* 웹: 데스크톱에서도 폰 비율 유지 (최대 폭 520px 중앙 정렬) */}
+      <View style={s.appFrame}>
+        <AppNavigator navigationRef={navigationRef} />
+        {showSplash && (
+          <SplashScreen onFinish={() => setShowSplash(false)} />
+        )}
+      </View>
     </GestureHandlerRootView>
   );
 }
+
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: theme.colors.warm.cream },
+  appFrame: Platform.OS === 'web'
+    ? {
+        flex: 1, width: '100%', maxWidth: 520, alignSelf: 'center',
+        backgroundColor: theme.colors.warm.cream,
+        borderLeftWidth: 1, borderRightWidth: 1, borderColor: theme.colors.warm.edge,
+      }
+    : { flex: 1 },
+});

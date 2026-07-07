@@ -265,7 +265,8 @@ const AuthScreen: React.FC = () => {
               onChangeText={setPassword}
               placeholder="6자 이상"
               secureTextEntry
-              returnKeyType="next"
+              returnKeyType={tab === 'login' ? 'done' : 'next'}
+              onSubmitEditing={tab === 'login' ? handleLogin : undefined}
             />
 
             {tab === 'signup' && (
