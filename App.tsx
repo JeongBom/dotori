@@ -67,8 +67,8 @@ const s = StyleSheet.create({
       }
     : { flex: 1 },
   frameDesktop: {
-    flex: 1, width: '100%', maxWidth: 1180, alignSelf: 'center',
+    // 데스크톱: 화면 전체 사용 (사이드바 + 콘텐츠)
+    flex: 1, width: '100%',
     backgroundColor: theme.colors.warm.cream,
-    borderLeftWidth: 1, borderRightWidth: 1, borderColor: theme.colors.warm.edge,
   },
 });
