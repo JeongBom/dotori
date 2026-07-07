@@ -10,6 +10,9 @@ sips -z 512 512 assets/icon.png --out dist/icon-512.png > /dev/null
 
 cp scripts/web-manifest.json dist/manifest.json
 
+# 배포 버전 파일 — 웹앱이 켜질 때 이 파일로 새 버전 여부를 확인 (캐시 우회 업데이트)
+echo "{\"build\":\"${EXPO_PUBLIC_BUILD_TIME:-unknown}\"}" > dist/version.json
+
 # index.html <head>에 아이콘/매니페스트 링크 주입
 python3 - <<'EOF'
 html = open('dist/index.html').read()

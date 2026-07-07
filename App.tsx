@@ -10,6 +10,7 @@ import AppNavigator from './src/navigation';
 import SplashScreen from './src/screens/SplashScreen';
 import { rescheduleAllNotifications } from './src/lib/notifications';
 import { setupWebAlert } from './src/lib/webAlert';
+import { checkForWebUpdate } from './src/lib/webUpdate';
 import { useIsDesktopWeb } from './src/hooks/useIsDesktopWeb';
 import { RootStackParamList } from './src/navigation';
 
@@ -29,6 +30,9 @@ export default function App() {
     ExpoSplashScreen.hideAsync();
 
     rescheduleAllNotifications();
+
+    // 웹: 배포된 새 버전이 있으면 갱신 안내 (홈 화면 웹앱 캐시 대응)
+    checkForWebUpdate();
 
     // 알림 탭 리스너 — 웹은 expo-notifications 미지원이라 스킵
     if (Platform.OS === 'web') return;
