@@ -10,11 +10,8 @@ sips -z 512 512 assets/icon.png --out dist/icon-512.png > /dev/null
 
 cp scripts/web-manifest.json dist/manifest.json
 
-# 배포 버전 파일 — 웹앱이 켜질 때 이 파일로 새 버전 여부를 확인 (캐시 우회 업데이트)
-echo "{\"build\":\"${EXPO_PUBLIC_BUILD_TIME:-unknown}\"}" > dist/version.json
-
-# index.html <head>에 아이콘/매니페스트 링크 주입
-python3 - <<'EOF'
+# index.html <head>에 아이콘/매니페스트 링크 + 빌드 버전 메타 주입
+python3 - <<EOF
 html = open('dist/index.html').read()
 inject = (
     '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"/>'
@@ -22,11 +19,12 @@ inject = (
     '<meta name="apple-mobile-web-app-capable" content="yes"/>'
     '<meta name="apple-mobile-web-app-status-bar-style" content="default"/>'
     '<meta name="apple-mobile-web-app-title" content="도토리"/>'
+    '<meta name="dotori-build" content="${EXPO_PUBLIC_BUILD_TIME:-unknown}"/>'
 )
 if 'apple-touch-icon' not in html:
     html = html.replace('</head>', inject + '</head>')
     open('dist/index.html', 'w').write(html)
-    print('index.html: 홈 화면 아이콘 메타 주입 완료')
+    print('index.html: 아이콘/버전 메타 주입 완료')
 else:
     print('index.html: 이미 주입돼 있음')
 EOF

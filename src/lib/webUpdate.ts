@@ -14,10 +14,11 @@ const BUILT_VERSION = process.env.EXPO_PUBLIC_BUILD_TIME ?? '';
 export async function checkForWebUpdate(): Promise<void> {
   if (Platform.OS !== 'web' || !BUILT_VERSION) return;
   try {
-    // 쿼리로 캐시 우회해서 항상 서버의 최신 버전 파일을 읽음
-    const res = await fetch(`/version.json?t=${Date.now()}`);
+    // 쿼리로 캐시 우회해서 서버의 최신 첫 화면을 읽고, 심어둔 버전 메타를 비교
+    const res = await fetch(`/?vchk=${Date.now()}`);
     if (!res.ok) return;
-    const { build } = (await res.json()) as { build?: string };
+    const html = await res.text();
+    const build = html.match(/dotori-build" content="([^"]+)"/)?.[1];
     if (!build || build === 'unknown' || build === BUILT_VERSION) return;
 
     Alert.alert('업데이트', `새 버전(${build})이 있어요.\n지금 적용할까요?`, [
