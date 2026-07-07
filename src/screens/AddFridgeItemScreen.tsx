@@ -19,7 +19,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChevronLeft, Search, X, ChevronDown, Check, Star } from 'lucide-react-native';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { FoodEntry, FridgeCategory, StorageType } from '../types';
@@ -28,177 +27,17 @@ import { scheduleExpiryNotification, cancelExpiryNotification, requestNotificati
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEY_NOTIFY_DAYS } from './SettingsScreen';
 import { theme } from '../theme';
+import { todayStr, addDays, addMonths, formatDisplayDate, isValidDate } from '../lib/dateUtils';
+import DatePickerModal from '../components/DatePickerModal';
 import AppSwitch from '../components/design-system/AppSwitch';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'AddFridgeItem'>;
 type RouteType = RouteProp<RootStackParamList, 'AddFridgeItem'>;
 
-// ── 날짜 유틸 ──────────────────────────────────
-
-function todayStr(): string {
-  return new Date().toISOString().split('T')[0];
-}
-
-function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
-}
-
-function addMonths(dateStr: string, months: number): string {
-  const d = new Date(dateStr);
-  d.setMonth(d.getMonth() + months);
-  return d.toISOString().split('T')[0];
-}
-
-function formatDisplayDate(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-');
-  return `${y}년 ${parseInt(m)}월 ${parseInt(d)}일`;
-}
-
-function isValidDate(s: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
-  return !isNaN(new Date(s).getTime());
-}
-
 interface SuggestionItem {
   name: string;
   category: FridgeCategory;
 }
-
-// ── 날짜 선택 모달 ────────────────────────────
-
-interface DatePickerModalProps {
-  visible: boolean;
-  value: string;
-  onConfirm: (date: string) => void;
-  onCancel: () => void;
-  title: string;
-  minimumDate?: Date;
-}
-
-const DatePickerModal: React.FC<DatePickerModalProps> = ({ visible, value, onConfirm, onCancel, title, minimumDate }) => {
-  const [tempDate, setTempDate] = useState<Date>(new Date());
-  const [webInput, setWebInput] = useState(''); // 웹 전용 직접 입력값
-
-  useEffect(() => {
-    if (visible) {
-      setTempDate(value && isValidDate(value) ? new Date(value) : new Date());
-      setWebInput(value && isValidDate(value) ? value : todayStr());
-    }
-  }, [visible, value]);
-
-  const toDateStr = (d: Date) => d.toISOString().split('T')[0];
-
-  const onChange = (event: DateTimePickerEvent, selected?: Date) => {
-    if (Platform.OS === 'android') {
-      if (event.type === 'set' && selected) onConfirm(toDateStr(selected));
-      else onCancel();
-    } else {
-      if (selected) setTempDate(selected);
-    }
-  };
-
-  if (!visible) return null;
-
-  // 웹: 네이티브 달력 위젯이 없으므로 직접 입력 모달로 대체
-  if (Platform.OS === 'web') {
-    const confirmWeb = () => {
-      const v = webInput.trim();
-      if (!isValidDate(v) || !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
-        Alert.alert('알림', '날짜를 YYYY-MM-DD 형식으로 입력해주세요. 예) 2026-07-15');
-        return;
-      }
-      onConfirm(v);
-    };
-    return (
-      <Modal visible={visible} transparent animationType="fade">
-        <View style={dpStyles.overlay}>
-          <View style={[dpStyles.container, { width: 320, paddingHorizontal: 16 }]}>
-            <Text style={dpStyles.title}>{title}</Text>
-            <TextInput
-              style={dpStyles.webInput}
-              value={webInput}
-              onChangeText={setWebInput}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={theme.colors.warm.lightOak}
-              autoFocus
-              onSubmitEditing={confirmWeb}
-            />
-            <View style={dpStyles.actions}>
-              <TouchableOpacity style={dpStyles.cancelBtn} onPress={onCancel}>
-                <Text style={dpStyles.cancelText}>취소</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={dpStyles.confirmBtn} onPress={confirmWeb}>
-                <Text style={dpStyles.confirmText}>확인</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    );
-  }
-
-  if (Platform.OS === 'android') {
-    return (
-      <DateTimePicker
-        value={tempDate}
-        mode="date"
-        display="calendar"
-        onChange={onChange}
-        minimumDate={minimumDate}
-      />
-    );
-  }
-
-  const screenWidth = Dimensions.get('window').width;
-  const calendarWidth = screenWidth - 32;
-
-  return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={dpStyles.overlay}>
-        <View style={[dpStyles.container, { width: calendarWidth }]}>
-          <Text style={dpStyles.title}>{title}</Text>
-          <DateTimePicker
-            value={tempDate}
-            mode="date"
-            display="inline"
-            onChange={onChange}
-            locale="ko-KR"
-            style={{ width: calendarWidth - 16, alignSelf: 'center' }}
-            accentColor={theme.colors.brand}
-            minimumDate={minimumDate}
-          />
-          <View style={dpStyles.actions}>
-            <TouchableOpacity style={dpStyles.cancelBtn} onPress={onCancel}>
-              <Text style={dpStyles.cancelText}>취소</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={dpStyles.confirmBtn} onPress={() => onConfirm(toDateStr(tempDate))}>
-              <Text style={dpStyles.confirmText}>확인</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-};
-
-const dpStyles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  container: { backgroundColor: theme.colors.warm.ivory, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 16 },
-  title: { fontSize: 16, fontWeight: '700', color: theme.colors.warm.dark, textAlign: 'center', marginBottom: 4 },
-  webInput: {
-    backgroundColor: theme.colors.warm.cream, borderRadius: 12,
-    borderWidth: 1, borderColor: theme.colors.warm.edge,
-    paddingHorizontal: 14, paddingVertical: 12, marginTop: 10,
-    fontSize: 16, color: theme.colors.warm.dark, textAlign: 'center',
-  },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 12, paddingHorizontal: 8 },
-  cancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.warm.edge, alignItems: 'center' },
-  cancelText: { color: theme.colors.brand, fontWeight: '600' },
-  confirmBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: theme.colors.brand, alignItems: 'center' },
-  confirmText: { color: '#FFFFFF', fontWeight: '700' },
-});
 
 // ── 메인 화면 ─────────────────────────────────
 
