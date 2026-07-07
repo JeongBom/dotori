@@ -269,35 +269,7 @@ const AddSupplyScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          <Text style={[s.label, { marginTop: 28 }]}>알림 기준 수량</Text>
-          <Text style={s.subLabel}>재고가 이 수량 이하로 떨어지면 알림을 보내요</Text>
-          <View style={s.qtyRow}>
-            <TouchableOpacity style={s.qtyBtn} onPress={() => setThreshold(t => Math.max(1, t - 1))}>
-              <Text style={s.qtyBtnText}>−</Text>
-            </TouchableOpacity>
-            {editingThreshold ? (
-              <TextInput
-                style={s.qtyInput}
-                value={thresholdInput}
-                onChangeText={t => setThresholdInput(t.replace(/[^0-9]/g, ''))}
-                keyboardType="number-pad"
-                keyboardAppearance="light"
-                autoFocus
-                returnKeyType="done"
-                onBlur={() => { const p = parseInt(thresholdInput); setThreshold(p >= 1 ? p : 1); setEditingThreshold(false); }}
-                onSubmitEditing={() => { const p = parseInt(thresholdInput); setThreshold(p >= 1 ? p : 1); setEditingThreshold(false); Keyboard.dismiss(); }}
-              />
-            ) : (
-              <TouchableOpacity onPress={() => { setThresholdInput(String(threshold)); setEditingThreshold(true); }}>
-                <Text style={s.qtyNum}>{threshold}</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={s.qtyBtn} onPress={() => setThreshold(t => t + 1)}>
-              <Text style={s.qtyBtnText}>+</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* 재고 부족 알림 on/off */}
+          {/* 재고 부족 알림 on/off — 끄면 기준 수량 입력도 숨김 */}
           <View style={s.toggleRow}>
             <View style={{ flex: 1 }}>
               <Text style={s.label}>재고 부족 알림</Text>
@@ -310,6 +282,38 @@ const AddSupplyScreen: React.FC = () => {
               thumbColor="#fff"
             />
           </View>
+
+          {notifyLowStock && (
+            <>
+              <Text style={[s.label, { marginTop: 24 }]}>알림 기준 수량</Text>
+              <Text style={s.subLabel}>재고가 이 수량 이하로 떨어지면 알림을 보내요</Text>
+              <View style={s.qtyRow}>
+                <TouchableOpacity style={s.qtyBtn} onPress={() => setThreshold(t => Math.max(1, t - 1))}>
+                  <Text style={s.qtyBtnText}>−</Text>
+                </TouchableOpacity>
+                {editingThreshold ? (
+                  <TextInput
+                    style={s.qtyInput}
+                    value={thresholdInput}
+                    onChangeText={t => setThresholdInput(t.replace(/[^0-9]/g, ''))}
+                    keyboardType="number-pad"
+                    keyboardAppearance="light"
+                    autoFocus
+                    returnKeyType="done"
+                    onBlur={() => { const p = parseInt(thresholdInput); setThreshold(p >= 1 ? p : 1); setEditingThreshold(false); }}
+                    onSubmitEditing={() => { const p = parseInt(thresholdInput); setThreshold(p >= 1 ? p : 1); setEditingThreshold(false); Keyboard.dismiss(); }}
+                  />
+                ) : (
+                  <TouchableOpacity onPress={() => { setThresholdInput(String(threshold)); setEditingThreshold(true); }}>
+                    <Text style={s.qtyNum}>{threshold}</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={s.qtyBtn} onPress={() => setThreshold(t => t + 1)}>
+                  <Text style={s.qtyBtnText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
         </ScrollView>
       );
     }
