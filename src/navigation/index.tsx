@@ -125,14 +125,14 @@ function MainTabs() {
           backgroundColor: 'rgba(255,255,255,0.97)',
           borderTopWidth: 0.5,
           borderTopColor: '#DEC8A8',
-          // 네이티브 84/28: 홈 인디케이터 공간 포함
-          // 모바일 웹 78/24: 브라우저 하단 UI·홈 인디케이터에 라벨이 잘리지 않게
-          // 데스크톱 웹 60/6: 여분 공간 불필요
-          height: Platform.OS !== 'web' ? 84 : isDesktop ? 60 : 78,
-          paddingBottom: Platform.OS !== 'web' ? 28 : isDesktop ? 6 : 24,
+          // 네이티브: 홈 인디케이터 공간 포함한 고정 높이
+          // 웹: 고정 높이를 주면 라벨 영역이 잘못 계산돼 글자가 잘림 → 내용 기준 자동 높이
+          height: Platform.OS === 'web' ? undefined : 84,
+          paddingBottom: Platform.OS !== 'web' ? 28 : isDesktop ? 8 : 16,
           paddingTop: 8,
         },
-        tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '600', lineHeight: 14 },
+        tabBarIconStyle: Platform.OS === 'web' ? { height: 26 } : undefined,
         headerShown: false,
       })}
     >
