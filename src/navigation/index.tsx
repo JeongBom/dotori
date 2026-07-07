@@ -34,6 +34,8 @@ import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
 
 import { supabase } from '../lib/supabase';
 import { UserProfile } from '../types';
+import DesktopSidebar from '../components/desktop/DesktopSidebar';
+import { useIsDesktopWeb, SIDEBAR_WIDTH } from '../hooks/useIsDesktopWeb';
 
 // ---- 타입 ----
 
@@ -96,9 +98,13 @@ const TAB_LABELS: Partial<Record<keyof RootTabParamList, string>> = {
 // ---- 하단 탭 ----
 
 function MainTabs() {
+  // 데스크톱 웹: 하단 탭바 대신 좌측 사이드바
+  const isDesktop = useIsDesktopWeb();
   return (
     <Tab.Navigator
+      tabBar={isDesktop ? (props) => <DesktopSidebar {...props} /> : undefined}
       screenOptions={({ route }) => ({
+        sceneStyle: isDesktop ? { paddingLeft: SIDEBAR_WIDTH } : undefined,
         tabBarIcon: ({ color }) => {
           const name = TAB_ICON_NAMES[route.name as keyof RootTabParamList];
           return name ? <TabIcon name={name} color={color} /> : null;

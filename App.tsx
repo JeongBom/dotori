@@ -10,6 +10,7 @@ import AppNavigator from './src/navigation';
 import SplashScreen from './src/screens/SplashScreen';
 import { rescheduleAllNotifications } from './src/lib/notifications';
 import { setupWebAlert } from './src/lib/webAlert';
+import { useIsDesktopWeb } from './src/hooks/useIsDesktopWeb';
 import { RootStackParamList } from './src/navigation';
 
 // 웹: Alert.alert을 브라우저 confirm/alert으로 매핑 (미적용 시 웹에서 팝업 무동작)
@@ -21,6 +22,7 @@ ExpoSplashScreen.preventAutoHideAsync();
 export default function App() {
   const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
   const [showSplash, setShowSplash] = useState(true);
+  const isDesktop = useIsDesktopWeb();
 
   useEffect(() => {
     // 네이티브 스플래시 즉시 숨기고 커스텀 스플래시로 전환
@@ -44,8 +46,8 @@ export default function App() {
   return (
     <GestureHandlerRootView style={s.root}>
       <StatusBar style="dark" />
-      {/* 웹: 데스크톱에서도 폰 비율 유지 (최대 폭 520px 중앙 정렬) */}
-      <View style={s.appFrame}>
+      {/* 웹: 데스크톱은 넓은 프레임(사이드바 레이아웃), 모바일 브라우저는 폰 비율 유지 */}
+      <View style={isDesktop ? s.frameDesktop : s.appFrame}>
         <AppNavigator navigationRef={navigationRef} />
         {showSplash && (
           <SplashScreen onFinish={() => setShowSplash(false)} />
@@ -64,4 +66,9 @@ const s = StyleSheet.create({
         borderLeftWidth: 1, borderRightWidth: 1, borderColor: theme.colors.warm.edge,
       }
     : { flex: 1 },
+  frameDesktop: {
+    flex: 1, width: '100%', maxWidth: 1180, alignSelf: 'center',
+    backgroundColor: theme.colors.warm.cream,
+    borderLeftWidth: 1, borderRightWidth: 1, borderColor: theme.colors.warm.edge,
+  },
 });

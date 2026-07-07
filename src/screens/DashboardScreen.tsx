@@ -19,6 +19,7 @@ import { STORAGE_KEY_FAMILY_NAME, STORAGE_KEY_NICKNAME, STORAGE_KEY_NOTIFY_DAYS 
 import { theme } from '../theme';
 import { fetchDashboard, DashboardData, UrgentItem, StockItem, ActivityItem } from '../lib/dashboard';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import { useIsDesktopWeb } from '../hooks/useIsDesktopWeb';
 
 const REALTIME_TABLES = ['fridge_items', 'supplies', 'shopping_items', 'notes'] as const;
 
@@ -176,6 +177,7 @@ const actStyles = StyleSheet.create({
 const DashboardScreen: React.FC = () => {
   const navigation = useNavigation<DashboardNav>();
   const isFocused = useIsFocused();
+  const isDesktop = useIsDesktopWeb(); // 데스크톱 웹: 정사각 위젯 대신 자연 높이
 
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -318,7 +320,7 @@ const DashboardScreen: React.FC = () => {
         {/* ── 위젯 ── */}
         <View style={s.widgetRow}>
           {/* 음식 */}
-          <TouchableOpacity style={s.squareWidget} onPress={() => navigation.navigate('Fridge')} activeOpacity={0.85}>
+          <TouchableOpacity style={isDesktop ? s.deskWidget : s.squareWidget} onPress={() => navigation.navigate('Fridge')} activeOpacity={0.85}>
             <MiniWidget accentColor={theme.colors.brand} title="음식" icon={<Text style={{ fontSize: 13 }}>🥬</Text>}>
               <Text style={s.widgetBigNum}>{data?.fridgeTotal ?? 0}</Text>
               <View style={s.widgetRow2}>
@@ -333,7 +335,7 @@ const DashboardScreen: React.FC = () => {
           </TouchableOpacity>
 
           {/* 장보기 (정사각형) */}
-          <TouchableOpacity style={s.squareWidget} onPress={() => navigation.navigate('Shopping')} activeOpacity={0.85}>
+          <TouchableOpacity style={isDesktop ? s.deskWidget : s.squareWidget} onPress={() => navigation.navigate('Shopping')} activeOpacity={0.85}>
             <MiniWidget accentColor={theme.colors.warm.honey} title="장보기" icon={<Text style={{ fontSize: 13 }}>🛒</Text>}>
               {(data?.shoppingTodo.length ?? 0) === 0 ? (
                 <Text style={s.widgetEmpty}>살 것 없음</Text>
@@ -452,6 +454,7 @@ const s = StyleSheet.create({
   // 위젯
   widgetRow:       { flexDirection: 'row', paddingHorizontal: 16, gap: 10 },
   squareWidget:    { flex: 1, aspectRatio: 1 },
+  deskWidget:      { flex: 1 }, // 데스크톱: 내용만큼의 높이
   widgetBigNum:    { fontSize: 24, fontWeight: '700', color: theme.colors.warm.dark, lineHeight: 28, marginBottom: 8 },
   widgetRow2:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
   widgetStatLabel: { fontSize: 13, fontWeight: '600', color: theme.colors.warm.oak, lineHeight: 18 },
