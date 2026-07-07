@@ -17,6 +17,7 @@ import { FridgeItem } from '../types';
 import { RootTabParamList, RootStackParamList } from '../navigation';
 import { cancelExpiryNotification } from '../lib/notifications';
 import { autoAddToShopping } from '../lib/shopping';
+import { notifyFamily } from '../lib/webPush';
 import IconBtn from '../components/IconBtn';
 import SectionLabel from '../components/SectionLabel';
 import SwipeDeleteAction from '../components/SwipeDeleteAction';
@@ -312,6 +313,8 @@ const FridgeScreen: React.FC = () => {
       if (item.auto_add_to_shopping ?? true) {
         await autoAddToShopping(item.family_id, item.name, 'fridge', item.id, item.default_store_tag ?? '');
       }
+      // 가족 전체 웹 푸시
+      notifyFamily('🍽️ 다 먹었어요', `${item.name}이(가) 떨어졌어요. 장보기 목록을 확인하세요!`);
     } else {
       setItems(prev => prev.map(i => i.id === item.id ? { ...i, quantity: next } : i));
       await supabase.from('fridge_items').update({ quantity: next }).eq('id', item.id);

@@ -18,6 +18,7 @@ import {
   ScrollView,
   Share,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -26,6 +27,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { User, Bell, ChevronLeft, Check, Users, LogOut } from 'lucide-react-native';
 
 import { supabase, getOrCreateFamilyId, joinFamily, leaveFamily } from '../lib/supabase';
+import { isWebPushSupported, enableWebPush, disableWebPush, getWebPushStatus } from '../lib/webPush';
 import { UserProfile } from '../types';
 import { RootStackParamList } from '../navigation';
 import { theme } from '../theme';
@@ -58,6 +60,8 @@ const SettingsScreen: React.FC = () => {
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [profile, setProfile]       = useState<UserProfile | null>(null);
   const [saved, setSaved]           = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false); // 이 기기 웹 푸시 구독 여부
+  const [pushBusy, setPushBusy]       = useState(false);
 
   const [enabledFeatures, setEnabledFeatures] = useState<string[]>([...ALL_FEATURES]);
 
@@ -71,8 +75,30 @@ const SettingsScreen: React.FC = () => {
 
   useEffect(() => {
     loadAll();
+    if (isWebPushSupported()) {
+      getWebPushStatus().then(setPushEnabled);
+    }
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
+
+  // 가족 푸시 알림 켜기/끄기 (웹 전용)
+  const handlePushToggle = async (next: boolean) => {
+    setPushBusy(true);
+    try {
+      if (next) {
+        const ok = await enableWebPush();
+        setPushEnabled(ok);
+        if (!ok) {
+          Alert.alert('알림', '알림 권한이 거부됐거나 이 브라우저에서 지원되지 않아요.\n(아이폰은 홈 화면에 추가한 앱에서 켜주세요)');
+        }
+      } else {
+        await disableWebPush();
+        setPushEnabled(false);
+      }
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   const loadJoinRequests = useCallback(async (fid: string) => {
     const { data } = await supabase
@@ -528,6 +554,26 @@ const SettingsScreen: React.FC = () => {
             <Text style={styles.sectionTitle}>알림 설정</Text>
           </View>
           <View style={styles.card}>
+            {/* 가족 푸시 알림 (웹 전용) — 이 기기로 가족 알림 받기 */}
+            {isWebPushSupported() && (
+              <View style={[styles.fieldGroup, styles.pushRow]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>가족 알림 받기</Text>
+                  <Text style={styles.fieldDesc}>
+                    재고가 떨어지면 이 기기로 알림을 보내요{'\n'}
+                    (아이폰은 홈 화면에 추가한 앱에서만 가능)
+                  </Text>
+                </View>
+                <Switch
+                  value={pushEnabled}
+                  onValueChange={handlePushToggle}
+                  disabled={pushBusy}
+                  trackColor={{ false: theme.colors.warm.edge, true: theme.colors.brand }}
+                  thumbColor="#fff"
+                />
+              </View>
+            )}
+
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>유통기한 알림</Text>
               <Text style={styles.fieldDesc}>선택한 일수 전에 푸시 알림을 받아요</Text>
@@ -657,6 +703,7 @@ const styles = StyleSheet.create({
     shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 2,
   },
   fieldGroup: { paddingVertical: 14 },
+  pushRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: `${theme.colors.warm.edge}66` },
   fieldLabel: { fontSize: 12, color: theme.colors.brand, fontWeight: '600', marginBottom: 6 },
   fieldDesc: { fontSize: 12, color: theme.colors.warm.lightOak, marginBottom: 10, lineHeight: 18 },
   input: { fontSize: 16, color: theme.colors.warm.dark, fontWeight: '500', padding: 0 },

@@ -17,6 +17,7 @@ import { Supply, SupplyCategoryEntry } from '../types';
 import { RootTabParamList, RootStackParamList } from '../navigation';
 import { sendLowStockNotification } from '../lib/notifications';
 import { autoAddToShopping } from '../lib/shopping';
+import { notifyFamily } from '../lib/webPush';
 import { theme } from '../theme';
 import IconBtn from '../components/IconBtn';
 import SectionLabel from '../components/SectionLabel';
@@ -98,6 +99,8 @@ const SuppliesScreen: React.FC = () => {
       // 재고 부족 알림 (품목 설정이 켜져 있을 때만)
       if (item.notify_low_stock ?? true) {
         await sendLowStockNotification(item.id, item.name, next);
+        // 가족 전체 웹 푸시 — 실패해도 수량 변경엔 영향 없음
+        notifyFamily('🛒 재고 부족', `${item.name} 재고가 ${next}개 남았어요. 구매가 필요해요!`);
       }
       // 임계점 이하로 떨어지는 순간 장보기 자동 추가 (품목 설정이 켜져 있을 때만)
       if (item.auto_add_to_shopping ?? true) {
