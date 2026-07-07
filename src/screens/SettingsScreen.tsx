@@ -672,6 +672,11 @@ const SettingsScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
 
+          {/* ── 버전 (배포 시 자동 주입 — 캐시된 구버전인지 확인용) ── */}
+          <Text style={styles.versionText}>
+            도토리 · 빌드 {process.env.EXPO_PUBLIC_BUILD_TIME ?? '개발 모드'}
+          </Text>
+
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -779,6 +784,7 @@ const styles = StyleSheet.create({
 
   logoutBtn: { paddingVertical: 16, alignItems: 'center' },
   logoutText: { fontSize: 15, fontWeight: '600', color: theme.colors.status.danger },
+  versionText: { fontSize: 11, color: theme.colors.warm.lightOak, textAlign: 'center', marginTop: 20, marginBottom: 8 },
 
   featureGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   featureChip: {
