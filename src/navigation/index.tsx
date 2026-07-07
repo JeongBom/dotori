@@ -35,7 +35,16 @@ import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
 import { supabase } from '../lib/supabase';
 import { UserProfile } from '../types';
 import DesktopSidebar from '../components/desktop/DesktopSidebar';
+import { withDesktopPanel } from '../components/desktop/withDesktopPanel';
 import { useIsDesktopWeb, SIDEBAR_WIDTH } from '../hooks/useIsDesktopWeb';
+
+// 데스크톱 웹에서 가운데 모달 카드로 뜨는 화면들 (모바일/앱은 원래대로)
+const SettingsPanel        = withDesktopPanel(SettingsScreen);
+const AddFridgeItemPanel   = withDesktopPanel(AddFridgeItemScreen);
+const AddSupplyPanel       = withDesktopPanel(AddSupplyScreen);
+const AddShoppingItemPanel = withDesktopPanel(AddShoppingItemScreen);
+const ReceiptScanPanel     = withDesktopPanel(ReceiptScanScreen);
+const NoteDetailPanel      = withDesktopPanel(NoteDetailScreen);
 
 // ---- 타입 ----
 
@@ -148,6 +157,13 @@ const loadingStyles = StyleSheet.create({
 // 웹 브라우저 탭 제목 고정 (라우트명 노출 방지)
 const DOC_TITLE = { formatter: (): string => '도토리' };
 
+// 데스크톱 웹 모달 카드용 스택 옵션: 뒤 화면이 비치게 투명 + 페이드
+const desktopModalOptions = {
+  presentation: 'transparentModal' as const,
+  animation: 'fade' as const,
+  contentStyle: { backgroundColor: 'transparent' },
+};
+
 // ---- 루트 네비게이터 ----
 
 interface AppNavigatorProps {
@@ -155,6 +171,7 @@ interface AppNavigatorProps {
 }
 
 export default function AppNavigator({ navigationRef }: AppNavigatorProps) {
+  const isDesktop = useIsDesktopWeb(); // 데스크톱 웹: 추가/설정 화면을 모달 카드로
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null | undefined>(undefined); // undefined = 로딩 중
   const [initializing, setInitializing] = useState(true);
@@ -271,15 +288,15 @@ export default function AppNavigator({ navigationRef }: AppNavigatorProps) {
           // ── 로그인 + 가족 미완성 ────────────────────────
           <Stack.Screen name="FamilySetup" component={FamilySetupScreen} />
         ) : (
-          // ── 로그인 완료: 메인 앱 ───────��────────────────
+          // ── 로그인 완료: 메인 앱 ───────────────────────
           <>
             <Stack.Screen name="MainTabs" component={MainTabs} />
-            <Stack.Screen name="Settings" component={SettingsScreen} options={{ presentation: 'modal' }} />
-            <Stack.Screen name="AddFridgeItem" component={AddFridgeItemScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
-            <Stack.Screen name="AddSupply" component={AddSupplyScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
-            <Stack.Screen name="AddShoppingItem" component={AddShoppingItemScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
-            <Stack.Screen name="ReceiptScan" component={ReceiptScanScreen} options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
-            <Stack.Screen name="NoteDetail" component={NoteDetailScreen} />
+            <Stack.Screen name="Settings" component={SettingsPanel} options={isDesktop ? desktopModalOptions : { presentation: 'modal' }} />
+            <Stack.Screen name="AddFridgeItem" component={AddFridgeItemPanel} options={isDesktop ? desktopModalOptions : { contentStyle: { backgroundColor: '#FFFFFF' } }} />
+            <Stack.Screen name="AddSupply" component={AddSupplyPanel} options={isDesktop ? desktopModalOptions : { contentStyle: { backgroundColor: '#FFFFFF' } }} />
+            <Stack.Screen name="AddShoppingItem" component={AddShoppingItemPanel} options={isDesktop ? desktopModalOptions : { contentStyle: { backgroundColor: '#FFFFFF' } }} />
+            <Stack.Screen name="ReceiptScan" component={ReceiptScanPanel} options={isDesktop ? desktopModalOptions : { contentStyle: { backgroundColor: '#FFFFFF' } }} />
+            <Stack.Screen name="NoteDetail" component={NoteDetailPanel} options={isDesktop ? desktopModalOptions : undefined} />
           </>
         )}
       </Stack.Navigator>
