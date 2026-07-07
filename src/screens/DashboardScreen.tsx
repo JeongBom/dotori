@@ -304,15 +304,17 @@ const DashboardScreen: React.FC = () => {
           </Text>
         </View>
 
-        {/* ── 긴급 알림 strip ── */}
+        {/* ── 긴급 알림 strip (고정 높이 — flex가 잡아늘리지 않게) ── */}
         {(data?.urgentItems.length ?? 0) > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={s.focusStrip}
-          >
-            {data!.urgentItems.map((item, i) => <FocusPill key={i} item={item} />)}
-          </ScrollView>
+          <View style={s.focusStripWrap}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.focusStrip}
+            >
+              {data!.urgentItems.map((item, i) => <FocusPill key={i} item={item} />)}
+            </ScrollView>
+          </View>
         )}
 
         {/* ── 위젯 ── */}
@@ -449,7 +451,8 @@ const s = StyleSheet.create({
   greetingMain: { fontSize: 20, fontWeight: '700', color: theme.colors.warm.dark, marginTop: 2, letterSpacing: -0.4 },
 
   // 긴급 strip
-  focusStrip: { paddingHorizontal: 16, paddingBottom: 10 },
+  focusStripWrap: { height: 46 },
+  focusStrip: { paddingHorizontal: 16, alignItems: 'center' },
 
   // 위젯
   widgetRow:       { flexDirection: 'row', paddingHorizontal: 16, gap: 10 },
