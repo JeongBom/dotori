@@ -1,5 +1,8 @@
 // 푸시 알림 헬퍼
 // expo-notifications를 사용해 유통기한 알림을 스케줄링함
+//
+// ⚠️ 웹에서는 expo-notifications가 지원되지 않으므로 모든 함수가 조용히 no-op.
+//    (웹 알림은 추후 웹 푸시(Web Push)로 별도 구현 예정)
 
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
@@ -7,19 +10,24 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getOrCreateFamilyId } from './supabase';
 import { STORAGE_KEY_NOTIFY_DAYS } from '../screens/SettingsScreen';
 
-// 알림이 포그라운드에서도 표시되도록 설정
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+const IS_WEB = Platform.OS === 'web';
+
+// 알림이 포그라운드에서도 표시되도록 설정 (웹은 스킵 — import 시점 크래시 방지)
+if (!IS_WEB) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+}
 
 // 권한 요청 (앱 최초 실행 시 또는 알림 기능 첫 사용 시 호출)
 export async function requestNotificationPermissions(): Promise<boolean> {
+  if (IS_WEB) return false;
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('expiry', {
       name: '유통기한 알림',
@@ -43,6 +51,7 @@ export async function scheduleExpiryNotification(
   expiryDate: string,   // "YYYY-MM-DD"
   daysBefore: number,   // user_settings.notify_days_before
 ): Promise<void> {
+  if (IS_WEB) return;
   try {
     // 기존 알림이 있으면 취소하고 새로 스케줄
     await Notifications.cancelScheduledNotificationAsync(itemId).catch(() => {});
@@ -77,6 +86,7 @@ export async function sendLowStockNotification(
   supplyName: string,
   quantity: number,
 ): Promise<void> {
+  if (IS_WEB) return;
   try {
     const granted = await requestNotificationPermissions();
     if (!granted) return;
@@ -100,6 +110,7 @@ export async function sendLowStockNotification(
 
 // 알림 취소 (아이템 삭제 또는 다먹음 처리 시)
 export async function cancelExpiryNotification(itemId: string): Promise<void> {
+  if (IS_WEB) return;
   try {
     await Notifications.cancelScheduledNotificationAsync(itemId);
   } catch (e) {
@@ -110,6 +121,7 @@ export async function cancelExpiryNotification(itemId: string): Promise<void> {
 // 앱 시작 시 호출: 아직 먹지 않은 음식의 알림을 전부 재등록
 // (앱 재설치, 알림 초기화 상황에 대비)
 export async function rescheduleAllNotifications(): Promise<void> {
+  if (IS_WEB) return;
   try {
     const granted = await requestNotificationPermissions();
     if (!granted) return;

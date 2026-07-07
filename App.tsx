@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
@@ -7,7 +8,11 @@ import { NavigationContainerRef } from '@react-navigation/native';
 import AppNavigator from './src/navigation';
 import SplashScreen from './src/screens/SplashScreen';
 import { rescheduleAllNotifications } from './src/lib/notifications';
+import { setupWebAlert } from './src/lib/webAlert';
 import { RootStackParamList } from './src/navigation';
+
+// 웹: Alert.alert을 브라우저 confirm/alert으로 매핑 (미적용 시 웹에서 팝업 무동작)
+setupWebAlert();
 
 // 네이티브 스플래시를 수동으로 제어
 ExpoSplashScreen.preventAutoHideAsync();
@@ -21,6 +26,9 @@ export default function App() {
     ExpoSplashScreen.hideAsync();
 
     rescheduleAllNotifications();
+
+    // 알림 탭 리스너 — 웹은 expo-notifications 미지원이라 스킵
+    if (Platform.OS === 'web') return;
 
     const sub = Notifications.addNotificationResponseReceivedListener(response => {
       const itemId = response.notification.request.content.data?.itemId as string | undefined;

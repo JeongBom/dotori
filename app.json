@@ -28,7 +28,13 @@
       "package": "com.bbom16.homemanager"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single",
+      "name": "도토리",
+      "shortName": "도토리",
+      "themeColor": "#8B5E3C",
+      "backgroundColor": "#FDF6EC"
     },
     "plugins": [
       "@react-native-community/datetimepicker",
