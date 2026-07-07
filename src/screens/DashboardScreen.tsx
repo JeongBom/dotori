@@ -304,18 +304,31 @@ const DashboardScreen: React.FC = () => {
           </Text>
         </View>
 
-        {/* ── 긴급 알림 strip (고정 높이 — flex가 잡아늘리지 않게) ── */}
-        {(data?.urgentItems.length ?? 0) > 0 && (
-          <View style={s.focusStripWrap}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={s.focusStrip}
-            >
-              {data!.urgentItems.map((item, i) => <FocusPill key={i} item={item} />)}
-            </ScrollView>
-          </View>
-        )}
+        {/* ── 긴급 알림 배너 (생필품 화면 부족 배너와 동일 규격) ── */}
+        {(data?.urgentItems.length ?? 0) > 0 && (() => {
+          const urgent = data!.urgentItems;
+          const lowCount = urgent.filter(u => u.type === 'lowstock').length;
+          const expCount = urgent.length - lowCount;
+          const names = urgent.slice(0, 4)
+            .map(u => (u.dday ? `${u.name} ${u.dday}` : u.name))
+            .join(' · ');
+          return (
+            <View style={s.alertBanner}>
+              <View style={s.alertIcon}>
+                <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+                  <Path d="M12 7v6M12 17v.5" stroke="#fff" strokeWidth={2.2} strokeLinecap="round" />
+                </Svg>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.alertTitle} numberOfLines={1}>{names}</Text>
+                <Text style={s.alertSub}>
+                  {[lowCount > 0 ? `재고 부족 ${lowCount}개` : null, expCount > 0 ? `유통기한 ${expCount}개` : null]
+                    .filter(Boolean).join(' · ')}
+                </Text>
+              </View>
+            </View>
+          );
+        })()}
 
         {/* ── 위젯 ── */}
         <View style={[s.widgetRow, s.rowGrow]}>
@@ -450,9 +463,18 @@ const s = StyleSheet.create({
   greetingDate: { fontSize: 11, color: theme.colors.warm.lightOak, fontWeight: '600' },
   greetingMain: { fontSize: 20, fontWeight: '700', color: theme.colors.warm.dark, marginTop: 2, letterSpacing: -0.4 },
 
-  // 긴급 strip
-  focusStripWrap: { height: 46 },
-  focusStrip: { paddingHorizontal: 16, alignItems: 'center' },
+  // 긴급 알림 배너 (SuppliesScreen alertBanner와 동일 규격)
+  alertBanner: {
+    marginHorizontal: 16, marginBottom: 4, padding: 10,
+    backgroundColor: theme.colors.alert.dangerBg, borderRadius: 14, borderWidth: 1, borderColor: `${theme.colors.status.danger}33`,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+  },
+  alertIcon: {
+    width: 30, height: 30, borderRadius: 10, backgroundColor: theme.colors.status.danger,
+    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+  },
+  alertTitle: { fontSize: 12, fontWeight: '700', color: theme.colors.status.danger },
+  alertSub:   { fontSize: 10, color: theme.colors.warm.oak, marginTop: 1 },
 
   // 위젯
   widgetRow:       { flexDirection: 'row', paddingHorizontal: 16, gap: 10 },
