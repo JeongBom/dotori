@@ -154,7 +154,8 @@ const AddSupplyScreen: React.FC = () => {
         ]).start();
       }
     } catch (e) {
-      Alert.alert('오류', '저장에 실패했습니다. 다시 시도해주세요.');
+      const msg = e instanceof Error ? e.message : '알 수 없는 오류';
+      Alert.alert('오류', `저장에 실패했습니다.\n(${msg})`);
       console.error(e);
     } finally {
       setSaving(false);
