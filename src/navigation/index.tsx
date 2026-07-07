@@ -125,9 +125,11 @@ function MainTabs() {
           backgroundColor: 'rgba(255,255,255,0.97)',
           borderTopWidth: 0.5,
           borderTopColor: '#DEC8A8',
-          // 하단 28px은 폰 홈 인디케이터 공간 — 웹에는 없으므로 줄임
-          height: Platform.OS === 'web' ? 60 : 84,
-          paddingBottom: Platform.OS === 'web' ? 6 : 28,
+          // 네이티브 84/28: 홈 인디케이터 공간 포함
+          // 모바일 웹 78/24: 브라우저 하단 UI·홈 인디케이터에 라벨이 잘리지 않게
+          // 데스크톱 웹 60/6: 여분 공간 불필요
+          height: Platform.OS !== 'web' ? 84 : isDesktop ? 60 : 78,
+          paddingBottom: Platform.OS !== 'web' ? 28 : isDesktop ? 6 : 24,
           paddingTop: 8,
         },
         tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
