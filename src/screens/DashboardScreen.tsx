@@ -160,11 +160,11 @@ function RecentActivitySection({ items }: { items: ActivityItem[] }) {
 }
 
 const actStyles = StyleSheet.create({
-  card:      { marginHorizontal: 16, marginTop: 10, backgroundColor: theme.colors.warm.ivory, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: `${theme.colors.warm.edge}55`, shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  card:      { flex: 1, minHeight: 0, overflow: 'hidden', marginHorizontal: 16, marginTop: 8, backgroundColor: theme.colors.warm.ivory, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: `${theme.colors.warm.edge}55`, shadowColor: theme.colors.brand, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
   header:    { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   title:     { fontSize: 12, fontWeight: '700', color: theme.colors.warm.dark },
   empty:     { fontSize: 12, color: theme.colors.warm.lightOak, fontStyle: 'italic', textAlign: 'center', paddingVertical: 8 },
-  row:       { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 7 },
+  row:       { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5 },
   rowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: `${theme.colors.warm.edge}88` },
   emoji:     { fontSize: 16, width: 24, textAlign: 'center', flexShrink: 0 },
   name:      { fontSize: 12, fontWeight: '600', color: theme.colors.warm.dark, flex: 1 },
@@ -266,11 +266,8 @@ const DashboardScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={s.safe}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.brand} />}
-        contentContainerStyle={{ paddingBottom: 24 }}
-      >
+      {/* 스크롤 없는 고정 한 화면 — 위젯들이 flex로 화면을 나눠 가짐 */}
+      <View style={s.page}>
         {/* ── 헤더 ── */}
         <View style={s.header}>
           <View style={s.headerLeft}>
@@ -319,9 +316,9 @@ const DashboardScreen: React.FC = () => {
         )}
 
         {/* ── 위젯 ── */}
-        <View style={s.widgetRow}>
+        <View style={[s.widgetRow, s.rowGrow]}>
           {/* 음식 */}
-          <TouchableOpacity style={isDesktop ? s.deskWidget : s.squareWidget} onPress={() => navigation.navigate('Fridge')} activeOpacity={0.85}>
+          <TouchableOpacity style={s.wFlex} onPress={() => navigation.navigate('Fridge')} activeOpacity={0.85}>
             <MiniWidget accentColor={theme.colors.brand} title="음식" icon={<Text style={{ fontSize: 13 }}>🥬</Text>}>
               <Text style={s.widgetBigNum}>{data?.fridgeTotal ?? 0}</Text>
               <View style={s.widgetRow2}>
@@ -335,22 +332,22 @@ const DashboardScreen: React.FC = () => {
             </MiniWidget>
           </TouchableOpacity>
 
-          {/* 장보기 (정사각형) */}
-          <TouchableOpacity style={isDesktop ? s.deskWidget : s.squareWidget} onPress={() => navigation.navigate('Shopping')} activeOpacity={0.85}>
-            <MiniWidget accentColor={theme.colors.warm.honey} title="장보기" icon={<Text style={{ fontSize: 13 }}>🛒</Text>}>
+          {/* 장보기 — 최대 2개 표시 */}
+          <TouchableOpacity style={s.wFlex} onPress={() => navigation.navigate('Shopping')} activeOpacity={0.85}>
+            <MiniWidget accentColor={theme.colors.warm.honey} title="장보기" icon={<Text style={{ fontSize: 13 }}>🛒</Text>} bodyStyle={s.bodyFlex}>
               {(data?.shoppingTodo.length ?? 0) === 0 ? (
                 <Text style={s.widgetEmpty}>살 것 없음</Text>
               ) : (
                 <>
-                  {data!.shoppingTodo.map(item => (
+                  {data!.shoppingTodo.slice(0, 2).map(item => (
                     <View key={item.id} style={s.noteRow}>
                       <Text style={s.noteEmoji}>🛒</Text>
                       <Text style={s.noteTitle} numberOfLines={1}>{item.name}</Text>
                       {item.store_tag ? <Text style={s.shopTag}>{item.store_tag}</Text> : null}
                     </View>
                   ))}
-                  {data!.shoppingTodoCount > data!.shoppingTodo.length && (
-                    <Text style={s.shopMore}>외 {data!.shoppingTodoCount - data!.shoppingTodo.length}개 더 있어요</Text>
+                  {data!.shoppingTodoCount > 2 && (
+                    <Text style={s.shopMore}>외 {data!.shoppingTodoCount - 2}개 더 있어요</Text>
                   )}
                 </>
               )}
@@ -358,27 +355,27 @@ const DashboardScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* ── 생필품 (직사각형, 메모 위) ── */}
-        <View style={[s.widgetRow, { marginTop: 10 }]}>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('Supplies')} activeOpacity={0.85}>
-            <MiniWidget accentColor={theme.colors.warm.deep} title="생필품" icon={<Text style={{ fontSize: 13 }}>🧴</Text>} bodyStyle={s.rectBody}>
+        {/* ── 생필품 — 최대 2개 표시 ── */}
+        <View style={[s.widgetRow, s.rowGrow]}>
+          <TouchableOpacity style={s.wFlex} onPress={() => navigation.navigate('Supplies')} activeOpacity={0.85}>
+            <MiniWidget accentColor={theme.colors.warm.deep} title="생필품" icon={<Text style={{ fontSize: 13 }}>🧴</Text>} bodyStyle={s.bodyFlex}>
               {(data?.stockItems.length ?? 0) === 0 ? (
                 <Text style={s.widgetEmpty}>항목 없음</Text>
               ) : (
-                data!.stockItems.slice(0, 3).map((item, i) => <StockBar key={i} item={item} />)
+                data!.stockItems.slice(0, 2).map((item, i) => <StockBar key={i} item={item} />)
               )}
             </MiniWidget>
           </TouchableOpacity>
         </View>
 
-        <View style={[s.widgetRow, { marginTop: 10 }]}>
-          {/* 메모 */}
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('Notes')} activeOpacity={0.85}>
-            <MiniWidget accentColor={theme.colors.warm.oak} title="메모" icon={<Text style={{ fontSize: 13 }}>📝</Text>} bodyStyle={s.rectBody}>
+        {/* ── 메모 — 최대 2개 표시 ── */}
+        <View style={[s.widgetRow, s.rowGrow]}>
+          <TouchableOpacity style={s.wFlex} onPress={() => navigation.navigate('Notes')} activeOpacity={0.85}>
+            <MiniWidget accentColor={theme.colors.warm.oak} title="메모" icon={<Text style={{ fontSize: 13 }}>📝</Text>} bodyStyle={s.bodyFlex}>
               {(data?.recentNotes.length ?? 0) === 0 ? (
                 <Text style={s.widgetEmpty}>메모 없음</Text>
               ) : (
-                data!.recentNotes.map((n, i) => (
+                data!.recentNotes.slice(0, 2).map(n => (
                   <View key={n.id} style={s.noteRow}>
                     <Text style={s.noteEmoji}>📝</Text>
                     <Text style={s.noteTitle} numberOfLines={1}>{n.title || '(제목 없음)'}</Text>
@@ -389,9 +386,11 @@ const DashboardScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* ── 최근 활동 피드 ── */}
-        <RecentActivitySection items={data?.activities ?? []} />
-      </ScrollView>
+        {/* ── 최근 활동 — 최대 3개 표시 ── */}
+        <View style={s.activityWrap}>
+          <RecentActivitySection items={(data?.activities ?? []).slice(0, 3)} />
+        </View>
+      </View>
 
       {/* ── 계정 시트 ── */}
       <Modal visible={showSheet} transparent animationType="slide">
@@ -461,6 +460,13 @@ const s = StyleSheet.create({
   widgetStatLabel: { fontSize: 13, fontWeight: '600', color: theme.colors.warm.oak, lineHeight: 18 },
   widgetStatVal:   { fontSize: 15, fontWeight: '700', color: theme.colors.warm.dark, lineHeight: 20 },
   widgetEmpty:     { fontSize: 11, color: theme.colors.warm.lightOak, fontStyle: 'italic', marginTop: 4 },
+
+  // 스크롤 없는 한 화면 레이아웃
+  page:         { flex: 1, paddingBottom: 8 },
+  rowGrow:      { flex: 1, marginTop: 8 },
+  wFlex:        { flex: 1 },
+  bodyFlex:     { flex: 1, minHeight: 0, overflow: 'hidden', paddingVertical: 10, paddingHorizontal: 12 },
+  activityWrap: { flex: 1.1, minHeight: 0 },
 
   // 직사각형 위젯 (장보기·메모) — 높이 키우고 행간 여유
   rectBody:  { minHeight: 104, paddingVertical: 14, paddingHorizontal: 14 },
