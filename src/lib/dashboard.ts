@@ -16,7 +16,7 @@ function localDate(offset = 0): string {
 // ── 데이터 타입 ───────────────────────────────
 export interface Member { id: string; nickname: string }
 export interface UrgentItem { name: string; type: 'expired' | 'expiring' | 'lowstock'; dday?: string }
-export interface StockItem { name: string; qty: number; min_qty: number }
+export interface StockItem { name: string; qty: number; min_qty: number; notify: boolean }
 export interface NoteItem { id: string; title: string }
 export interface ShoppingLite { id: string; name: string; store_tag: string }
 export interface ActivityItem {
@@ -56,7 +56,8 @@ export async function fetchDashboard(familyId: string, notifyDays: number): Prom
     supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false).gte('expiry_date', today).lte('expiry_date', sooner),
     supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false).lt('expiry_date', today),
     supabase.from('fridge_items').select('food_name, expiry_date').eq('family_id', familyId).eq('is_consumed', false).lte('expiry_date', sooner).order('expiry_date').limit(5),
-    supabase.from('supplies').select('id, name, quantity, low_stock_threshold, created_at').eq('family_id', familyId).eq('is_active', true).limit(6),
+    // 수량 0(사용완료) 제외
+    supabase.from('supplies').select('id, name, quantity, low_stock_threshold, notify_low_stock, created_at').eq('family_id', familyId).eq('is_active', true).gt('quantity', 0).limit(6),
     supabase.from('notes').select('id, title, updated_at').eq('family_id', familyId).order('updated_at', { ascending: false }).limit(4),
     supabase.from('user_profiles').select('id, nickname').eq('family_id', familyId).limit(4),
     supabase.from('fridge_items').select('id, food_name, created_at').eq('family_id', familyId).eq('is_consumed', false).order('created_at', { ascending: false }).limit(4),
@@ -67,8 +68,10 @@ export async function fetchDashboard(familyId: string, notifyDays: number): Prom
     name: s.name,
     qty: s.quantity,
     min_qty: s.low_stock_threshold ?? 1,
+    notify: s.notify_low_stock ?? true,
   }));
-  const lowStockCount = stockItems.filter(s => s.qty <= s.min_qty).length;
+  // 부족 카운트: 알림이 켜진 품목만
+  const lowStockCount = stockItems.filter(s => s.notify && s.qty <= s.min_qty).length;
 
   const shoppingTodo: ShoppingLite[] = (shoppingRes.data ?? []).map(it => ({
     id: it.id,
@@ -92,7 +95,7 @@ export async function fetchDashboard(familyId: string, notifyDays: number): Prom
     if (diff < 0) urgentItems.push({ name: item.food_name, type: 'expired', dday: `D+${Math.abs(diff)}` });
     else urgentItems.push({ name: item.food_name, type: 'expiring', dday: diff === 0 ? 'D-day' : `D-${diff}` });
   }
-  for (const s of stockItems.filter(s => s.qty <= s.min_qty).slice(0, 3)) {
+  for (const s of stockItems.filter(s => s.notify && s.qty <= s.min_qty).slice(0, 3)) {
     urgentItems.push({ name: s.name, type: 'lowstock' });
   }
 

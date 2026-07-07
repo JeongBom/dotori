@@ -116,7 +116,8 @@ const widgetStyles = StyleSheet.create({
 function StockBar({ item }: { item: StockItem }) {
   const maxLevel = Math.max(item.min_qty * 3, 1);
   const level = Math.min(item.qty / maxLevel, 1);
-  const critical = item.qty <= item.min_qty;
+  // 부족(빨강) 표시는 알림이 켜진 품목만
+  const critical = item.notify && item.qty <= item.min_qty;
   return (
     <View style={{ marginBottom: 9 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>

@@ -67,7 +67,8 @@ interface SupplyRowProps {
 
 const SupplyRow: React.FC<SupplyRowProps> = React.memo(({ item, onDelete, onQuantityChange, onEdit, selectMode, selected, onSelect }) => {
   const swipeRef = useRef<Swipeable>(null);
-  const isLow = item.quantity <= item.low_stock_threshold;
+  // 부족 표시는 알림이 켜진 품목만 (수량 0은 '사용완료' 상태라 제외)
+  const isLow = item.quantity > 0 && (item.notify_low_stock ?? true) && item.quantity <= item.low_stock_threshold;
   const [editingQty, setEditingQty] = useState(false);
   const [qtyInput, setQtyInput] = useState(String(item.quantity));
 

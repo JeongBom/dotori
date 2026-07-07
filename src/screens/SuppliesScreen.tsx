@@ -140,9 +140,18 @@ const SuppliesScreen: React.FC = () => {
     if (filter === cat.name) setFilter('전체');
   }, [familyId, filter]);
 
-  const filtered = useMemo(() => sortItems(
-    items.filter(item => filter === '전체' || item.category === filter), sort,
-  ), [items, filter, sort]);
+  // 부족 판정: 알림이 켜진 품목만 부족으로 표시 (수량 0은 '사용완료'라 별도 취급)
+  const isLow = useCallback((i: Supply) =>
+    i.quantity > 0 && (i.notify_low_stock ?? true) && i.quantity <= i.low_stock_threshold, []);
+
+  // 수량 0 = 사용완료 → 메인 목록에서 제외, 전용 탭에서 조회 (다시 사면 자동 복귀)
+  const usedUpItems = useMemo(() => sortItems(items.filter(i => i.quantity === 0), sort), [items, sort]);
+  const stockItems  = useMemo(() => items.filter(i => i.quantity > 0), [items]);
+
+  const filtered = useMemo(() => {
+    if (filter === '사용완료') return usedUpItems;
+    return sortItems(stockItems.filter(item => filter === '전체' || item.category === filter), sort);
+  }, [stockItems, usedUpItems, filter, sort]);
 
   // ── 다중 선택 ─────────────────────────────────
   const exitSelectMode = useCallback(() => { setSelectMode(false); setSelectedIds([]); }, []);
@@ -171,28 +180,31 @@ const SuppliesScreen: React.FC = () => {
     ]);
   }, [selectedIds, exitSelectMode]);
 
-  const lowItems      = useMemo(() => filtered.filter(i => i.quantity <= i.low_stock_threshold), [filtered]);
-  const okItems       = useMemo(() => filtered.filter(i => i.quantity > i.low_stock_threshold), [filtered]);
-  const lowStockCount = useMemo(() => items.filter(i => i.quantity <= i.low_stock_threshold).length, [items]);
+  const lowItems      = useMemo(() => filter === '사용완료' ? [] : filtered.filter(isLow), [filtered, filter, isLow]);
+  const okItems       = useMemo(() => filter === '사용완료' ? [] : filtered.filter(i => !isLow(i)), [filtered, filter, isLow]);
+  const lowStockCount = useMemo(() => stockItems.filter(isLow).length, [stockItems, isLow]);
 
   const catCounts = useMemo(() => {
-    const map: Record<string, number> = { '전체': items.length };
-    categories.forEach(c => { map[c.name] = items.filter(i => i.category === c.name).length; });
+    const map: Record<string, number> = { '전체': stockItems.length, '사용완료': usedUpItems.length };
+    categories.forEach(c => { map[c.name] = stockItems.filter(i => i.category === c.name).length; });
     return map;
-  }, [items, categories]);
+  }, [stockItems, usedUpItems, categories]);
 
   const sections = useMemo(() => {
+    if (filter === '사용완료') {
+      return usedUpItems.length > 0 ? [{ key: 'used', data: usedUpItems }] : [];
+    }
     const result = [];
     if (lowItems.length > 0) result.push({ key: 'low', data: lowItems });
     if (okItems.length > 0)  result.push({ key: 'ok',  data: okItems });
     return result;
-  }, [lowItems, okItems]);
+  }, [filter, usedUpItems, lowItems, okItems]);
 
   if (loading) {
     return <SafeAreaView style={s.centered}><ActivityIndicator size="large" color={theme.colors.brand} /></SafeAreaView>;
   }
 
-  const filterTabs: FilterType[] = ['전체', ...categories.map(c => c.name)];
+  const filterTabs: FilterType[] = ['전체', ...categories.map(c => c.name), '사용완료'];
 
   return (
     <SafeAreaView style={s.safeArea}>
@@ -262,7 +274,7 @@ const SuppliesScreen: React.FC = () => {
               style={[s.filterTab, filter === f && s.filterTabActive]}
               onPress={() => setFilter(f)}
               onLongPress={() => {
-                if (f === '전체') return;
+                if (f === '전체' || f === '사용완료') return;
                 const cat = categories.find(c => c.name === f);
                 if (cat) setCategoryModal({ visible: true, editing: cat });
               }}
@@ -291,16 +303,22 @@ const SuppliesScreen: React.FC = () => {
       {/* 섹션 리스트 */}
       {filtered.length === 0 ? (
         <View style={s.empty}>
-          <Text style={s.emptyText}>{items.length === 0 ? '생필품을 추가해 보세요' : `${filter} 항목이 없어요`}</Text>
+          <Text style={s.emptyText}>
+            {items.length === 0
+              ? '생필품을 추가해 보세요'
+              : filter === '사용완료' ? '사용완료된 물품이 없어요' : `${filter} 항목이 없어요`}
+          </Text>
         </View>
       ) : (
         <SectionList
           sections={sections}
           keyExtractor={item => item.id}
           renderSectionHeader={({ section }) => (
-            section.key === 'low'
-              ? <SectionLabel label="부족" count={lowItems.length} color={theme.colors.status.danger} />
-              : <SectionLabel label="충분" count={okItems.length} color={theme.colors.status.safe} />
+            section.key === 'used'
+              ? <SectionLabel label="사용완료" count={usedUpItems.length} color={theme.colors.warm.lightOak} />
+              : section.key === 'low'
+                ? <SectionLabel label="부족" count={lowItems.length} color={theme.colors.status.danger} />
+                : <SectionLabel label="충분" count={okItems.length} color={theme.colors.status.safe} />
           )}
           renderItem={({ item }) => (
             <SupplyRow
