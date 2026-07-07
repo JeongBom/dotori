@@ -27,10 +27,11 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { User, Bell, ChevronLeft, Check, Users, LogOut } from 'lucide-react-native';
 
 import { supabase, getOrCreateFamilyId, joinFamily, leaveFamily } from '../lib/supabase';
-import { isWebPushSupported, enableWebPush, disableWebPush, getWebPushStatus } from '../lib/webPush';
+import { isWebPushSupported, enableWebPush, disableWebPush, getWebPushStatus, notifyFamily } from '../lib/webPush';
 import { UserProfile } from '../types';
 import { RootStackParamList } from '../navigation';
 import { theme } from '../theme';
+import AppSwitch from '../components/design-system/AppSwitch';
 
 type SettingsNav = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
 
@@ -90,6 +91,9 @@ const SettingsScreen: React.FC = () => {
         setPushEnabled(ok);
         if (!ok) {
           Alert.alert('알림', '알림 권한이 거부됐거나 이 브라우저에서 지원되지 않아요.\n(아이폰은 홈 화면에 추가한 앱에서 켜주세요)');
+        } else {
+          // 켜자마자 테스트 발송 — 도착하면 전체 경로가 정상
+          notifyFamily('🌰 도토리', `${nickname || '가족'}님이 이 기기에서 알림을 켰어요!`);
         }
       } else {
         await disableWebPush();
@@ -564,12 +568,10 @@ const SettingsScreen: React.FC = () => {
                     (아이폰은 홈 화면에 추가한 앱에서만 가능)
                   </Text>
                 </View>
-                <Switch
+                <AppSwitch
                   value={pushEnabled}
                   onValueChange={handlePushToggle}
                   disabled={pushBusy}
-                  trackColor={{ false: theme.colors.warm.edge, true: theme.colors.brand }}
-                  thumbColor="#fff"
                 />
               </View>
             )}

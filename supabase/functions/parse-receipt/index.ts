@@ -32,15 +32,25 @@ const SYSTEM_PROMPT = `당신은 한국 마트/편의점 영수증에서 구매 
 
 영수증이 아니거나 품목을 읽을 수 없으면 [] 를 출력합니다.`;
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
 Deno.serve(async (req: Request) => {
+  // 브라우저(웹앱) 호출을 위한 CORS 사전 검사 응답
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: CORS_HEADERS });
+  }
+
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'POST only' }), { status: 405 });
+    return new Response(JSON.stringify({ error: 'POST only' }), { status: 405, headers: CORS_HEADERS });
   }
 
   try {
     const { image, mimeType, knownNames } = await req.json();
     if (!image || typeof image !== 'string') {
-      return new Response(JSON.stringify({ error: 'image (base64) is required' }), { status: 400 });
+      return new Response(JSON.stringify({ error: 'image (base64) is required' }), { status: 400, headers: CORS_HEADERS });
     }
 
     // 기존 재고 품목명 (오독 교정 힌트). 과도한 입력 방지를 위해 정제
@@ -52,7 +62,7 @@ Deno.serve(async (req: Request) => {
 
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: 'ANTHROPIC_API_KEY not configured' }), { status: 500 });
+      return new Response(JSON.stringify({ error: 'ANTHROPIC_API_KEY not configured' }), { status: 500, headers: CORS_HEADERS });
     }
 
     const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -82,7 +92,7 @@ Deno.serve(async (req: Request) => {
     if (!anthropicRes.ok) {
       const detail = await anthropicRes.text();
       console.error('Anthropic API error:', anthropicRes.status, detail);
-      return new Response(JSON.stringify({ error: `AI 호출 실패 (${anthropicRes.status})` }), { status: 502 });
+      return new Response(JSON.stringify({ error: `AI 호출 실패 (${anthropicRes.status})` }), { status: 502, headers: CORS_HEADERS });
     }
 
     const data = await anthropicRes.json();
@@ -108,10 +118,10 @@ Deno.serve(async (req: Request) => {
       .slice(0, 40);
 
     return new Response(JSON.stringify({ items: cleaned }), {
-      headers: { 'content-type': 'application/json' },
+      headers: { ...CORS_HEADERS, 'content-type': 'application/json' },
     });
   } catch (e) {
     console.error('parse-receipt error:', e);
-    return new Response(JSON.stringify({ error: '요청 처리에 실패했습니다' }), { status: 500 });
+    return new Response(JSON.stringify({ error: '요청 처리에 실패했습니다' }), { status: 500, headers: CORS_HEADERS });
   }
 });

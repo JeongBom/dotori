@@ -23,6 +23,7 @@ import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { SupplyCategoryEntry } from '../types';
 import { RootStackParamList } from '../navigation';
 import { theme } from '../theme';
+import AppSwitch from '../components/design-system/AppSwitch';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'AddSupply'>;
 type RouteType = RouteProp<RootStackParamList, 'AddSupply'>;
@@ -276,11 +277,9 @@ const AddSupplyScreen: React.FC = () => {
               <Text style={s.label}>재고 부족 알림</Text>
               <Text style={s.subLabel}>기준 수량 이하가 되면 알림을 보내요</Text>
             </View>
-            <Switch
+            <AppSwitch
               value={notifyLowStock}
               onValueChange={setNotifyLowStock}
-              trackColor={{ false: theme.colors.warm.edge, true: theme.colors.brand }}
-              thumbColor="#fff"
             />
           </View>
 
@@ -348,11 +347,9 @@ const AddSupplyScreen: React.FC = () => {
               <Text style={s.label}>다 쓰면 장보기에 자동 추가</Text>
               <Text style={s.subLabel}>알림 기준 수량 이하로 떨어지면 장보기에 올려요</Text>
             </View>
-            <Switch
+            <AppSwitch
               value={autoAdd}
               onValueChange={setAutoAdd}
-              trackColor={{ false: theme.colors.warm.edge, true: theme.colors.brand }}
-              thumbColor="#fff"
             />
           </View>
 

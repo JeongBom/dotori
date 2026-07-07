@@ -28,6 +28,7 @@ import { scheduleExpiryNotification, cancelExpiryNotification, requestNotificati
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEY_NOTIFY_DAYS } from './SettingsScreen';
 import { theme } from '../theme';
+import AppSwitch from '../components/design-system/AppSwitch';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'AddFridgeItem'>;
 type RouteType = RouteProp<RootStackParamList, 'AddFridgeItem'>;
@@ -655,11 +656,9 @@ const AddFridgeItemScreen: React.FC = () => {
             <Text style={s.label}>다 쓰면 장보기에 자동 추가</Text>
             <Text style={s.toggleSub}>수량이 0이 되면 장보기에 올려요</Text>
           </View>
-          <Switch
+          <AppSwitch
             value={autoAdd}
             onValueChange={setAutoAdd}
-            trackColor={{ false: theme.colors.warm.edge, true: theme.colors.brand }}
-            thumbColor="#fff"
           />
         </View>
 

@@ -10,22 +10,32 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import webpush from 'npm:web-push@3.6.7';
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
 Deno.serve(async (req: Request) => {
+  // 브라우저(웹앱) 호출을 위한 CORS 사전 검사 응답
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: CORS_HEADERS });
+  }
+
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'POST only' }), { status: 405 });
+    return new Response(JSON.stringify({ error: 'POST only' }), { status: 405, headers: CORS_HEADERS });
   }
 
   try {
     const { familyId, title, body, url } = await req.json();
     if (!familyId || !title) {
-      return new Response(JSON.stringify({ error: 'familyId, title이 필요합니다' }), { status: 400 });
+      return new Response(JSON.stringify({ error: 'familyId, title이 필요합니다' }), { status: 400, headers: CORS_HEADERS });
     }
 
     const vapidPublic = Deno.env.get('VAPID_PUBLIC_KEY');
     const vapidPrivate = Deno.env.get('VAPID_PRIVATE_KEY');
     const vapidSubject = Deno.env.get('VAPID_SUBJECT') ?? 'mailto:admin@example.com';
     if (!vapidPublic || !vapidPrivate) {
-      return new Response(JSON.stringify({ error: 'VAPID 키가 설정되지 않았습니다' }), { status: 500 });
+      return new Response(JSON.stringify({ error: 'VAPID 키가 설정되지 않았습니다' }), { status: 500, headers: CORS_HEADERS });
     }
     webpush.setVapidDetails(vapidSubject, vapidPublic, vapidPrivate);
 
@@ -40,12 +50,12 @@ Deno.serve(async (req: Request) => {
     const jwt = authHeader.replace('Bearer ', '');
     const { data: userData } = await admin.auth.getUser(jwt);
     if (!userData?.user) {
-      return new Response(JSON.stringify({ error: '인증 실패' }), { status: 401 });
+      return new Response(JSON.stringify({ error: '인증 실패' }), { status: 401, headers: CORS_HEADERS });
     }
     const { data: profile } = await admin
       .from('user_profiles').select('family_id').eq('id', userData.user.id).single();
     if (profile?.family_id !== familyId) {
-      return new Response(JSON.stringify({ error: '가족 구성원이 아닙니다' }), { status: 403 });
+      return new Response(JSON.stringify({ error: '가족 구성원이 아닙니다' }), { status: 403, headers: CORS_HEADERS });
     }
 
     // 가족 전체 구독 조회
@@ -55,7 +65,7 @@ Deno.serve(async (req: Request) => {
       .eq('family_id', familyId);
 
     if (!subs || subs.length === 0) {
-      return new Response(JSON.stringify({ sent: 0 }), { headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify({ sent: 0 }), { headers: { ...CORS_HEADERS, 'content-type': 'application/json' } });
     }
 
     const payload = JSON.stringify({ title, body: body ?? '', url: url ?? '/' });
@@ -81,10 +91,10 @@ Deno.serve(async (req: Request) => {
     }
 
     return new Response(JSON.stringify({ sent, cleaned: staleIds.length }), {
-      headers: { 'content-type': 'application/json' },
+      headers: { ...CORS_HEADERS, 'content-type': 'application/json' },
     });
   } catch (e) {
     console.error('send-push error:', e);
-    return new Response(JSON.stringify({ error: '발송 처리 실패' }), { status: 500 });
+    return new Response(JSON.stringify({ error: '발송 처리 실패' }), { status: 500, headers: CORS_HEADERS });
   }
 });
