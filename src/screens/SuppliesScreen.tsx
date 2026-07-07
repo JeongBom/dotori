@@ -92,7 +92,10 @@ const SuppliesScreen: React.FC = () => {
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, quantity: next } : i));
     await supabase.from('supplies').update({ quantity: next }).eq('id', item.id);
     if (next <= item.low_stock_threshold && item.quantity > item.low_stock_threshold) {
-      await sendLowStockNotification(item.id, item.name, next);
+      // 재고 부족 알림 (품목 설정이 켜져 있을 때만)
+      if (item.notify_low_stock ?? true) {
+        await sendLowStockNotification(item.id, item.name, next);
+      }
       // 임계점 이하로 떨어지는 순간 장보기 자동 추가 (품목 설정이 켜져 있을 때만)
       if (item.auto_add_to_shopping ?? true) {
         await autoAddToShopping(item.family_id, item.name, 'supplies', item.id, item.default_store_tag ?? '');

@@ -60,6 +60,7 @@ const AddSupplyScreen: React.FC = () => {
   const [quantity, setQuantity] = useState(1);
   const [threshold, setThreshold] = useState(1);
   const [note, setNote] = useState('');
+  const [notifyLowStock, setNotifyLowStock] = useState(true); // 재고 부족 알림
   const [autoAdd, setAutoAdd] = useState(true);       // 다 쓰면 장보기 자동 추가
   const [storeTag, setStoreTag] = useState('');       // 기본 구입처 태그 (선택)
   const [storeTagOptions, setStoreTagOptions] = useState<string[]>([]); // 기존 태그 제안
@@ -100,6 +101,7 @@ const AddSupplyScreen: React.FC = () => {
       setQuantity(data.quantity);
       setThreshold(data.low_stock_threshold ?? 1);
       setNote(data.note ?? '');
+      setNotifyLowStock(data.notify_low_stock ?? true);
       setAutoAdd(data.auto_add_to_shopping ?? true);
       setStoreTag(data.default_store_tag ?? '');
       setFamilyId(data.family_id);
@@ -128,6 +130,7 @@ const AddSupplyScreen: React.FC = () => {
         quantity,
         low_stock_threshold: threshold,
         note: note.trim() || null,
+        notify_low_stock: notifyLowStock,
         auto_add_to_shopping: autoAdd,
         default_store_tag: storeTag.trim(),
       };
@@ -292,6 +295,20 @@ const AddSupplyScreen: React.FC = () => {
             <TouchableOpacity style={s.qtyBtn} onPress={() => setThreshold(t => t + 1)}>
               <Text style={s.qtyBtnText}>+</Text>
             </TouchableOpacity>
+          </View>
+
+          {/* 재고 부족 알림 on/off */}
+          <View style={s.toggleRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.label}>재고 부족 알림</Text>
+              <Text style={s.subLabel}>기준 수량 이하가 되면 알림을 보내요</Text>
+            </View>
+            <Switch
+              value={notifyLowStock}
+              onValueChange={setNotifyLowStock}
+              trackColor={{ false: theme.colors.warm.edge, true: theme.colors.brand }}
+              thumbColor="#fff"
+            />
           </View>
         </ScrollView>
       );

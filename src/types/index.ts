@@ -119,6 +119,7 @@ export interface Supply {
   low_stock_threshold: number;
   category: string; // supply_categories.name 참조
   note: string | null;
+  notify_low_stock: boolean;     // 재고 부족 알림 여부 (기본 ON)
   auto_add_to_shopping: boolean; // 다 쓰면 장보기 자동 추가 여부
   default_store_tag: string;     // 자동 추가 시 기본 구입처 태그 ('' = 미분류)
   is_active: boolean;

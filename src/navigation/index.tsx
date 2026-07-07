@@ -9,7 +9,7 @@
 // Supabase onAuthStateChange가 세션 변경을 감지 → 자동 화면 전환
 
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet, Linking } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Linking, Platform } from 'react-native';
 import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -110,8 +110,9 @@ function MainTabs() {
           backgroundColor: 'rgba(255,255,255,0.97)',
           borderTopWidth: 0.5,
           borderTopColor: '#DEC8A8',
-          height: 84,
-          paddingBottom: 28,
+          // 하단 28px은 폰 홈 인디케이터 공간 — 웹에는 없으므로 줄임
+          height: Platform.OS === 'web' ? 60 : 84,
+          paddingBottom: Platform.OS === 'web' ? 6 : 28,
           paddingTop: 8,
         },
         tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
