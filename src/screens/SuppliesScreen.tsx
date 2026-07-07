@@ -24,6 +24,8 @@ import SupplyRow from '../components/SupplyRow';
 import SupplyCategoryModal from '../components/SupplyCategoryModal';
 import SelectionBar from '../components/SelectionBar';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import { useIsDesktopWeb } from '../hooks/useIsDesktopWeb';
+import { chunkPairs } from '../lib/utils';
 
 const REALTIME_TABLES = ['supplies', 'supply_categories'] as const;
 
@@ -53,6 +55,7 @@ const SORTS: SortType[] = ['이름순', '재고적은순', '추가순'];
 const SuppliesScreen: React.FC = () => {
   const navigation = useNavigation<SuppliesNavProp>();
   const isFocused = useIsFocused();
+  const isDesktop = useIsDesktopWeb(); // 데스크톱 웹: 2열 그리드
 
   const [items, setItems]           = useState<Supply[]>([]);
   const [categories, setCategories] = useState<SupplyCategoryEntry[]>([]);
@@ -200,6 +203,26 @@ const SuppliesScreen: React.FC = () => {
     return result;
   }, [filter, usedUpItems, lowItems, okItems]);
 
+  // 행/섹션 라벨 렌더러 (모바일 1열·데스크톱 2열 공용)
+  const renderRow = (item: Supply) => (
+    <SupplyRow
+      item={item}
+      onDelete={handleDelete}
+      onQuantityChange={handleQuantityChange}
+      onEdit={handleEdit}
+      selectMode={selectMode}
+      selected={selectedIds.includes(item.id)}
+      onSelect={handleSelect}
+    />
+  );
+
+  const renderSectionLabel = (key?: string) =>
+    key === 'used'
+      ? <SectionLabel label="사용완료" count={usedUpItems.length} color={theme.colors.warm.lightOak} />
+      : key === 'low'
+        ? <SectionLabel label="부족" count={lowItems.length} color={theme.colors.status.danger} />
+        : <SectionLabel label="충분" count={okItems.length} color={theme.colors.status.safe} />;
+
   if (loading) {
     return <SafeAreaView style={s.centered}><ActivityIndicator size="large" color={theme.colors.brand} /></SafeAreaView>;
   }
@@ -309,28 +332,31 @@ const SuppliesScreen: React.FC = () => {
               : filter === '사용완료' ? '사용완료된 물품이 없어요' : `${filter} 항목이 없어요`}
           </Text>
         </View>
+      ) : isDesktop ? (
+        // 데스크톱 웹: 2열 그리드
+        <SectionList
+          sections={sections.map(sec => ({ key: sec.key, data: chunkPairs(sec.data) }))}
+          keyExtractor={pair => pair[0].id}
+          renderSectionHeader={({ section }) => renderSectionLabel(section.key)}
+          renderItem={({ item: pair }) => (
+            <View style={{ flexDirection: 'row' }}>
+              {pair.map(item => (
+                <View key={item.id} style={{ flex: 1 }}>{renderRow(item)}</View>
+              ))}
+              {pair.length === 1 && <View style={{ flex: 1 }} />}
+            </View>
+          )}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          stickySectionHeadersEnabled={false}
+        />
       ) : (
         <SectionList
           sections={sections}
           keyExtractor={item => item.id}
-          renderSectionHeader={({ section }) => (
-            section.key === 'used'
-              ? <SectionLabel label="사용완료" count={usedUpItems.length} color={theme.colors.warm.lightOak} />
-              : section.key === 'low'
-                ? <SectionLabel label="부족" count={lowItems.length} color={theme.colors.status.danger} />
-                : <SectionLabel label="충분" count={okItems.length} color={theme.colors.status.safe} />
-          )}
-          renderItem={({ item }) => (
-            <SupplyRow
-              item={item}
-              onDelete={handleDelete}
-              onQuantityChange={handleQuantityChange}
-              onEdit={handleEdit}
-              selectMode={selectMode}
-              selected={selectedIds.includes(item.id)}
-              onSelect={handleSelect}
-            />
-          )}
+          renderSectionHeader={({ section }) => renderSectionLabel(section.key)}
+          renderItem={({ item }) => renderRow(item)}
           contentContainerStyle={{ paddingBottom: 100 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"

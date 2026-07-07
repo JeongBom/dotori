@@ -23,6 +23,8 @@ import SectionLabel from '../components/SectionLabel';
 import SwipeDeleteAction from '../components/SwipeDeleteAction';
 import SelectionBar from '../components/SelectionBar';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import { useIsDesktopWeb } from '../hooks/useIsDesktopWeb';
+import { chunkPairs } from '../lib/utils';
 
 const REALTIME_TABLES = ['shopping_items'] as const;
 
@@ -146,6 +148,7 @@ const row = StyleSheet.create({
 const ShoppingScreen: React.FC = () => {
   const navigation = useNavigation<ShoppingNavProp>();
   const isFocused = useIsFocused();
+  const isDesktop = useIsDesktopWeb(); // 데스크톱 웹: 2열 그리드
 
   const [items, setItems]       = useState<ShoppingItem[]>([]);
   const [familyId, setFamilyId] = useState<string | null>(null);
@@ -282,6 +285,24 @@ const ShoppingScreen: React.FC = () => {
     return result;
   }, [todoItems, doneItems]);
 
+  // 행/섹션 라벨 렌더러 (모바일 1열·데스크톱 2열 공용)
+  const renderRow = (item: ShoppingItem) => (
+    <ShoppingRow
+      item={item}
+      onToggle={handleToggle}
+      onDelete={handleDelete}
+      onEdit={goEdit}
+      selectMode={selectMode}
+      selected={selectedIds.includes(item.id)}
+      onSelect={handleSelect}
+    />
+  );
+
+  const renderSectionLabel = (key?: string) =>
+    key === 'todo'
+      ? <SectionLabel label="살 것" count={todoItems.length} color={theme.colors.brand} />
+      : <SectionLabel label="완료" count={doneItems.length} color={theme.colors.status.safe} />;
+
   if (loading) {
     return <SafeAreaView style={s.centered}><ActivityIndicator size="large" color={theme.colors.brand} /></SafeAreaView>;
   }
@@ -361,26 +382,31 @@ const ShoppingScreen: React.FC = () => {
               : statusTab !== '전체' ? `${statusTab} 항목이 없어요` : `${filter} 항목이 없어요`}
           </Text>
         </View>
+      ) : isDesktop ? (
+        // 데스크톱 웹: 2열 그리드
+        <SectionList
+          sections={sections.map(sec => ({ key: sec.key, data: chunkPairs(sec.data) }))}
+          keyExtractor={pair => pair[0].id}
+          renderSectionHeader={({ section }) => renderSectionLabel(section.key)}
+          renderItem={({ item: pair }) => (
+            <View style={{ flexDirection: 'row' }}>
+              {pair.map(item => (
+                <View key={item.id} style={{ flex: 1 }}>{renderRow(item)}</View>
+              ))}
+              {pair.length === 1 && <View style={{ flex: 1 }} />}
+            </View>
+          )}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          stickySectionHeadersEnabled={false}
+        />
       ) : (
         <SectionList
           sections={sections}
           keyExtractor={item => item.id}
-          renderSectionHeader={({ section }) => (
-            section.key === 'todo'
-              ? <SectionLabel label="살 것" count={todoItems.length} color={theme.colors.brand} />
-              : <SectionLabel label="완료" count={doneItems.length} color={theme.colors.status.safe} />
-          )}
-          renderItem={({ item }) => (
-            <ShoppingRow
-              item={item}
-              onToggle={handleToggle}
-              onDelete={handleDelete}
-              onEdit={goEdit}
-              selectMode={selectMode}
-              selected={selectedIds.includes(item.id)}
-              onSelect={handleSelect}
-            />
-          )}
+          renderSectionHeader={({ section }) => renderSectionLabel(section.key)}
+          renderItem={({ item }) => renderRow(item)}
           contentContainerStyle={{ paddingBottom: 100 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"

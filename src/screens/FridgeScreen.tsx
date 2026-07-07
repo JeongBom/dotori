@@ -22,6 +22,8 @@ import SectionLabel from '../components/SectionLabel';
 import SwipeDeleteAction from '../components/SwipeDeleteAction';
 import SelectionBar from '../components/SelectionBar';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import { useIsDesktopWeb } from '../hooks/useIsDesktopWeb';
+import { chunkPairs } from '../lib/utils';
 
 const REALTIME_TABLES = ['fridge_items'] as const;
 import { theme } from '../theme';
@@ -254,6 +256,7 @@ const fr = StyleSheet.create({
 const FridgeScreen: React.FC = () => {
   const navigation = useNavigation<FridgeNav>();
   const isFocused = useIsFocused();
+  const isDesktop = useIsDesktopWeb(); // 데스크톱 웹: 2열 그리드
 
   const [items, setItems] = useState<FridgeItem[]>([]);
   const [familyId, setFamilyId] = useState<string | null>(null);
@@ -412,6 +415,20 @@ const FridgeScreen: React.FC = () => {
     );
   }
 
+  // 행 렌더러 (모바일 1열·데스크톱 2열 공용)
+  const renderRow = (item: FridgeItem) => (
+    <FoodRow
+      item={item}
+      onToggle={handleToggle}
+      onDelete={handleDelete}
+      onQtyChange={handleQtyChange}
+      onEdit={handleEdit}
+      selectMode={selectMode}
+      selected={selectedIds.includes(item.id)}
+      onSelect={handleSelect}
+    />
+  );
+
   return (
     <SafeAreaView style={s.safe}>
       {/* ── 헤더 ── */}
@@ -496,6 +513,29 @@ const FridgeScreen: React.FC = () => {
         <View style={s.empty}>
           <Text style={s.emptyText}>{filter === '먹은 음식' ? '다먹은 음식이 없어요' : '음식을 추가해 보세요 🍱'}</Text>
         </View>
+      ) : isDesktop ? (
+        // 데스크톱 웹: 2열 그리드
+        <SectionList
+          sections={sections.map(sec => ({ key: sec.key, count: sec.data.length, data: chunkPairs(sec.data) }))}
+          keyExtractor={pair => pair[0].id}
+          renderSectionHeader={({ section }) => (
+            sort === '유통기한' && filter !== '먹은 음식'
+              ? <SectionLabel label={section.key} count={section.count} color={SECTION_COLORS[section.key as SectionKey]} />
+              : null
+          )}
+          renderItem={({ item: pair }) => (
+            <View style={{ flexDirection: 'row' }}>
+              {pair.map(item => (
+                <View key={item.id} style={{ flex: 1 }}>{renderRow(item)}</View>
+              ))}
+              {pair.length === 1 && <View style={{ flex: 1 }} />}
+            </View>
+          )}
+          contentContainerStyle={{ paddingTop: 4, paddingBottom: 100 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          stickySectionHeadersEnabled={false}
+        />
       ) : (
         <SectionList
           sections={sections}
@@ -505,18 +545,7 @@ const FridgeScreen: React.FC = () => {
               ? <SectionLabel label={section.key} count={section.data.length} color={SECTION_COLORS[section.key]} />
               : null
           )}
-          renderItem={({ item }) => (
-            <FoodRow
-              item={item}
-              onToggle={handleToggle}
-              onDelete={handleDelete}
-              onQtyChange={handleQtyChange}
-              onEdit={handleEdit}
-              selectMode={selectMode}
-              selected={selectedIds.includes(item.id)}
-              onSelect={handleSelect}
-            />
-          )}
+          renderItem={({ item }) => renderRow(item)}
           contentContainerStyle={{ paddingTop: 4, paddingBottom: 100 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"

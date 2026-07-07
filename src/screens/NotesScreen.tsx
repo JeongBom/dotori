@@ -18,6 +18,7 @@ import { theme } from '../theme';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import SelectionBar from '../components/SelectionBar';
 import { ListChecks } from 'lucide-react-native';
+import { useIsDesktopWeb } from '../hooks/useIsDesktopWeb';
 
 const REALTIME_TABLES = ['notes'] as const;
 
@@ -107,6 +108,7 @@ type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 const NotesScreen: React.FC = () => {
   const navigation = useNavigation<NavProp>();
+  const isDesktop = useIsDesktopWeb(); // 데스크톱 웹: 4열 그리드
 
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
@@ -235,10 +237,11 @@ const NotesScreen: React.FC = () => {
         </View>
       ) : (
         <FlatList
+          key={isDesktop ? 'desk-4col' : 'mobile-2col'} // numColumns 변경 시 리마운트 필요
           data={filtered}
           keyExtractor={item => item.id}
           renderItem={renderNote}
-          numColumns={2}
+          numColumns={isDesktop ? 4 : 2}
           columnWrapperStyle={s.columnWrapper}
           contentContainerStyle={s.list}
           showsVerticalScrollIndicator={false}
