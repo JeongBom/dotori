@@ -8,18 +8,27 @@ import { Alert, Platform } from 'react-native';
 declare const window: {
   location: { replace(url: string): void };
 };
+declare const document: {
+  querySelector(selector: string): { getAttribute(name: string): string | null } | null;
+};
 
-const BUILT_VERSION = process.env.EXPO_PUBLIC_BUILD_TIME ?? '';
+// 지금 실행 중인 페이지의 빌드 버전 — 번들에 굽지 않고 DOM 메타태그에서 읽는다
+// (번들에 구우면 Metro 캐시 때문에 옛 값이 남아 무한 업데이트 루프가 생김)
+export function getCurrentBuild(): string | null {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return null;
+  return document.querySelector('meta[name="dotori-build"]')?.getAttribute('content') ?? null;
+}
 
 export async function checkForWebUpdate(): Promise<void> {
-  if (Platform.OS !== 'web' || !BUILT_VERSION) return;
+  const current = getCurrentBuild();
+  if (!current || current === 'unknown') return;
   try {
     // 쿼리로 캐시 우회해서 서버의 최신 첫 화면을 읽고, 심어둔 버전 메타를 비교
     const res = await fetch(`/?vchk=${Date.now()}`);
     if (!res.ok) return;
     const html = await res.text();
     const build = html.match(/dotori-build" content="([^"]+)"/)?.[1];
-    if (!build || build === 'unknown' || build === BUILT_VERSION) return;
+    if (!build || build === 'unknown' || build === current) return;
 
     Alert.alert('업데이트', `새 버전(${build})이 있어요.\n지금 적용할까요?`, [
       { text: '나중에', style: 'cancel' },

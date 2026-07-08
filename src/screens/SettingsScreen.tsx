@@ -28,6 +28,7 @@ import { User, Bell, ChevronLeft, Check, Users, LogOut } from 'lucide-react-nati
 
 import { supabase, getOrCreateFamilyId, joinFamily, leaveFamily } from '../lib/supabase';
 import { isWebPushSupported, enableWebPush, disableWebPush, getWebPushStatus, notifyFamily } from '../lib/webPush';
+import { getCurrentBuild } from '../lib/webUpdate';
 import { UserProfile } from '../types';
 import { RootStackParamList } from '../navigation';
 import { theme } from '../theme';
@@ -672,9 +673,9 @@ const SettingsScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          {/* ── 버전 (배포 시 자동 주입 — 캐시된 구버전인지 확인용) ── */}
+          {/* ── 버전 (페이지 메타태그에서 읽음 — 캐시된 구버전인지 확인용) ── */}
           <Text style={styles.versionText}>
-            도토리 · 빌드 {process.env.EXPO_PUBLIC_BUILD_TIME ?? '개발 모드'}
+            도토리 · 빌드 {getCurrentBuild() ?? '개발 모드'}
           </Text>
 
         </ScrollView>
