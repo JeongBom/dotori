@@ -68,22 +68,29 @@ Deno.serve(async (req: Request) => {
         .not('expiry_date', 'is', null).lte('expiry_date', soon)
         .order('expiry_date').limit(5);
 
-      const expParts = (expFoods ?? []).map(f => {
+      // 문장형 안내: 한 줄에 한 항목씩
+      const lines: string[] = [];
+      for (const s of low.slice(0, 4)) {
+        lines.push(`'${s.name}'의 재고가 부족합니다.`);
+      }
+      for (const f of (expFoods ?? []).slice(0, 4)) {
         const diff = Math.ceil((new Date(f.expiry_date).getTime() - new Date(today).getTime()) / 86400000);
-        const label = diff < 0 ? `D+${Math.abs(diff)}` : diff === 0 ? 'D-day' : `D-${diff}`;
-        return `${f.name}(${label})`;
-      });
+        lines.push(
+          diff < 0
+            ? `'${f.name}'의 유통기한이 ${Math.abs(diff)}일 지났습니다.`
+            : `'${f.name}'의 유통기한이 ${diff}일 남았습니다.`,
+        );
+      }
 
       // 알릴 내용 없으면 스킵
-      if (low.length === 0 && expParts.length === 0) continue;
+      if (lines.length === 0) continue;
 
-      const bodyParts: string[] = [];
-      if (low.length > 0) bodyParts.push(`부족: ${low.slice(0, 4).map(s => s.name).join(', ')}`);
-      if (expParts.length > 0) bodyParts.push(`임박: ${expParts.slice(0, 4).join(', ')}`);
+      const extra = low.length + (expFoods ?? []).length - lines.length;
+      if (extra > 0) lines.push(`외 ${extra}건이 더 있어요.`);
 
       const payload = JSON.stringify({
         title: '🌰 오늘의 도토리 브리핑',
-        body: bodyParts.join(' · '),
+        body: lines.join('\n'),
         url: '/',
       });
 
