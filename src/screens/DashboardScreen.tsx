@@ -188,6 +188,8 @@ const DashboardScreen: React.FC = () => {
   const [nickname, setNickname] = useState('');
   const [notifyDays, setNotifyDays] = useState(3);
   const [showSheet, setShowSheet] = useState(false);
+  // 위젯 본문 실측 높이 — 해상도에 따라 표시 개수(2~4개 등)를 유동 계산
+  const [bodyH, setBodyH] = useState<Record<string, number>>({});
 
   const loadData = useCallback(async () => {
     try {
@@ -243,6 +245,16 @@ const DashboardScreen: React.FC = () => {
   const dateLabel = `${now.getMonth() + 1}월 ${now.getDate()}일 ${DOW[now.getDay()]}요일`;
 
   const urgentCount = data?.urgentItems.length ?? 0;
+
+  const onBodyLayout = (key: string) => (e: { nativeEvent: { layout: { height: number } } }) => {
+    const h = e.nativeEvent.layout.height;
+    setBodyH(prev => (Math.abs((prev[key] ?? 0) - h) < 1 ? prev : { ...prev, [key]: h }));
+  };
+  const NOTE_ROW_H = 27;  // noteRow: lineHeight 19 + marginBottom 8
+  const STOCK_ROW_H = 35; // StockBar: 내용 26 + marginBottom 9
+  // 측정 전에는 기존과 같은 2개
+  const fitCount = (h: number | undefined, rowH: number, gap: number): number =>
+    h ? Math.max(1, Math.floor((h + gap) / rowH)) : 2;
 
   if (loading) {
     return (
@@ -352,20 +364,26 @@ const DashboardScreen: React.FC = () => {
             <MiniWidget accentColor={theme.colors.warm.honey} title="장보기" icon={<Text style={{ fontSize: 13 }}>🛒</Text>} bodyStyle={s.bodyFlex}>
               {(data?.shoppingTodo.length ?? 0) === 0 ? (
                 <Text style={s.widgetEmpty}>살 것 없음</Text>
-              ) : (
-                <>
-                  {data!.shoppingTodo.slice(0, 2).map(item => (
-                    <View key={item.id} style={s.noteRow}>
-                      <Text style={s.noteEmoji}>🛒</Text>
-                      <Text style={s.noteTitle} numberOfLines={1}>{item.name}</Text>
-                      {item.store_tag ? <Text style={s.shopTag}>{item.store_tag}</Text> : null}
-                    </View>
-                  ))}
-                  {data!.shoppingTodoCount > 2 && (
-                    <Text style={s.shopMore}>외 {data!.shoppingTodoCount - 2}개 더 있어요</Text>
-                  )}
-                </>
-              )}
+              ) : (() => {
+                const total = data!.shoppingTodoCount;
+                const fit = fitCount(bodyH.shopping, NOTE_ROW_H, 8);
+                // 넘치면 마지막 줄은 "외 n개"에 양보
+                const visible = total > fit ? Math.max(1, fit - 1) : fit;
+                return (
+                  <View style={s.fitList} onLayout={onBodyLayout('shopping')}>
+                    {data!.shoppingTodo.slice(0, visible).map(item => (
+                      <View key={item.id} style={s.noteRow}>
+                        <Text style={s.noteEmoji}>🛒</Text>
+                        <Text style={s.noteTitle} numberOfLines={1}>{item.name}</Text>
+                        {item.store_tag ? <Text style={s.shopTag}>{item.store_tag}</Text> : null}
+                      </View>
+                    ))}
+                    {total > visible && (
+                      <Text style={s.shopMore}>외 {total - visible}개 더 있어요</Text>
+                    )}
+                  </View>
+                );
+              })()}
             </MiniWidget>
           </TouchableOpacity>
         </View>
@@ -377,7 +395,11 @@ const DashboardScreen: React.FC = () => {
               {(data?.stockItems.length ?? 0) === 0 ? (
                 <Text style={s.widgetEmpty}>항목 없음</Text>
               ) : (
-                data!.stockItems.slice(0, 2).map((item, i) => <StockBar key={i} item={item} />)
+                <View style={s.fitList} onLayout={onBodyLayout('supplies')}>
+                  {data!.stockItems
+                    .slice(0, fitCount(bodyH.supplies, STOCK_ROW_H, 9))
+                    .map((item, i) => <StockBar key={i} item={item} />)}
+                </View>
               )}
             </MiniWidget>
           </TouchableOpacity>
@@ -390,12 +412,16 @@ const DashboardScreen: React.FC = () => {
               {(data?.recentNotes.length ?? 0) === 0 ? (
                 <Text style={s.widgetEmpty}>메모 없음</Text>
               ) : (
-                data!.recentNotes.slice(0, 2).map(n => (
-                  <View key={n.id} style={s.noteRow}>
-                    <Text style={s.noteEmoji}>📝</Text>
-                    <Text style={s.noteTitle} numberOfLines={1}>{n.title || '(제목 없음)'}</Text>
-                  </View>
-                ))
+                <View style={s.fitList} onLayout={onBodyLayout('notes')}>
+                  {data!.recentNotes
+                    .slice(0, fitCount(bodyH.notes, NOTE_ROW_H, 8))
+                    .map(n => (
+                      <View key={n.id} style={s.noteRow}>
+                        <Text style={s.noteEmoji}>📝</Text>
+                        <Text style={s.noteTitle} numberOfLines={1}>{n.title || '(제목 없음)'}</Text>
+                      </View>
+                    ))}
+                </View>
               )}
             </MiniWidget>
           </TouchableOpacity>
@@ -491,6 +517,8 @@ const s = StyleSheet.create({
   rowGrow:      { flex: 1, marginTop: 8 },
   wFlex:        { flex: 1 },
   bodyFlex:     { flex: 1, minHeight: 0, overflow: 'hidden', paddingVertical: 10, paddingHorizontal: 12 },
+  fitList:      { flex: 1, overflow: 'hidden' }, // 실측 높이만큼만 항목 표시
+
   activityWrap: { flex: 1.1, minHeight: 0 },
 
   // 직사각형 위젯 (장보기·메모) — 높이 키우고 행간 여유

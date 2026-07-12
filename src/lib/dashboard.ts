@@ -57,11 +57,11 @@ export async function fetchDashboard(familyId: string, notifyDays: number): Prom
     supabase.from('fridge_items').select('id', { count: 'exact', head: true }).eq('family_id', familyId).eq('is_consumed', false).lt('expiry_date', today),
     supabase.from('fridge_items').select('food_name, expiry_date').eq('family_id', familyId).eq('is_consumed', false).lte('expiry_date', sooner).order('expiry_date').limit(5),
     // 수량 0(사용완료) 제외
-    supabase.from('supplies').select('id, name, quantity, low_stock_threshold, notify_low_stock, created_at').eq('family_id', familyId).eq('is_active', true).gt('quantity', 0).limit(6),
-    supabase.from('notes').select('id, title, updated_at').eq('family_id', familyId).order('updated_at', { ascending: false }).limit(4),
+    supabase.from('supplies').select('id, name, quantity, low_stock_threshold, notify_low_stock, created_at').eq('family_id', familyId).eq('is_active', true).gt('quantity', 0).limit(8),
+    supabase.from('notes').select('id, title, updated_at').eq('family_id', familyId).order('updated_at', { ascending: false }).limit(8),
     supabase.from('user_profiles').select('id, nickname').eq('family_id', familyId).limit(4),
     supabase.from('fridge_items').select('id, food_name, created_at').eq('family_id', familyId).eq('is_consumed', false).order('created_at', { ascending: false }).limit(4),
-    supabase.from('shopping_items').select('id, name, store_tag', { count: 'exact' }).eq('family_id', familyId).eq('is_active', true).eq('is_checked', false).order('created_at', { ascending: false }).limit(3),
+    supabase.from('shopping_items').select('id, name, store_tag', { count: 'exact' }).eq('family_id', familyId).eq('is_active', true).eq('is_checked', false).order('created_at', { ascending: false }).limit(8),
   ]);
 
   const stockItems: StockItem[] = (suppliesRes.data ?? []).map(s => ({
