@@ -68,7 +68,11 @@ interface NoteCardProps {
 
 const NoteCard: React.FC<NoteCardProps> = ({ note, index, onPress, selected }) => {
   const bg = theme.colors.noteCards[index % theme.colors.noteCards.length];
-  const preview = note.content.replace(/https?:\/\/[^\s]+/g, '🔗').slice(0, 80);
+  const preview = note.content
+    .replace(/https?:\/\/[^\s]+/g, '🔗')
+    .replace(/^- \[x\] /gm, '☑ ')
+    .replace(/^- \[ \] /gm, '☐ ')
+    .slice(0, 80);
 
   return (
     <TouchableOpacity
@@ -77,7 +81,9 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, index, onPress, selected }) =
       activeOpacity={0.75}
     >
       <Text style={card.title} numberOfLines={2}>{note.title || '제목 없음'}</Text>
-      {preview ? <Text style={card.body} numberOfLines={5}>{preview}</Text> : null}
+      {preview ? <Text style={card.body} numberOfLines={3}>{preview}</Text> : null}
+      {/* 날짜는 항상 카드 맨 아래 고정 */}
+      <View style={card.spacer} />
       <Text style={card.date}>{formatDate(note.updated_at)}</Text>
     </TouchableOpacity>
   );
@@ -86,6 +92,7 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, index, onPress, selected }) =
 const card = StyleSheet.create({
   wrap: {
     flex: 1,
+    height: 150, // 모든 카드 동일 크기
     borderRadius: 14,
     padding: 12,
     borderWidth: 1,
@@ -99,7 +106,10 @@ const card = StyleSheet.create({
   wrapSelected: { borderWidth: 1.5, borderColor: theme.colors.brand },
   title: { fontSize: 13, fontWeight: '700', color: theme.colors.warm.dark, letterSpacing: -0.2, marginBottom: 5 },
   body: { fontSize: 11, color: theme.colors.warm.oak, lineHeight: 16, marginBottom: 8 },
+  spacer: { flex: 1 },
   date: { fontSize: 10, color: theme.colors.warm.lightOak, fontWeight: '500' },
+  // 홀수 개일 때 빈 자리 채움용 (마지막 카드가 늘어나지 않게)
+  ghost: { flex: 1 },
 });
 
 // ── 메인 화면 ──────────────────────────────────
@@ -179,14 +189,22 @@ const NotesScreen: React.FC = () => {
     if (data) navigation.navigate('NoteDetail', { noteId: data.id });
   };
 
-  const renderNote = ({ item, index }: ListRenderItemInfo<Note>) => (
-    <NoteCard
-      note={item}
-      index={index}
-      selected={selectedIds.includes(item.id)}
-      onPress={() => selectMode ? handleSelect(item) : navigation.navigate('NoteDetail', { noteId: item.id })}
-    />
-  );
+  // 홀수 개일 때 마지막 카드가 늘어나지 않게 빈 칸(null)으로 줄을 채움
+  const numColumns = isDesktop ? 4 : 2;
+  const gridData: (Note | null)[] = [...filtered];
+  while (gridData.length % numColumns !== 0) gridData.push(null);
+
+  const renderNote = ({ item, index }: ListRenderItemInfo<Note | null>) =>
+    item ? (
+      <NoteCard
+        note={item}
+        index={index}
+        selected={selectedIds.includes(item.id)}
+        onPress={() => selectMode ? handleSelect(item) : navigation.navigate('NoteDetail', { noteId: item.id })}
+      />
+    ) : (
+      <View style={card.ghost} />
+    );
 
   return (
     <SafeAreaView style={s.safeArea}>
@@ -238,10 +256,10 @@ const NotesScreen: React.FC = () => {
       ) : (
         <FlatList
           key={isDesktop ? 'desk-4col' : 'mobile-2col'} // numColumns 변경 시 리마운트 필요
-          data={filtered}
-          keyExtractor={item => item.id}
+          data={gridData}
+          keyExtractor={(item, index) => item?.id ?? `empty-${index}`}
           renderItem={renderNote}
-          numColumns={isDesktop ? 4 : 2}
+          numColumns={numColumns}
           columnWrapperStyle={s.columnWrapper}
           contentContainerStyle={s.list}
           showsVerticalScrollIndicator={false}
