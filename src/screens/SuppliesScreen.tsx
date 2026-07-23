@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  View, Text, FlatList, SectionList, StyleSheet,
+  View, Text, SectionList, StyleSheet,
   TouchableOpacity, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,6 +23,8 @@ import IconBtn from '../components/IconBtn';
 import SectionLabel from '../components/SectionLabel';
 import SupplyRow from '../components/SupplyRow';
 import SupplyCategoryModal from '../components/SupplyCategoryModal';
+import ChipFilterRow from '../components/ChipFilterRow';
+import ChipEditSheet from '../components/ChipEditSheet';
 import SelectionBar from '../components/SelectionBar';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import { useIsDesktopWeb } from '../hooks/useIsDesktopWeb';
@@ -66,6 +68,7 @@ const SuppliesScreen: React.FC = () => {
   const [sort, setSort]             = useState<SortType>('추가순');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [categoryModal, setCategoryModal] = useState<{ visible: boolean; editing: SupplyCategoryEntry | null }>({ visible: false, editing: null });
+  const [catSheetVisible, setCatSheetVisible] = useState(false); // 카테고리 편집 시트
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -76,7 +79,9 @@ const SuppliesScreen: React.FC = () => {
       setFamilyId(fid);
       const [suppliesRes, catsRes] = await Promise.all([
         supabase.from('supplies').select('*').eq('family_id', fid).eq('is_active', true).order('created_at', { ascending: false }),
-        supabase.from('supply_categories').select('*').eq('family_id', fid).order('created_at', { ascending: true }),
+        supabase.from('supply_categories').select('*').eq('family_id', fid)
+          .order('sort_order', { ascending: true, nullsFirst: false }) // NULL(새 카테고리)은 맨 뒤
+          .order('created_at', { ascending: true }),
       ]);
       if (!suppliesRes.error && suppliesRes.data) setItems(suppliesRes.data as Supply[]);
       if (!catsRes.error && catsRes.data) setCategories(catsRes.data as SupplyCategoryEntry[]);
@@ -120,6 +125,10 @@ const SuppliesScreen: React.FC = () => {
 
   const handleSaveCategory = useCallback(async (name: string, id?: string) => {
     if (!familyId) return;
+    if (categories.some(c => c.name === name && c.id !== id)) {
+      Alert.alert('알림', '이미 같은 이름의 카테고리가 있어요.');
+      return;
+    }
     if (id) {
       const { error } = await supabase.from('supply_categories').update({ name }).eq('id', id);
       if (!error) {
@@ -132,10 +141,22 @@ const SuppliesScreen: React.FC = () => {
         setCategoryModal({ visible: false, editing: null });
       }
     } else {
-      if (categories.some(c => c.name === name)) { Alert.alert('알림', '이미 같은 이름의 카테고리가 있어요.'); return; }
       const { data, error } = await supabase.from('supply_categories').insert({ family_id: familyId, name, color: CAT_COLOR }).select().single();
       if (!error && data) { setCategories(prev => [...prev, data as SupplyCategoryEntry]); setCategoryModal({ visible: false, editing: null }); }
     }
+  }, [familyId, categories]);
+
+  // 칩 드래그로 순서 변경 — 낙관적으로 로컬 먼저 반영
+  const handleSaveCategoryOrder = useCallback(async (ordered: string[]) => {
+    if (!familyId) return;
+    setCategories(prev => [...prev].sort((a, b) => ordered.indexOf(a.name) - ordered.indexOf(b.name)));
+    const idByName = new Map(categories.map(c => [c.name, c.id]));
+    await Promise.all(ordered.map((catName, i) => {
+      const id = idByName.get(catName);
+      return id
+        ? supabase.from('supply_categories').update({ sort_order: i + 1 }).eq('id', id)
+        : Promise.resolve();
+    }));
   }, [familyId, categories]);
 
   const handleDeleteCategory = useCallback(async (cat: SupplyCategoryEntry) => {
@@ -230,8 +251,6 @@ const SuppliesScreen: React.FC = () => {
     return <SafeAreaView style={s.centered}><ActivityIndicator size="large" color={theme.colors.brand} /></SafeAreaView>;
   }
 
-  const filterTabs: FilterType[] = ['전체', ...categories.map(c => c.name), '사용완료'];
-
   return (
     <SafeAreaView style={s.safeArea}>
       {/* 헤더 */}
@@ -287,36 +306,38 @@ const SuppliesScreen: React.FC = () => {
         </View>
       )}
 
-      {/* 카테고리 필터 탭 */}
+      {/* 카테고리 필터 탭 — 탭: 필터 / 길게: 편집 시트 (순서 변경·이름 변경·삭제) */}
       <View style={s.filterRow}>
-        <FlatList
-          horizontal
-          data={filterTabs}
-          keyExtractor={f => f}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingLeft: 16, gap: 6, paddingRight: 8 }}
-          renderItem={({ item: f }) => (
-            <TouchableOpacity
-              style={[s.filterTab, filter === f && s.filterTabActive]}
-              onPress={() => setFilter(f)}
-              onLongPress={() => {
-                if (f === '전체' || f === '사용완료') return;
-                const cat = categories.find(c => c.name === f);
-                if (cat) setCategoryModal({ visible: true, editing: cat });
-              }}
-              delayLongPress={400}
-            >
+        <ChipFilterRow
+          keys={categories.map(c => c.name)}
+          chipStyle={f => [s.filterTab, filter === f && s.filterTabActive]}
+          renderChipContent={f => (
+            <>
               <Text style={[s.filterText, filter === f && s.filterTextActive]}>{f}</Text>
               <Text style={[s.filterCount, filter === f && s.filterCountActive]}>{catCounts[f] ?? 0}</Text>
-            </TouchableOpacity>
+            </>
           )}
-          ListFooterComponent={
-            <TouchableOpacity style={s.addCatBtn} onPress={() => setCategoryModal({ visible: true, editing: null })}>
-              <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-                <Path d="M12 5v14M5 12h14" stroke={theme.colors.brand} strokeWidth={2.5} strokeLinecap="round" />
-              </Svg>
-              <Text style={s.addCatText}>카테고리</Text>
+          onPressChip={f => setFilter(f)}
+          onLongPressChip={() => setCatSheetVisible(true)}
+          leading={
+            <TouchableOpacity style={[s.filterTab, filter === '전체' && s.filterTabActive]} onPress={() => setFilter('전체')}>
+              <Text style={[s.filterText, filter === '전체' && s.filterTextActive]}>전체</Text>
+              <Text style={[s.filterCount, filter === '전체' && s.filterCountActive]}>{catCounts['전체'] ?? 0}</Text>
             </TouchableOpacity>
+          }
+          trailing={
+            <>
+              <TouchableOpacity style={[s.filterTab, filter === '사용완료' && s.filterTabActive]} onPress={() => setFilter('사용완료')}>
+                <Text style={[s.filterText, filter === '사용완료' && s.filterTextActive]}>사용완료</Text>
+                <Text style={[s.filterCount, filter === '사용완료' && s.filterCountActive]}>{catCounts['사용완료'] ?? 0}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.addCatBtn} onPress={() => setCategoryModal({ visible: true, editing: null })}>
+                <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                  <Path d="M12 5v14M5 12h14" stroke={theme.colors.brand} strokeWidth={2.5} strokeLinecap="round" />
+                </Svg>
+                <Text style={s.addCatText}>카테고리</Text>
+              </TouchableOpacity>
+            </>
           }
         />
       </View>
@@ -396,6 +417,28 @@ const SuppliesScreen: React.FC = () => {
         onClose={() => setCategoryModal({ visible: false, editing: null })}
         onSave={handleSaveCategory}
         onDelete={handleDeleteCategory}
+      />
+
+      {/* 카테고리 편집 시트 — 드래그로 순서 변경, 탭으로 이름 변경, 휴지통으로 삭제 */}
+      <ChipEditSheet
+        visible={catSheetVisible}
+        title="카테고리 편집"
+        items={categories.map(c => c.name)}
+        onClose={() => setCatSheetVisible(false)}
+        onReorder={handleSaveCategoryOrder}
+        onRename={(oldName, newName) => {
+          const cat = categories.find(c => c.name === oldName);
+          if (cat) handleSaveCategory(newName, cat.id);
+        }}
+        onAdd={name => handleSaveCategory(name)}
+        onDelete={name => {
+          const cat = categories.find(c => c.name === name);
+          if (!cat) return;
+          Alert.alert('카테고리 삭제', `'${name}' 카테고리를 삭제할까요?`, [
+            { text: '취소', style: 'cancel' },
+            { text: '삭제', style: 'destructive', onPress: () => handleDeleteCategory(cat) },
+          ]);
+        }}
       />
     </SafeAreaView>
   );

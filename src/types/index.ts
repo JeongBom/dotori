@@ -108,6 +108,7 @@ export interface SupplyCategoryEntry {
   family_id: string;
   name: string;
   color: string;
+  sort_order: number | null; // 순서 변경용 (NULL = 맨 뒤, 등록순)
   created_at: string;
 }
 

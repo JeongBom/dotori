@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  View, Text, FlatList, SectionList, StyleSheet,
+  View, Text, SectionList, StyleSheet,
   TouchableOpacity, Pressable, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,11 +22,15 @@ import IconBtn from '../components/IconBtn';
 import SectionLabel from '../components/SectionLabel';
 import SwipeDeleteAction from '../components/SwipeDeleteAction';
 import SelectionBar from '../components/SelectionBar';
+import StoreTagModal from '../components/StoreTagModal';
+import ChipFilterRow from '../components/ChipFilterRow';
+import ChipEditSheet from '../components/ChipEditSheet';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import { useIsDesktopWeb } from '../hooks/useIsDesktopWeb';
 import { chunkPairs } from '../lib/utils';
+import { ensureStoreTag, renameStoreTag, deleteStoreTag, saveStoreTagOrder } from '../lib/storeTags';
 
-const REALTIME_TABLES = ['shopping_items'] as const;
+const REALTIME_TABLES = ['shopping_items', 'store_tags'] as const;
 
 type ShoppingNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<RootTabParamList, 'Shopping'>,
@@ -157,19 +161,29 @@ const ShoppingScreen: React.FC = () => {
   const [statusTab, setStatusTab] = useState<StatusTab>('전체');
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // store_tags 테이블의 태그 이름 목록 — 항목이 다 지워져도 유지되는 영구 태그
+  const [tagNames, setTagNames] = useState<string[]>([]);
+  const [tagModal, setTagModal] = useState<{ visible: boolean; editing: string | null }>({ visible: false, editing: null });
+  const [tagSheetVisible, setTagSheetVisible] = useState(false); // 구입처 편집 시트
 
   const loadData = useCallback(async () => {
     try {
       const fid = await getOrCreateFamilyId();
       if (!fid) return;
       setFamilyId(fid);
-      const { data, error } = await supabase
-        .from('shopping_items')
-        .select('*')
-        .eq('family_id', fid)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
-      if (!error && data) setItems(data as ShoppingItem[]);
+      const [itemsRes, tagsRes] = await Promise.all([
+        supabase
+          .from('shopping_items')
+          .select('*')
+          .eq('family_id', fid)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false }),
+        supabase.from('store_tags').select('name').eq('family_id', fid)
+          .order('sort_order', { ascending: true, nullsFirst: false }) // NULL(새 태그)은 맨 뒤
+          .order('created_at', { ascending: true }),
+      ]);
+      if (!itemsRes.error && itemsRes.data) setItems(itemsRes.data as ShoppingItem[]);
+      if (!tagsRes.error && tagsRes.data) setTagNames(tagsRes.data.map(t => t.name as string));
     } catch (e) {
       console.error('ShoppingScreen load error:', e);
     } finally {
@@ -229,10 +243,45 @@ const ShoppingScreen: React.FC = () => {
   }, [items]);
 
   // 구입처 태그 목록 (필터 + 모달 제안용)
+  // 영구 태그(store_tags) + 아직 테이블에 없는 항목 태그의 합집합 — 완료/비우기 후에도 태그가 남는다
   const storeTags = useMemo(
-    () => [...new Set(items.map(i => i.store_tag).filter(Boolean))],
-    [items],
+    () => [...new Set([...tagNames, ...items.map(i => i.store_tag).filter(Boolean)])],
+    [tagNames, items],
   );
+
+  // ── 구입처 태그 추가/수정/삭제 ─────────────────
+  const handleSaveTag = useCallback(async (name: string, oldName?: string) => {
+    if (!familyId) return;
+    if (name !== oldName && storeTags.includes(name)) {
+      Alert.alert('알림', '이미 같은 이름의 구입처가 있어요.');
+      return;
+    }
+    if (oldName) {
+      await renameStoreTag(familyId, oldName, name);
+      setTagNames(prev => prev.includes(oldName) ? prev.map(t => t === oldName ? name : t) : [...prev, name]);
+      setItems(prev => prev.map(i => i.store_tag === oldName ? { ...i, store_tag: name } : i));
+      if (filter === oldName) setFilter(name);
+    } else {
+      await ensureStoreTag(familyId, name);
+      setTagNames(prev => prev.includes(name) ? prev : [...prev, name]);
+    }
+    setTagModal({ visible: false, editing: null });
+  }, [familyId, storeTags, filter]);
+
+  const handleDeleteTag = useCallback(async (name: string) => {
+    if (!familyId) return;
+    await deleteStoreTag(familyId, name);
+    setTagNames(prev => prev.filter(t => t !== name));
+    setItems(prev => prev.map(i => i.store_tag === name ? { ...i, store_tag: '' } : i));
+    if (filter === name) setFilter('전체');
+  }, [familyId, filter]);
+
+  // 칩 드래그로 순서 변경 — 낙관적으로 로컬 먼저 반영
+  const handleSaveTagOrder = useCallback(async (ordered: string[]) => {
+    if (!familyId) return;
+    setTagNames(ordered);
+    await saveStoreTagOrder(familyId, ordered);
+  }, [familyId]);
 
   const filtered = useMemo(
     () => items.filter(i =>
@@ -307,8 +356,6 @@ const ShoppingScreen: React.FC = () => {
     return <SafeAreaView style={s.centered}><ActivityIndicator size="large" color={theme.colors.brand} /></SafeAreaView>;
   }
 
-  const filterTabs: FilterType[] = ['전체', ...storeTags];
-
   return (
     <SafeAreaView style={s.safeArea}>
       {/* 헤더 */}
@@ -349,24 +396,35 @@ const ShoppingScreen: React.FC = () => {
         ))}
       </View>
 
-      {/* 구입처 태그 필터 */}
-      {storeTags.length > 0 && (
-        <View style={s.filterRow}>
-          <FlatList
-            horizontal
-            data={filterTabs}
-            keyExtractor={f => f}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingLeft: 16, gap: 6, paddingRight: 16 }}
-            renderItem={({ item: f }) => (
-              <TouchableOpacity style={[s.filterTab, filter === f && s.filterTabActive]} onPress={() => setFilter(f)}>
-                <Text style={[s.filterText, filter === f && s.filterTextActive]}>{f}</Text>
-                <Text style={[s.filterCount, filter === f && s.filterCountActive]}>{tagCounts[f] ?? 0}</Text>
-              </TouchableOpacity>
-            )}
-          />
-        </View>
-      )}
+      {/* 구입처 태그 필터 — 탭: 필터 / 길게: 편집 시트 (순서 변경·이름 변경·삭제) */}
+      <View style={s.filterRow}>
+        <ChipFilterRow
+          keys={storeTags}
+          chipStyle={f => [s.filterTab, filter === f && s.filterTabActive]}
+          renderChipContent={f => (
+            <>
+              <Text style={[s.filterText, filter === f && s.filterTextActive]}>{f}</Text>
+              <Text style={[s.filterCount, filter === f && s.filterCountActive]}>{tagCounts[f] ?? 0}</Text>
+            </>
+          )}
+          onPressChip={f => setFilter(f)}
+          onLongPressChip={() => setTagSheetVisible(true)}
+          leading={
+            <TouchableOpacity style={[s.filterTab, filter === '전체' && s.filterTabActive]} onPress={() => setFilter('전체')}>
+              <Text style={[s.filterText, filter === '전체' && s.filterTextActive]}>전체</Text>
+              <Text style={[s.filterCount, filter === '전체' && s.filterCountActive]}>{tagCounts['전체'] ?? 0}</Text>
+            </TouchableOpacity>
+          }
+          trailing={
+            <TouchableOpacity style={s.filterTab} onPress={() => setTagModal({ visible: true, editing: null })}>
+              <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+                <Path d="M12 5v14M5 12h14" stroke={theme.colors.warm.oak} strokeWidth={2} strokeLinecap="round" />
+              </Svg>
+              <Text style={s.filterText}>추가</Text>
+            </TouchableOpacity>
+          }
+        />
+      </View>
 
       {/* 개수 */}
       <View style={s.countBar}>
@@ -432,6 +490,32 @@ const ShoppingScreen: React.FC = () => {
           onDelete={handleBulkDelete}
         />
       )}
+
+      {/* 구입처 태그 추가/수정 바텀시트 */}
+      <StoreTagModal
+        visible={tagModal.visible}
+        editing={tagModal.editing}
+        onClose={() => setTagModal({ visible: false, editing: null })}
+        onSave={handleSaveTag}
+        onDelete={handleDeleteTag}
+      />
+
+      {/* 구입처 편집 시트 — 드래그로 순서 변경, 탭으로 이름 변경, 휴지통으로 삭제 */}
+      <ChipEditSheet
+        visible={tagSheetVisible}
+        title="구입처 편집"
+        items={storeTags}
+        onClose={() => setTagSheetVisible(false)}
+        onReorder={handleSaveTagOrder}
+        onRename={(oldName, newName) => handleSaveTag(newName, oldName)}
+        onAdd={name => handleSaveTag(name)}
+        onDelete={name => {
+          Alert.alert('구입처 삭제', `'${name}' 구입처를 삭제할까요?\n이 구입처를 쓰던 항목은 미분류가 돼요.`, [
+            { text: '취소', style: 'cancel' },
+            { text: '삭제', style: 'destructive', onPress: () => handleDeleteTag(name) },
+          ]);
+        }}
+      />
     </SafeAreaView>
   );
 };
