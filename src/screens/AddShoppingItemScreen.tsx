@@ -18,6 +18,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChevronLeft, Check } from 'lucide-react-native';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
+import { fetchStoreTagOptions, ensureStoreTag } from '../lib/storeTags';
 import { RootStackParamList } from '../navigation';
 import { theme } from '../theme';
 
@@ -26,6 +27,12 @@ type RouteType = RouteProp<RootStackParamList, 'AddShoppingItem'>;
 
 const TOTAL_STEPS = 2;
 
+// 단계(라우트) 인스턴스 간 공유되는 입력값 초안
+// 각 단계를 별도 라우트로 push하므로(뒤로가기 = 전 단계), 입력값은 모듈 스코프에 보관해 이어받는다.
+type ShoppingDraft = { name: string; storeTag: string };
+const emptyShoppingDraft = (): ShoppingDraft => ({ name: '', storeTag: '' });
+let draft: ShoppingDraft = emptyShoppingDraft();
+
 const AddShoppingItemScreen: React.FC = () => {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
@@ -33,7 +40,15 @@ const AddShoppingItemScreen: React.FC = () => {
   const itemId = route.params?.itemId ?? null;
   const isEditing = !!itemId;
 
-  const [step, setStep] = useState(1);
+  const step = route.params?.step ?? 1;
+
+  // 위저드 진입(1단계 첫 렌더) 시 초안 초기화
+  const firstRender = useRef(true);
+  if (firstRender.current) {
+    firstRender.current = false;
+    if (step === 1) draft = emptyShoppingDraft();
+  }
+
   const [done, setDone] = useState(false);
   const doneOpacity = useRef(new Animated.Value(0)).current;
   const doneScale = useRef(new Animated.Value(0.85)).current;
@@ -49,10 +64,14 @@ const AddShoppingItemScreen: React.FC = () => {
   );
 
   const [familyId, setFamilyId] = useState<string | null>(route.params?.familyId ?? null);
-  const [name, setName] = useState('');
-  const [storeTag, setStoreTag] = useState('');
+  const [name, setName] = useState(draft.name);
+  const [storeTag, setStoreTag] = useState(draft.storeTag);
   const [storeTagOptions, setStoreTagOptions] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // 입력값을 초안에 반영 — 다음/이전 단계 인스턴스가 이어받는다
+  useEffect(() => { draft.name = name; }, [name]);
+  useEffect(() => { draft.storeTag = storeTag; }, [storeTag]);
 
   // 기존 구입처 태그 목록 (제안 칩용)
   useEffect(() => {
@@ -60,18 +79,13 @@ const AddShoppingItemScreen: React.FC = () => {
       const fid = familyId ?? await getOrCreateFamilyId();
       if (!fid) return;
       if (!familyId) setFamilyId(fid);
-      const { data } = await supabase
-        .from('shopping_items')
-        .select('store_tag')
-        .eq('family_id', fid)
-        .eq('is_active', true);
-      if (data) setStoreTagOptions([...new Set(data.map(t => t.store_tag).filter(Boolean))]);
+      setStoreTagOptions(await fetchStoreTagOptions(fid));
     })();
   }, [familyId]);
 
-  // 수정 모드: 기존 항목 로드
+  // 수정 모드: 기존 항목 로드 (1단계 인스턴스에서만 — 이후 단계는 초안에서 이어받음)
   useEffect(() => {
-    if (!itemId) return;
+    if (!itemId || step > 1) return;
     (async () => {
       const { data } = await supabase.from('shopping_items').select('*').eq('id', itemId).single();
       if (!data) return;
@@ -86,7 +100,8 @@ const AddShoppingItemScreen: React.FC = () => {
       Alert.alert('알림', '품목 이름을 입력해주세요.');
       return;
     }
-    if (step < TOTAL_STEPS) setStep(s => s + 1);
+    // 다음 단계를 같은 화면 라우트로 push — 뒤로가기가 자연스럽게 전 단계로 간다
+    if (step < TOTAL_STEPS) navigation.push('AddShoppingItem', { ...route.params, step: step + 1 });
     else handleSave();
   };
 
@@ -96,13 +111,16 @@ const AddShoppingItemScreen: React.FC = () => {
 
     setSaving(true);
     try {
+      // 새 구입처면 태그로 등록 — 장보기 필터에 바로 나타남
+      if (storeTag.trim()) await ensureStoreTag(fid, storeTag.trim());
+
       if (isEditing && itemId) {
         const { error } = await supabase
           .from('shopping_items')
           .update({ name: name.trim(), store_tag: storeTag.trim() })
           .eq('id', itemId);
         if (error) throw error;
-        navigation.goBack();
+        navigation.pop(step); // 위저드 단계 전부 빠져나가 목록으로
       } else {
         const { error } = await supabase.from('shopping_items').insert({
           family_id: fid,
@@ -138,7 +156,7 @@ const AddShoppingItemScreen: React.FC = () => {
           </View>
           <Text style={s.doneTitle}>장보기에 추가했어요!</Text>
           <Text style={s.doneSub}>{name} 이(가) 등록됐어요</Text>
-          <TouchableOpacity style={s.doneBtn} onPress={() => navigation.goBack()}>
+          <TouchableOpacity style={s.doneBtn} onPress={() => navigation.pop(step)}>
             <Text style={s.doneBtnText}>확인</Text>
           </TouchableOpacity>
         </Animated.View>
@@ -146,10 +164,17 @@ const AddShoppingItemScreen: React.FC = () => {
     );
   }
 
+  // 진행 바 — 지나온 단계 세그먼트를 누르면 그 단계로 되돌아간다
   const Progress = () => (
     <View style={s.progressRow}>
       {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-        <View key={i} style={[s.progressSeg, i + 1 <= step ? s.progressSegActive : s.progressSegInactive]} />
+        <TouchableOpacity
+          key={i}
+          style={[s.progressSeg, i + 1 <= step ? s.progressSegActive : s.progressSegInactive]}
+          onPress={() => navigation.pop(step - (i + 1))}
+          disabled={i + 1 >= step}
+          hitSlop={{ top: 12, bottom: 12 }}
+        />
       ))}
     </View>
   );
@@ -224,10 +249,7 @@ const AddShoppingItemScreen: React.FC = () => {
   return (
     <SafeAreaView style={s.safeArea}>
       <View style={s.header}>
-        <TouchableOpacity
-          onPress={() => { if (step > 1) setStep(st => st - 1); else navigation.goBack(); }}
-          style={s.backBtn}
-        >
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
           <ChevronLeft color={theme.colors.warm.dark} size={24} strokeWidth={2} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>{isEditing ? '장보기 수정' : '장보기 추가'}</Text>

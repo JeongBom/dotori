@@ -20,15 +20,29 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChevronLeft, Check } from 'lucide-react-native';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
+import { fetchStoreTagOptions, ensureStoreTag } from '../lib/storeTags';
 import { SupplyCategoryEntry } from '../types';
 import { RootStackParamList } from '../navigation';
 import { theme } from '../theme';
 import AppSwitch from '../components/design-system/AppSwitch';
+import SupplyCategoryModal from '../components/SupplyCategoryModal';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'AddSupply'>;
 type RouteType = RouteProp<RootStackParamList, 'AddSupply'>;
 
 const TOTAL_STEPS = 3;
+
+// 단계(라우트) 인스턴스 간 공유되는 입력값 초안
+// 각 단계를 별도 라우트로 push하므로(뒤로가기 = 전 단계), 입력값은 모듈 스코프에 보관해 이어받는다.
+type SupplyDraft = {
+  name: string; category: string; quantity: number; threshold: number;
+  note: string; notifyLowStock: boolean; autoAdd: boolean; storeTag: string;
+};
+const emptySupplyDraft = (): SupplyDraft => ({
+  name: '', category: '', quantity: 1, threshold: 1,
+  note: '', notifyLowStock: true, autoAdd: true, storeTag: '',
+});
+let draft: SupplyDraft = emptySupplyDraft();
 
 const AddSupplyScreen: React.FC = () => {
   const navigation = useNavigation<NavProp>();
@@ -37,7 +51,15 @@ const AddSupplyScreen: React.FC = () => {
   const supplyId = route.params?.supplyId ?? null;
   const isEditing = !!supplyId;
 
-  const [step, setStep] = useState(1);
+  const step = route.params?.step ?? 1;
+
+  // 위저드 진입(1단계 첫 렌더) 시 초안 초기화 — 아래 useState들이 초안에서 초기값을 읽는다
+  const firstRender = useRef(true);
+  if (firstRender.current) {
+    firstRender.current = false;
+    if (step === 1) draft = emptySupplyDraft();
+  }
+
   const [done, setDone] = useState(false);
   const doneOpacity = useRef(new Animated.Value(0)).current;
   const doneScale = useRef(new Animated.Value(0.85)).current;
@@ -55,17 +77,28 @@ const AddSupplyScreen: React.FC = () => {
   const [familyId, setFamilyId] = useState<string | null>(route.params?.familyId ?? null);
   const [categories, setCategories] = useState<SupplyCategoryEntry[]>([]);
   const [catsLoading, setCatsLoading] = useState(true);
+  const [catModalVisible, setCatModalVisible] = useState(false); // 카테고리 즉석 추가 모달
 
-  const [name, setName] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [quantity, setQuantity] = useState(1);
-  const [threshold, setThreshold] = useState(1);
-  const [note, setNote] = useState('');
-  const [notifyLowStock, setNotifyLowStock] = useState(true); // 재고 부족 알림
-  const [autoAdd, setAutoAdd] = useState(true);       // 다 쓰면 장보기 자동 추가
-  const [storeTag, setStoreTag] = useState('');       // 기본 구입처 태그 (선택)
+  const [name, setName] = useState(draft.name);
+  const [selectedCategory, setSelectedCategory] = useState<string>(draft.category);
+  const [quantity, setQuantity] = useState(draft.quantity);
+  const [threshold, setThreshold] = useState(draft.threshold);
+  const [note, setNote] = useState(draft.note);
+  const [notifyLowStock, setNotifyLowStock] = useState(draft.notifyLowStock); // 재고 부족 알림
+  const [autoAdd, setAutoAdd] = useState(draft.autoAdd);   // 다 쓰면 장보기 자동 추가
+  const [storeTag, setStoreTag] = useState(draft.storeTag); // 기본 구입처 태그 (선택)
   const [storeTagOptions, setStoreTagOptions] = useState<string[]>([]); // 기존 태그 제안
   const [saving, setSaving] = useState(false);
+
+  // 입력값을 초안에 반영 — 다음/이전 단계 인스턴스가 이어받는다
+  useEffect(() => { draft.name = name; }, [name]);
+  useEffect(() => { draft.category = selectedCategory; }, [selectedCategory]);
+  useEffect(() => { draft.quantity = quantity; }, [quantity]);
+  useEffect(() => { draft.threshold = threshold; }, [threshold]);
+  useEffect(() => { draft.note = note; }, [note]);
+  useEffect(() => { draft.notifyLowStock = notifyLowStock; }, [notifyLowStock]);
+  useEffect(() => { draft.autoAdd = autoAdd; }, [autoAdd]);
+  useEffect(() => { draft.storeTag = storeTag; }, [storeTag]);
 
   const [editingQty, setEditingQty] = useState(false);
   const [qtyInput, setQtyInput] = useState('');
@@ -78,22 +111,23 @@ const AddSupplyScreen: React.FC = () => {
       if (!fid) return;
       if (!familyId) setFamilyId(fid);
 
-      const [catsRes, tagsRes] = await Promise.all([
-        supabase.from('supply_categories').select('*').eq('family_id', fid).order('created_at', { ascending: true }),
-        supabase.from('shopping_items').select('store_tag').eq('family_id', fid).eq('is_active', true),
+      const [catsRes, tagOptions] = await Promise.all([
+        supabase.from('supply_categories').select('*').eq('family_id', fid)
+          .order('sort_order', { ascending: true, nullsFirst: false }) // NULL(새 카테고리)은 맨 뒤
+          .order('created_at', { ascending: true }),
+        fetchStoreTagOptions(fid),
       ]);
 
       if (catsRes.data) setCategories(catsRes.data as SupplyCategoryEntry[]);
-      if (tagsRes.data) {
-        setStoreTagOptions([...new Set(tagsRes.data.map(t => t.store_tag).filter(Boolean))]);
-      }
+      setStoreTagOptions(tagOptions);
       setCatsLoading(false);
     };
     init();
   }, [familyId]);
 
   useEffect(() => {
-    if (!supplyId) return;
+    // 수정 모드 데이터 로드는 1단계 인스턴스에서만 — 이후 단계는 초안에서 이어받음
+    if (!supplyId || step > 1) return;
     (async () => {
       const { data } = await supabase.from('supplies').select('*').eq('id', supplyId).single();
       if (!data) return;
@@ -114,8 +148,29 @@ const AddSupplyScreen: React.FC = () => {
       Alert.alert('알림', '제품명을 입력해주세요.');
       return;
     }
-    if (step < TOTAL_STEPS) setStep(s => s + 1);
+    // 다음 단계를 같은 화면 라우트로 push — 뒤로가기가 자연스럽게 전 단계로 간다
+    if (step < TOTAL_STEPS) navigation.push('AddSupply', { ...route.params, step: step + 1 });
     else handleSave();
+  };
+
+  // 카테고리 즉석 추가 — 저장 후 바로 선택 상태로
+  const handleSaveCategory = async (catName: string): Promise<void> => {
+    const fid = familyId ?? await getOrCreateFamilyId();
+    if (!fid) return;
+    if (categories.some(c => c.name === catName)) {
+      Alert.alert('알림', '이미 같은 이름의 카테고리가 있어요.');
+      return;
+    }
+    const { data, error } = await supabase
+      .from('supply_categories')
+      .insert({ family_id: fid, name: catName, color: theme.colors.brand })
+      .select()
+      .single();
+    if (!error && data) {
+      setCategories(prev => [...prev, data as SupplyCategoryEntry]);
+      setSelectedCategory(catName);
+      setCatModalVisible(false);
+    }
   };
 
   const handleSave = async () => {
@@ -136,10 +191,13 @@ const AddSupplyScreen: React.FC = () => {
         default_store_tag: storeTag.trim(),
       };
 
+      // 새 구입처면 태그로 등록 — 장보기 필터에 바로 나타남
+      if (storeTag.trim()) await ensureStoreTag(fid, storeTag.trim());
+
       if (isEditing && supplyId) {
         const { error } = await supabase.from('supplies').update(payload).eq('id', supplyId);
         if (error) throw error;
-        navigation.goBack();
+        navigation.pop(step); // 위저드 단계 전부 빠져나가 목록으로
       } else {
         const { error } = await supabase.from('supplies').insert({
           family_id: fid,
@@ -174,7 +232,7 @@ const AddSupplyScreen: React.FC = () => {
           </View>
           <Text style={s.doneTitle}>생필품을 추가했어요!</Text>
           <Text style={s.doneSub}>{name} 이(가) 등록됐어요</Text>
-          <TouchableOpacity style={s.doneBtn} onPress={() => navigation.goBack()}>
+          <TouchableOpacity style={s.doneBtn} onPress={() => navigation.pop(step)}>
             <Text style={s.doneBtnText}>확인</Text>
           </TouchableOpacity>
         </Animated.View>
@@ -182,10 +240,17 @@ const AddSupplyScreen: React.FC = () => {
     );
   }
 
+  // 진행 바 — 지나온 단계 세그먼트를 누르면 그 단계로 되돌아간다
   const Progress = () => (
     <View style={s.progressRow}>
       {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-        <View key={i} style={[s.progressSeg, i + 1 <= step ? s.progressSegActive : s.progressSegInactive]} />
+        <TouchableOpacity
+          key={i}
+          style={[s.progressSeg, i + 1 <= step ? s.progressSegActive : s.progressSegInactive]}
+          onPress={() => navigation.pop(step - (i + 1))}
+          disabled={i + 1 >= step}
+          hitSlop={{ top: 12, bottom: 12 }}
+        />
       ))}
     </View>
   );
@@ -222,8 +287,6 @@ const AddSupplyScreen: React.FC = () => {
           <Text style={s.label}>카테고리 <Text style={s.labelOptional}>(선택)</Text></Text>
           {catsLoading ? (
             <ActivityIndicator size="small" color={theme.colors.brand} style={{ alignSelf: 'flex-start', marginBottom: 16 }} />
-          ) : categories.length === 0 ? (
-            <Text style={s.noCatText}>생필품 화면에서 카테고리를 먼저 추가해주세요</Text>
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
               <TouchableOpacity
@@ -241,6 +304,9 @@ const AddSupplyScreen: React.FC = () => {
                   <Text style={[s.catChipText, selectedCategory === c.name && s.catChipTextWhite]}>{c.name}</Text>
                 </TouchableOpacity>
               ))}
+              <TouchableOpacity style={s.catChip} onPress={() => setCatModalVisible(true)}>
+                <Text style={s.catChipText}>+ 추가</Text>
+              </TouchableOpacity>
             </ScrollView>
           )}
 
@@ -397,10 +463,7 @@ const AddSupplyScreen: React.FC = () => {
   return (
     <SafeAreaView style={s.safeArea}>
       <View style={s.header}>
-        <TouchableOpacity
-          onPress={() => { if (step > 1) setStep(s => s - 1); else navigation.goBack(); }}
-          style={s.backBtn}
-        >
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
           <ChevronLeft color={theme.colors.warm.dark} size={24} strokeWidth={2} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>{isEditing ? '생필품 수정' : '생필품 추가'}</Text>
@@ -423,6 +486,15 @@ const AddSupplyScreen: React.FC = () => {
           <Text style={s.ctaBtnText}>{ctaLabel()}</Text>
         </TouchableOpacity>
       </View>
+
+      {/* 카테고리 즉석 추가 바텀시트 (추가 전용 — 수정/삭제는 생필품 화면에서) */}
+      <SupplyCategoryModal
+        visible={catModalVisible}
+        editing={null}
+        onClose={() => setCatModalVisible(false)}
+        onSave={handleSaveCategory}
+        onDelete={() => {}}
+      />
     </SafeAreaView>
   );
 };
@@ -449,7 +521,6 @@ const s = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '600', color: theme.colors.brand, marginBottom: 10 },
   labelOptional: { fontSize: 12, fontWeight: '400', color: theme.colors.warm.lightOak },
   subLabel: { fontSize: 12, color: theme.colors.warm.lightOak, marginBottom: 10, marginTop: -6 },
-  noCatText: { fontSize: 13, color: theme.colors.warm.lightOak, marginBottom: 16, fontStyle: 'italic' },
 
   inputBox: {
     backgroundColor: theme.colors.warm.ivory, borderRadius: 14,

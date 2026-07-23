@@ -10,7 +10,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet, Linking, Platform } from 'react-native';
-import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer, NavigationContainerRef, LinkingOptions } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Svg, { Path, Rect, Circle } from 'react-native-svg';
@@ -65,9 +65,10 @@ export type RootStackParamList = {
   // 메인 플로우
   MainTabs: undefined;
   Settings: undefined;
-  AddFridgeItem: { familyId?: string; itemId?: string };
-  AddSupply: { familyId?: string; supplyId?: string };
-  AddShoppingItem: { familyId?: string; itemId?: string };
+  // step: 위저드 단계 (같은 화면을 단계별로 push해서 뒤로가기 = 전 단계가 되게 함)
+  AddFridgeItem: { familyId?: string; itemId?: string; step?: number };
+  AddSupply: { familyId?: string; supplyId?: string; step?: number };
+  AddShoppingItem: { familyId?: string; itemId?: string; step?: number };
   ReceiptScan: undefined;
   NoteDetail: { noteId: string };
 };
@@ -158,6 +159,39 @@ const loadingStyles = StyleSheet.create({
 
 // 웹 브라우저 탭 제목 고정 (라우트명 노출 방지)
 const DOC_TITLE = { formatter: (): string => '도토리' };
+
+// 웹: 브라우저 히스토리 연동 — 화면 이동이 히스토리에 쌓여서
+// 뒤로가기(iOS 엣지 스와이프 포함) 시 앱이 닫히지 않고 이전 화면으로 돌아간다.
+const WEB_LINKING: LinkingOptions<RootStackParamList> | undefined =
+  Platform.OS === 'web'
+    ? {
+        prefixes: [],
+        config: {
+          screens: {
+            Auth: 'auth',
+            FamilySetup: 'family-setup',
+            ForgotPassword: 'forgot-password',
+            ResetPassword: 'reset-password',
+            MainTabs: {
+              path: '',
+              screens: {
+                Home: '',
+                Fridge: 'fridge',
+                Supplies: 'supplies',
+                Shopping: 'shopping',
+                Notes: 'notes',
+              },
+            },
+            Settings: 'settings',
+            AddFridgeItem: 'add-food',
+            AddSupply: 'add-supply',
+            AddShoppingItem: 'add-shopping',
+            ReceiptScan: 'receipt-scan',
+            NoteDetail: 'note/:noteId',
+          },
+        },
+      }
+    : undefined;
 
 // 데스크톱 웹 모달 카드용 스택 옵션: 뒤 화면이 비치게 투명 + 페이드
 const desktopModalOptions = {
@@ -272,7 +306,7 @@ export default function AppNavigator({ navigationRef }: AppNavigatorProps) {
   }
 
   return (
-    <NavigationContainer ref={navigationRef} documentTitle={DOC_TITLE}>
+    <NavigationContainer ref={navigationRef} documentTitle={DOC_TITLE} linking={WEB_LINKING}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {isPasswordRecovery ? (
           // ── 비밀번호 재설정 (이메일 링크 클릭 후) ──────

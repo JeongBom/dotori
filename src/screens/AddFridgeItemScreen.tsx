@@ -21,6 +21,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChevronLeft, Search, X, ChevronDown, Check, Star } from 'lucide-react-native';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
+import { fetchStoreTagOptions, ensureStoreTag } from '../lib/storeTags';
 import { FoodEntry, FridgeCategory, StorageType } from '../types';
 import { RootStackParamList } from '../navigation';
 import { scheduleExpiryNotification, cancelExpiryNotification, requestNotificationPermissions } from '../lib/notifications';
@@ -46,6 +47,20 @@ const MAX_FAVORITES = 10;
 type FavoriteFood = { name: string; storage_type: StorageType };
 const favKey = (fid: string) => `fridge_favorites_${fid}`;
 
+// 단계(라우트) 인스턴스 간 공유되는 입력값 초안
+// 각 단계를 별도 라우트로 push하므로(뒤로가기 = 전 단계), 입력값은 모듈 스코프에 보관해 이어받는다.
+type FridgeDraft = {
+  name: string; storageType: StorageType; quantity: number;
+  storedDate: string; expiryDate: string;
+  autoAdd: boolean; threshold: number; storeTag: string;
+};
+const emptyFridgeDraft = (): FridgeDraft => ({
+  name: '', storageType: '냉장', quantity: 1,
+  storedDate: todayStr(), expiryDate: '',
+  autoAdd: true, threshold: 0, storeTag: '',
+});
+let draft: FridgeDraft = emptyFridgeDraft();
+
 const AddFridgeItemScreen: React.FC = () => {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
@@ -53,7 +68,14 @@ const AddFridgeItemScreen: React.FC = () => {
   const itemId = route.params?.itemId ?? null;
   const isEditing = !!itemId;
 
-  const [step, setStep] = useState(1);
+  const step = route.params?.step ?? 1;
+
+  // 위저드 진입(1단계 첫 렌더) 시 초안 초기화 — 아래 useState들이 초안에서 초기값을 읽는다
+  const firstRender = useRef(true);
+  if (firstRender.current) {
+    firstRender.current = false;
+    if (step === 1) draft = emptyFridgeDraft();
+  }
   const [done, setDone] = useState(false);
   const doneOpacity = useRef(new Animated.Value(0)).current;
   const doneScale = useRef(new Animated.Value(0.85)).current;
@@ -73,17 +95,27 @@ const AddFridgeItemScreen: React.FC = () => {
   const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
 
   // 폼 상태
-  const [name, setName] = useState('');
-  const [storageType, setStorageType] = useState<StorageType>('냉장');
-  const [quantity, setQuantity] = useState(1);
-  const [storedDate, setStoredDate] = useState(todayStr());
-  const [expiryDate, setExpiryDate] = useState('');
-  const [autoAdd, setAutoAdd] = useState(true);       // 다 쓰면 장보기 자동 추가
-  const [threshold, setThreshold] = useState(0);      // 장보기 기준 수량 (0 = 다 쓰면)
-  const [storeTag, setStoreTag] = useState('');       // 기본 구입처 태그 (선택)
+  const [name, setName] = useState(draft.name);
+  const [storageType, setStorageType] = useState<StorageType>(draft.storageType);
+  const [quantity, setQuantity] = useState(draft.quantity);
+  const [storedDate, setStoredDate] = useState(draft.storedDate);
+  const [expiryDate, setExpiryDate] = useState(draft.expiryDate);
+  const [autoAdd, setAutoAdd] = useState(draft.autoAdd);       // 다 쓰면 장보기 자동 추가
+  const [threshold, setThreshold] = useState(draft.threshold); // 장보기 기준 수량 (0 = 다 쓰면)
+  const [storeTag, setStoreTag] = useState(draft.storeTag);    // 기본 구입처 태그 (선택)
   const [storeTagOptions, setStoreTagOptions] = useState<string[]>([]); // 기존 태그 제안
   const [saving, setSaving] = useState(false);
   const [familyId, setFamilyId] = useState<string | null>(route.params?.familyId ?? null);
+
+  // 입력값을 초안에 반영 — 다음/이전 단계 인스턴스가 이어받는다
+  useEffect(() => { draft.name = name; }, [name]);
+  useEffect(() => { draft.storageType = storageType; }, [storageType]);
+  useEffect(() => { draft.quantity = quantity; }, [quantity]);
+  useEffect(() => { draft.storedDate = storedDate; }, [storedDate]);
+  useEffect(() => { draft.expiryDate = expiryDate; }, [expiryDate]);
+  useEffect(() => { draft.autoAdd = autoAdd; }, [autoAdd]);
+  useEffect(() => { draft.threshold = threshold; }, [threshold]);
+  useEffect(() => { draft.storeTag = storeTag; }, [storeTag]);
 
   // 날짜 모달
   const [showStoredPicker, setShowStoredPicker] = useState(false);
@@ -134,7 +166,8 @@ const AddFridgeItemScreen: React.FC = () => {
   }, [favorites, familyId]);
 
   useEffect(() => {
-    if (!itemId) return;
+    // 수정 모드 데이터 로드는 1단계 인스턴스에서만 — 이후 단계는 초안에서 이어받음
+    if (!itemId || step > 1) return;
     (async () => {
       const { data } = await supabase.from('fridge_items').select('*').eq('id', itemId).single();
       if (!data) return;
@@ -162,12 +195,7 @@ const AddFridgeItemScreen: React.FC = () => {
     (async () => {
       const fid = familyId ?? await getOrCreateFamilyId();
       if (!fid) return;
-      const { data } = await supabase
-        .from('shopping_items')
-        .select('store_tag')
-        .eq('family_id', fid)
-        .eq('is_active', true);
-      if (data) setStoreTagOptions([...new Set(data.map(t => t.store_tag).filter(Boolean))]);
+      setStoreTagOptions(await fetchStoreTagOptions(fid));
     })();
   }, [familyId]);
 
@@ -192,7 +220,8 @@ const AddFridgeItemScreen: React.FC = () => {
       Alert.alert('알림', '음식 이름을 입력해주세요.');
       return;
     }
-    if (step < TOTAL_STEPS) setStep(s => s + 1);
+    // 다음 단계를 같은 화면 라우트로 push — 뒤로가기가 자연스럽게 전 단계로 간다
+    if (step < TOTAL_STEPS) navigation.push('AddFridgeItem', { ...route.params, step: step + 1 });
     else handleSave();
   };
 
@@ -219,6 +248,9 @@ const AddFridgeItemScreen: React.FC = () => {
         low_stock_threshold: threshold,
       };
 
+      // 새 구입처면 태그로 등록 — 장보기 필터에 바로 나타남
+      if (storeTag.trim()) await ensureStoreTag(fid, storeTag.trim());
+
       if (isEditing && itemId) {
         const { error } = await supabase.from('fridge_items').update(payload).eq('id', itemId);
         if (error) throw error;
@@ -230,7 +262,7 @@ const AddFridgeItemScreen: React.FC = () => {
             await scheduleExpiryNotification(itemId, name.trim(), expiryDate, notifyDays);
           }
         }
-        navigation.goBack();
+        navigation.pop(step); // 위저드 단계 전부 빠져나가 목록으로
       } else {
         const { data, error } = await supabase.from('fridge_items').insert({
           family_id: fid,
@@ -278,7 +310,7 @@ const AddFridgeItemScreen: React.FC = () => {
              storageType === '냉동' ? '냉동실에 추가되었어요' :
              '실온 보관함에 추가되었어요'}
           </Text>
-          <TouchableOpacity style={s.doneBtn} onPress={() => navigation.goBack()}>
+          <TouchableOpacity style={s.doneBtn} onPress={() => navigation.pop(step)}>
             <Text style={s.doneBtnText}>확인</Text>
           </TouchableOpacity>
         </Animated.View>
@@ -288,12 +320,16 @@ const AddFridgeItemScreen: React.FC = () => {
 
   // ── 진행 바 ──────────────────────────────────
 
+  // 진행 바 — 지나온 단계 세그먼트를 누르면 그 단계로 되돌아간다
   const Progress = () => (
     <View style={s.progressRow}>
       {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-        <View
+        <TouchableOpacity
           key={i}
           style={[s.progressSeg, i + 1 <= step ? s.progressSegActive : s.progressSegInactive]}
+          onPress={() => navigation.pop(step - (i + 1))}
+          disabled={i + 1 >= step}
+          hitSlop={{ top: 12, bottom: 12 }}
         />
       ))}
     </View>
@@ -324,7 +360,10 @@ const AddFridgeItemScreen: React.FC = () => {
                         setName(fav.name);
                         setStorageType(fav.storage_type);
                         setSuggestions([]);
-                        setStep(2);
+                        // push 직후 마운트되는 2단계 인스턴스가 읽도록 초안에 즉시 반영
+                        draft.name = fav.name;
+                        draft.storageType = fav.storage_type;
+                        navigation.push('AddFridgeItem', { ...route.params, step: 2 });
                       }}
                       onLongPress={() => Alert.alert(
                         '즐겨찾기 삭제',
@@ -557,10 +596,7 @@ const AddFridgeItemScreen: React.FC = () => {
     <SafeAreaView style={s.safeArea}>
       {/* 헤더 */}
       <View style={s.header}>
-        <TouchableOpacity
-          onPress={() => { if (step > 1) setStep(s => s - 1); else navigation.goBack(); }}
-          style={s.backBtn}
-        >
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
           <ChevronLeft color={theme.colors.warm.dark} size={24} strokeWidth={2} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>{isEditing ? '음식 수정' : '음식 추가'}</Text>
