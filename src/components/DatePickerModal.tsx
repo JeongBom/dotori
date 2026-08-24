@@ -48,7 +48,9 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({ visible, value, onCon
   // 웹: 네이티브 달력 위젯이 없으므로 직접 입력 모달로 대체
   if (Platform.OS === 'web') {
     const confirmWeb = () => {
-      const v = webInput.trim();
+      // 한 자리 월/일은 자동 보정 (예: 2026-8-3 → 2026-08-03), 구분자 . / 도 허용
+      const m = webInput.trim().match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$/);
+      const v = m ? `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}` : webInput.trim();
       if (!isValidDate(v) || !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
         Alert.alert('알림', '날짜를 YYYY-MM-DD 형식으로 입력해주세요. 예) 2026-07-15');
         return;
