@@ -1,6 +1,6 @@
 // 비밀번호 찾기 화면
 // - 이메일 입력 → Supabase가 재설정 링크 발송
-// - 링크 클릭 시 dotori:// 딥링크로 앱 복귀 → ResetPasswordScreen
+// - 링크 클릭 시 웹은 현재 도메인, 네이티브는 dotori:// 딥링크로 앱 복귀 → ResetPasswordScreen
 
 import React, { useState } from 'react';
 import {
@@ -23,6 +23,13 @@ import { supabase } from '../../lib/supabase';
 import { RootStackParamList } from '../../navigation';
 import { theme } from '../../theme';
 
+// RN 타입 환경에는 DOM 타입이 없어서 필요한 부분만 선언 (webAlert.ts와 같은 패턴)
+declare const window: { location: { origin: string } };
+
+// 재설정 링크가 돌아올 주소 — 웹(PWA)은 지금 접속한 도메인, 네이티브 앱은 딥링크
+const getRedirectTo = (): string =>
+  Platform.OS === 'web' ? window.location.origin : 'dotori://';
+
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 const ForgotPasswordScreen: React.FC = () => {
@@ -40,7 +47,7 @@ const ForgotPasswordScreen: React.FC = () => {
 
     setLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
-      redirectTo: 'dotori://',
+      redirectTo: getRedirectTo(),
     });
     setLoading(false);
 
