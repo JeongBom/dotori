@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, SectionList, StyleSheet,
-  TouchableOpacity, Pressable, ActivityIndicator, Alert,
+  TouchableOpacity, Pressable, ActivityIndicator, Alert, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useIsFocused, CompositeNavigationProp } from '@react-navigation/native';
@@ -15,7 +15,7 @@ import Svg, { Path } from 'react-native-svg';
 import { ListChecks } from 'lucide-react-native';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
-import { ShoppingItem } from '../types';
+import { ShoppingItem, ReceiptCategory } from '../types';
 import { RootTabParamList, RootStackParamList } from '../navigation';
 import { theme } from '../theme';
 import IconBtn from '../components/IconBtn';
@@ -29,6 +29,7 @@ import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import { useIsDesktopWeb } from '../hooks/useIsDesktopWeb';
 import { chunkPairs } from '../lib/utils';
 import { ensureStoreTag, renameStoreTag, deleteStoreTag, saveStoreTagOrder } from '../lib/storeTags';
+import { planInventoryAdd, InventoryAddPlan } from '../lib/shopping';
 
 const REALTIME_TABLES = ['shopping_items', 'store_tags'] as const;
 
@@ -148,6 +149,77 @@ const row = StyleSheet.create({
   tagText: { fontSize: 9, fontWeight: '600', color: theme.colors.warm.lightOak },
 });
 
+// ── 재고 추가 제안 시트 ────────────────────────
+// 체크(구매 완료)한 항목을 음식/생필품 중 어디에 넣을지 고르는 바텀시트.
+// 추정된 쪽을 강조해서 보여주되, 잘못 추정했거나 새로운 품목이면 사용자가 직접 고른다.
+interface InventoryAddSheetProps {
+  offer: { item: ShoppingItem; plan: InventoryAddPlan } | null;
+  onPick: (category: ReceiptCategory) => void;
+  onClose: () => void;
+}
+
+const InventoryAddSheet: React.FC<InventoryAddSheetProps> = ({ offer, onPick, onClose }) => {
+  if (!offer) return null;
+  const { item, plan } = offer;
+  const detail = plan.matched
+    ? `이미 있는 '${plan.matched.name}'에 개수를 더해요 (현재 ${plan.matched.quantity}개)`
+    : '새 품목으로 등록해요 — 개수와 상세는 다음 화면에서 정해요';
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <View style={sheet.overlay}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={sheet.body}>
+          <View style={sheet.handle} />
+          <Text style={sheet.title}>{`'${item.name}' 재고에 추가할까요?`}</Text>
+          <Text style={sheet.desc}>{detail}</Text>
+          <View style={sheet.btnRow}>
+            {(['food', 'supply'] as ReceiptCategory[]).map(c => {
+              const primary = plan.category === c;
+              return (
+                <TouchableOpacity
+                  key={c}
+                  style={[sheet.pickBtn, primary && sheet.pickBtnPrimary]}
+                  onPress={() => onPick(c)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[sheet.pickText, primary && sheet.pickTextPrimary]}>
+                    {c === 'food' ? '음식에 추가' : '생필품에 추가'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <TouchableOpacity style={sheet.laterBtn} onPress={onClose}>
+            <Text style={sheet.laterText}>나중에</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+const sheet = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  body: {
+    backgroundColor: theme.colors.warm.ivory, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 24, paddingBottom: 36, paddingTop: 12,
+  },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.colors.warm.edge, alignSelf: 'center', marginBottom: 20 },
+  title: { fontSize: 17, fontWeight: '700', color: theme.colors.warm.dark, marginBottom: 6 },
+  desc: { fontSize: 13, color: theme.colors.warm.lightOak, marginBottom: 20 },
+  btnRow: { flexDirection: 'row', gap: 10 },
+  pickBtn: {
+    flex: 1, paddingVertical: 15, borderRadius: 14, alignItems: 'center',
+    backgroundColor: theme.colors.warm.cream, borderWidth: 1, borderColor: theme.colors.warm.edge,
+  },
+  pickBtnPrimary: { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
+  pickText: { fontSize: 15, fontWeight: '600', color: theme.colors.brand },
+  pickTextPrimary: { color: '#fff' },
+  laterBtn: { alignItems: 'center', paddingVertical: 14, marginTop: 4 },
+  laterText: { fontSize: 14, color: theme.colors.warm.lightOak, fontWeight: '500' },
+});
+
 // ── 메인 화면 ─────────────────────────────────
 const ShoppingScreen: React.FC = () => {
   const navigation = useNavigation<ShoppingNavProp>();
@@ -195,6 +267,60 @@ const ShoppingScreen: React.FC = () => {
   useEffect(() => { if (isFocused) loadData(); }, [isFocused, loadData]);
   useRealtimeRefresh(REALTIME_TABLES, loadData); // 가족이 바꾸면 즉시 갱신
 
+  // 체크(구매 완료) 시 음식/생필품 재고 추가 제안
+  const [addOffer, setAddOffer] = useState<{ item: ShoppingItem; plan: InventoryAddPlan } | null>(null);
+
+  const offerInventoryAdd = useCallback(async (item: ShoppingItem) => {
+    if (!familyId) return;
+    try {
+      const plan = await planInventoryAdd(familyId, item);
+      setAddOffer({ item, plan });
+    } catch (e) {
+      // 제안 실패가 체크 자체를 막으면 안 되므로 로그만 남김
+      console.error('offerInventoryAdd error:', e);
+    }
+  }, [familyId]);
+
+  // 시트에서 음식/생필품 선택 → 기존 위저드로 이동
+  // 기존 품목이 있으면 수정 모드(+1)로, 없으면 이름·이전 설정을 미리 채운 등록 모드로 연다
+  const handlePickCategory = useCallback((category: ReceiptCategory) => {
+    if (!addOffer) return;
+    const { item, plan } = addOffer;
+    setAddOffer(null);
+    const fid = familyId ?? undefined;
+    if (category === 'food') {
+      if (plan.matched?.table === 'fridge') {
+        navigation.navigate('AddFridgeItem', { familyId: fid, itemId: plan.matched.id, bump: 1 });
+      } else {
+        navigation.navigate('AddFridgeItem', {
+          familyId: fid,
+          prefill: {
+            name: item.name,
+            storageType: plan.prefill?.storageType,
+            autoAdd: plan.prefill?.autoAdd,
+            threshold: plan.prefill?.threshold,
+            storeTag: plan.prefill?.storeTag ?? (item.store_tag || undefined),
+          },
+        });
+      }
+    } else {
+      if (plan.matched?.table === 'supplies') {
+        navigation.navigate('AddSupply', { familyId: fid, supplyId: plan.matched.id, bump: 1 });
+      } else {
+        navigation.navigate('AddSupply', {
+          familyId: fid,
+          prefill: {
+            name: item.name,
+            category: plan.prefill?.category,
+            autoAdd: plan.prefill?.autoAdd,
+            threshold: plan.prefill?.threshold,
+            storeTag: plan.prefill?.storeTag ?? (item.store_tag || undefined),
+          },
+        });
+      }
+    }
+  }, [addOffer, familyId, navigation]);
+
   // 체크 토글 (낙관적 업데이트, 실패 시 원복)
   const handleToggle = useCallback(async (item: ShoppingItem) => {
     const next = !item.is_checked;
@@ -204,8 +330,10 @@ const ShoppingScreen: React.FC = () => {
     if (error) {
       setItems(prev => prev.map(i => i.id === item.id ? item : i));
       Alert.alert('오류', `변경에 실패했습니다.\n(${error.message})`);
+      return;
     }
-  }, []);
+    if (next) offerInventoryAdd(item);
+  }, [offerInventoryAdd]);
 
   // 소프트 삭제
   const handleDelete = useCallback(async (item: ShoppingItem) => {
@@ -490,6 +618,13 @@ const ShoppingScreen: React.FC = () => {
           onDelete={handleBulkDelete}
         />
       )}
+
+      {/* 구매 완료 → 재고 추가 제안 시트 */}
+      <InventoryAddSheet
+        offer={addOffer}
+        onPick={handlePickCategory}
+        onClose={() => setAddOffer(null)}
+      />
 
       {/* 구입처 태그 추가/수정 바텀시트 */}
       <StoreTagModal

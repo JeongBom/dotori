@@ -29,6 +29,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEY_NOTIFY_DAYS } from './SettingsScreen';
 import { theme } from '../theme';
 import { todayStr, addDays, addMonths, formatDisplayDate, isValidDate } from '../lib/dateUtils';
+import { stripUndefined } from '../lib/utils';
 import DatePickerModal from '../components/DatePickerModal';
 import AppSwitch from '../components/design-system/AppSwitch';
 
@@ -71,10 +72,11 @@ const AddFridgeItemScreen: React.FC = () => {
   const step = route.params?.step ?? 1;
 
   // 위저드 진입(1단계 첫 렌더) 시 초안 초기화 — 아래 useState들이 초안에서 초기값을 읽는다
+  // prefill: 장보기 연동 등록 시 이름·이전 설정을 미리 채워서 연다
   const firstRender = useRef(true);
   if (firstRender.current) {
     firstRender.current = false;
-    if (step === 1) draft = emptyFridgeDraft();
+    if (step === 1) draft = { ...emptyFridgeDraft(), ...stripUndefined(route.params?.prefill ?? {}) };
   }
   const [done, setDone] = useState(false);
   const doneOpacity = useRef(new Animated.Value(0)).current;
@@ -173,7 +175,8 @@ const AddFridgeItemScreen: React.FC = () => {
       if (!data) return;
       setName(data.name);
       setStorageType(data.storage_type);
-      setQuantity(data.quantity ?? 1);
+      // bump: 장보기에서 구매 완료로 들어온 경우 새로 산 개수를 미리 더해서 보여줌
+      setQuantity((data.quantity ?? 1) + (route.params?.bump ?? 0));
       setStoredDate(data.stored_date);
       setExpiryDate(data.expiry_date ?? '');
       setAutoAdd(data.auto_add_to_shopping ?? true);

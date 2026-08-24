@@ -21,6 +21,7 @@ import { ChevronLeft, Check } from 'lucide-react-native';
 
 import { supabase, getOrCreateFamilyId } from '../lib/supabase';
 import { fetchStoreTagOptions, ensureStoreTag } from '../lib/storeTags';
+import { stripUndefined } from '../lib/utils';
 import { SupplyCategoryEntry } from '../types';
 import { RootStackParamList } from '../navigation';
 import { theme } from '../theme';
@@ -54,10 +55,11 @@ const AddSupplyScreen: React.FC = () => {
   const step = route.params?.step ?? 1;
 
   // 위저드 진입(1단계 첫 렌더) 시 초안 초기화 — 아래 useState들이 초안에서 초기값을 읽는다
+  // prefill: 장보기 연동 등록 시 이름·이전 설정을 미리 채워서 연다
   const firstRender = useRef(true);
   if (firstRender.current) {
     firstRender.current = false;
-    if (step === 1) draft = emptySupplyDraft();
+    if (step === 1) draft = { ...emptySupplyDraft(), ...stripUndefined(route.params?.prefill ?? {}) };
   }
 
   const [done, setDone] = useState(false);
@@ -133,7 +135,8 @@ const AddSupplyScreen: React.FC = () => {
       if (!data) return;
       setName(data.name);
       setSelectedCategory(data.category ?? '');
-      setQuantity(data.quantity);
+      // bump: 장보기에서 구매 완료로 들어온 경우 새로 산 개수를 미리 더해서 보여줌
+      setQuantity(data.quantity + (route.params?.bump ?? 0));
       setThreshold(data.low_stock_threshold ?? 1);
       setNote(data.note ?? '');
       setNotifyLowStock(data.notify_low_stock ?? true);

@@ -48,7 +48,7 @@ function normalizeName(name: string): string {
 }
 
 // 공백만 무시하고 완전히 같은 이름 = 같은 품목 (자동 합침)
-function isSameItem(a: string, b: string): boolean {
+export function isSameItem(a: string, b: string): boolean {
   const na = normalizeName(a);
   const nb = normalizeName(b);
   if (!na || !nb) return false;
@@ -57,7 +57,7 @@ function isSameItem(a: string, b: string): boolean {
 
 // 한쪽이 다른 쪽을 포함(2자 이상) = 비슷한 품목 (추천만, 사용자가 거부 가능)
 // 예: '락토프리 우유' ~ '우유', '구운계란' ~ '계란'
-function isSimilarItem(a: string, b: string): boolean {
+export function isSimilarItem(a: string, b: string): boolean {
   const na = normalizeName(a);
   const nb = normalizeName(b);
   if (!na || !nb || na === nb) return false;

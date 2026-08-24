@@ -66,8 +66,16 @@ export type RootStackParamList = {
   MainTabs: undefined;
   Settings: undefined;
   // step: 위저드 단계 (같은 화면을 단계별로 push해서 뒤로가기 = 전 단계가 되게 함)
-  AddFridgeItem: { familyId?: string; itemId?: string; step?: number };
-  AddSupply: { familyId?: string; supplyId?: string; step?: number };
+  // bump: 수정 모드에서 개수를 미리 더해서 열기 (장보기 구매 완료 → 재고 +N 반영용)
+  // prefill: 새 품목 등록 시 미리 채울 값 (장보기 연동 품목의 이전 설정 이어받기)
+  AddFridgeItem: {
+    familyId?: string; itemId?: string; step?: number; bump?: number;
+    prefill?: { name?: string; storageType?: import('../types').StorageType; autoAdd?: boolean; threshold?: number; storeTag?: string };
+  };
+  AddSupply: {
+    familyId?: string; supplyId?: string; step?: number; bump?: number;
+    prefill?: { name?: string; category?: string; autoAdd?: boolean; threshold?: number; storeTag?: string };
+  };
   AddShoppingItem: { familyId?: string; itemId?: string; step?: number };
   ReceiptScan: undefined;
   NoteDetail: { noteId: string };
